@@ -1,8 +1,8 @@
 {
   "name": "altarmy-tbc",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "private": true,
-  "description": "AltArmy TBC — WoW TBC Classic addon (character summary, gear, search)",
+  "description": "AltArmy — WoW TBC Classic addon (character summary, gear, search)",
   "scripts": {
     "check": "node scripts/run-luacheck.js AltArmy_TBC",
     "lint": "node scripts/run-luacheck.js AltArmy_TBC",

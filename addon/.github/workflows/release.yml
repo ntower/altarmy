@@ -67,21 +67,6 @@ jobs:
           echo "DISPLAY_NAME=$DISPLAY_NAME" >> $GITHUB_ENV
           echo "ZIP_FILE_NAME=$ZIP_FILE_NAME" >> $GITHUB_ENV
 
-      - name: Validate config
-        run: |
-          MISSING=""
-          [ -z "${{ vars.CURSEFORGE_PROJECT_ID }}" ]   && MISSING="$MISSING CURSEFORGE_PROJECT_ID"
-          [ -z "${{ vars.CURSEFORGE_GAME_VERSIONS }}" ] && MISSING="$MISSING CURSEFORGE_GAME_VERSIONS"
-          [ -z "${{ secrets.CURSEFORGE_API_TOKEN }}" ]  && MISSING="$MISSING CURSEFORGE_API_TOKEN"
-          if [ -n "$MISSING" ]; then
-            echo "ERROR: Missing required repository variables/secrets:$MISSING"
-            echo "Set them under Settings → Secrets and variables → Actions."
-            exit 1
-          fi
-          echo "Project ID : ${{ vars.CURSEFORGE_PROJECT_ID }}"
-          echo "Game versions: ${{ vars.CURSEFORGE_GAME_VERSIONS }}"
-          echo "Display name : ${{ vars.CURSEFORGE_DISPLAY_NAME }}"
-
       - name: Upload to CurseForge
         run: |
           if [ -f CHANGELOG.txt ]; then
