@@ -1106,6 +1106,19 @@ def test_a_pattern_is_bought_only_when_it_pays_for_itself() -> None:
     assert forced is not None and forced.unknown == 1
 
 
+def test_a_climb_coming_back_to_a_recipe_counts_its_pattern_once() -> None:
+    # A (yellow 30, grey 70, a 10 pattern) with a three-point detour to B: A is learned once
+    a = engine.Candidate(_recipe(1, 30, 70), 100.0, learn=10.0)
+    b = engine.Candidate(_recipe(2, 46, 47), 120.0, from_skill=44)
+    plan = _climb(_smith(40), a, b).best
+    assert plan is not None and [n for n, _, _ in _route(plan)] == ["R1", "R2", "R1"]
+    legs = sum(u.cost(start, stop)[1] for u, start, stop in plan.legs)
+    assert plan.cost == pytest.approx(legs - 10.0)
+    spent = plan.spent_by(70)
+    crafts = sum(u.expected_crafts(start, stop) * u.candidate.cost for u, start, stop in plan.legs)
+    assert spent is not None and spent[0] == pytest.approx(crafts + 10.0) and spent[1] == 0
+
+
 def test_a_recipe_learned_on_the_way_joins_the_climb_there() -> None:
     later = engine.Candidate(_recipe(4, 50, 70), 10.0, from_skill=45)
     route = _route(_climb(_smith(30), engine.Candidate(GREY_AT_60, 100.0), later).best)
@@ -1136,6 +1149,18 @@ def test_a_run_says_why_it_stops_and_how_many_crafts_to_buy_for() -> None:
     assert capped is not None and [(r.reason, r.crafts, r.stop_skill) for r in capped.runs] == [
         ("cap", 5, 35)
     ]
+
+
+def test_a_run_that_ends_at_grey_says_so_though_another_recipe_follows() -> None:
+    # A turns grey at 40, where B (learned at 40) takes over: A stops because it is grey, not because B is
+    # cheaper
+    a = engine.Candidate(_recipe(1, 20, 40), 10.0)
+    b = engine.Candidate(_recipe(2, 60, 80), 10.0, from_skill=40)
+    plan = _climb(_smith(30, cap=50), a, b).best
+    assert plan is not None
+    first, then = plan.runs
+    assert (first.stop_skill, first.reason, first.rival) == (40, "trivial", None)
+    assert (then.recipe, then.reason) == (b.recipe, "cap")
 
 
 def test_a_run_longer_than_the_ceiling_goes_on_as_another() -> None:
@@ -1368,7 +1393,7 @@ def test_a_ranking_of_runs_plans_each_as_the_first_run_of_the_cheapest_climb() -
     assert run is not None
     assert (run.stop_reason, run.overtaken_by, run.overtaken_by_item) == ("rival", "Copper Belt", 10)
     assert 1 < run.crafts < 20
-    assert run.skill_ups == pytest.approx(expected_skill_ups(GREY_AT_60, novice, run.crafts))
+    assert run.skill_ups == run.stop_skill - 45  # the points it climbs, from the novice's 45
     assert run.crafts_p80 >= run.crafts
     # the rest of its climb: the belt from where the maul stops, to grey
     assert [(r.recipe and r.recipe.name, r.start_skill) for r in run.climb_after] == [
@@ -1504,6 +1529,24 @@ def test_result_carries_the_crafters_skill_up_chance() -> None:
     anyone = must_evaluate(maul_market(recipes=(CURE, GREY_AT_60)), GREY_AT_60)
     assert (anyone.skill_chance, anyone.skill_ups) == (1.0, 1.0)  # nobody's skill is known
     assert res.skill_ups_bonus == 0.0  # no Working Overtime
+
+
+def test_a_runs_skill_points_are_the_points_it_climbs() -> None:
+    # the last point before grey, at 1 in 20: its run is the ~20 crafts that get there, and gives that point
+    # (not the 0.64 twenty crafts are expected to give from a standing start)
+    last = replace(NOVICE_SMITH, professions=(("Blacksmithing", 59, 75),))
+    m = maul_market(last, LEATHERY, recipes=(CURE, GREY_AT_60), skill_crafters=frozenset({"Novice"}))
+    run = m.evaluate(GREY_AT_60, skill_run=engine.SkillRuns())
+    assert run is not None and run.crafts == 20 and run.stop_skill == 60
+    assert run.skill_ups == 1.0
+    # Working Overtime's share of it, as much as it adds to what the crafts are expected to give
+    overtime = replace(last, skill_bonus=0.2)
+    m = maul_market(overtime, LEATHERY, recipes=(CURE, GREY_AT_60), skill_crafters=frozenset({"Novice"}))
+    run = m.evaluate(GREY_AT_60, skill_run=engine.SkillRuns())
+    assert run is not None and run.skill_ups == 1.0
+    n = run.crafts
+    expected, plain = expected_skill_ups(GREY_AT_60, overtime, n), expected_skill_ups(GREY_AT_60, last, n)
+    assert run.skill_ups_bonus == pytest.approx((expected - plain) / expected)
 
 
 def test_result_says_how_many_skill_ups_working_overtime_adds() -> None:

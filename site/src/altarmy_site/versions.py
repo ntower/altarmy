@@ -64,6 +64,13 @@ class GameVersion:
         """The profession ranks a trainer teaches here, up to `max_skill`."""
         return tuple(r for r in PROFESSION_RANKS if r.cap <= self.max_skill)
 
+    def trainable_cap(self, level: int) -> int:
+        """The highest skill a character of `level` can train a profession to: the cap of the highest rank
+        whose level they have (`max_skill` when the level is unknown, 0)."""
+        if level <= 0:
+            return self.max_skill
+        return max((r.cap for r in self.profession_ranks if r.level <= level), default=0)
+
     @property
     def disenchant_csv(self) -> Path:
         return self.data_dir / "disenchant.csv"

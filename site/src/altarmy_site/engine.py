@@ -395,7 +395,8 @@ class SkillRun:
 class ClimbPlan:
     """A whole climb, its runs in order: what it is chosen by (`cost`: the crafts at their floored cost and
     craft value, the spare materials bought for each run, the effort of its low-chance points and the
-    patterns'; see `Climb`) and how many of the patterns it buys have no known price."""
+    patterns', each once however often the climb comes back to it; see `Climb`) and how many of the
+    patterns it buys have no known price."""
 
     cost: float
     unknown: int
@@ -411,12 +412,16 @@ class ClimbPlan:
         if not self.legs or skill > self.legs[-1][2]:
             return None
         copper, unknown = 0.0, 0
+        learned: set[int] = set()
         for u, start, stop in self.legs:
             if skill <= start:
                 break
             c = u.candidate
-            copper += c.cost * u.expected_crafts(start, min(skill, stop)) + (c.learn or 0)
-            unknown += c.learn is None
+            copper += c.cost * u.expected_crafts(start, min(skill, stop))
+            if c.recipe.id not in learned:  # a pattern is bought once, however often the climb comes back
+                copper += c.learn or 0
+                unknown += c.learn is None
+                learned.add(c.recipe.id)
         return copper, unknown
 
 
@@ -426,6 +431,18 @@ _Cost = tuple[int, float]
 
 def _cheaper(a: _Cost, b: _Cost) -> bool:
     return a[0] < b[0] or (a[0] == b[0] and a[1] < b[1] - _EPSILON)
+
+
+def _repeats(legs: Sequence[tuple[_Usable, int, int]]) -> list[tuple[_Usable, int, int]]:
+    """The legs of a climb that come back to a recipe an earlier leg crafted."""
+    seen: set[int] = set()
+    out = []
+    for leg in legs:
+        rid = leg[0].candidate.recipe.id
+        if rid in seen:
+            out.append(leg)
+        seen.add(rid)
+    return out
 
 
 @dataclass(frozen=True)
@@ -607,7 +624,11 @@ class Climb:
             self._run(u, start, stop, pieces[i + 1][0].candidate.recipe if i + 1 < len(pieces) else None)
             for i, (u, start, stop) in enumerate(pieces)
         )
-        return ClimbPlan(cost[1], cost[0], runs, tuple(legs))
+        # the levels alone don't say what was learned, so a leg coming back to a recipe paid its pattern
+        # again: the plan learns it once
+        again = [u.candidate for u, _, _ in _repeats(legs)]
+        copper = cost[1] - sum(c.learn or 0 for c in again)
+        return ClimbPlan(copper, cost[0] - sum(c.learn is None for c in again), runs, tuple(legs))
 
     def _pieces(self, u: _Usable, start: int, stop: int) -> list[tuple[int, int]]:
         """A run from `start` to `stop` as the runs of at most `ceiling` crafts it is bought as (one level a
@@ -627,12 +648,14 @@ class Climb:
         found = self._runs.get(key)
         if found is not None:
             return found
-        if then is not None:
-            reason, rival = ("ceiling", None) if then.id == recipe.id else ("rival", then)
-        elif stop >= self.cap:
+        if then is not None and then.id == recipe.id:
+            reason, rival = "ceiling", None
+        elif then is None and stop >= self.cap:
             reason, rival = "cap", None
         elif recipe.trivial_high and stop >= recipe.trivial_high:
-            reason, rival = "trivial", None
+            reason, rival = "trivial", None  # grey, whatever follows
+        elif then is not None:
+            reason, rival = "rival", then
         else:
             reason, rival = "ceiling", None
         crafts = max(1, round(u.expected_crafts(start, stop)))
@@ -2118,6 +2141,11 @@ class Market:
                 if crafter is not None and crafter.skill_bonus
                 else 0.0
             )
+            if run is not None:
+                # a run's crafts are those expected to climb its points: it gives those points, of which
+                # Working Overtime's share is what it adds to what the crafts are expected to give
+                points = float(run.stop_skill - run.start_skill)
+                ups, ups_bonus = points, (ups_bonus / ups * points if ups else 0.0)
             for exit in here:
                 postage = mail if exit.postage else 0
                 revenue = round(exit.value * (recipe.output_count * n + bonus))

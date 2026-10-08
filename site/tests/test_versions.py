@@ -70,3 +70,12 @@ def test_market_charges_the_versions_postage() -> None:
     bolt = Recipe(1, "Bolt", 2, 1, ((1, 45),), "Tailoring")
     assert Market(items, [bolt], {1: 1}).postage(1, 45) == 3 * engine.MAIL_POSTAGE  # three stacks
     assert Market(items, [bolt], {1: 1}, mail_postage=50).postage(1, 45) == 150
+
+
+def test_a_character_trains_the_ranks_their_level_allows() -> None:
+    forever = versions.VERSIONS["forever"]
+    assert forever.trainable_cap(5) == 75  # Apprentice
+    assert forever.trainable_cap(19) == 150  # Expert asks for 20
+    assert forever.trainable_cap(35) == 300
+    assert forever.trainable_cap(0) == forever.max_skill  # level unknown: every rank
+    assert versions.VERSIONS["tbc"].trainable_cap(70) == 375

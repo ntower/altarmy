@@ -1638,12 +1638,15 @@ def _trained_up(
     climbing: bool,
 ) -> list[altarmy.Character]:
     """For a climb (`runs` asked for, one character skilled up; planned for some copies too), `chars` with
-    the climber's profession capped at the version's highest skill: they are assumed to train each rank as
-    they come to it (the skill workspace reminds them where, from `/api/versions`' `profession_ranks`)."""
+    the climber's profession capped at the highest skill their level lets them train to: they are assumed
+    to train each rank as they come to it (the skill workspace reminds them where, from `/api/versions`'
+    `profession_ranks`), but not one their level doesn't allow yet."""
     if not climbing or len(skilled) != 1:
         return chars
     (name,) = skilled
-    return service.trained_up(chars, name, skill_name, state.version.max_skill)
+    who = next((c for c in chars if c.name == name), None)
+    cap = state.version.trainable_cap(who.level if who is not None else 0)
+    return service.trained_up(chars, name, skill_name, cap)
 
 
 def _climb_learn_costs(

@@ -985,6 +985,33 @@ def test_each_option_side_by_side_never_comes_back_to_those_before_it(
     assert client.post("/api/evaluate", json={**evaluated, "climb_without": [cap]}).status_code == 404
 
 
+def test_a_climb_trains_only_the_ranks_the_climbers_level_allows(
+    client: TestClient, priced: Connection
+) -> None:
+    tailoring_options(priced)  # the Linen Belt gives points until 95
+    tailors = [
+        Character(
+            "Realm",
+            name,
+            "Horde",
+            "MAGE",
+            level,
+            (Profession("Tailoring", 50, 75, frozenset({900, 991, 992})),),
+        )
+        for name, level in (("Young", 9), ("Grown", 60))
+    ]
+    service.replace_characters(priced, ME, FOREVER, tailors)
+
+    def climb_end(name: str) -> tuple[int, str]:
+        params = {**SKILL_UP, "skill_crafters": [name], "runs": True, "chain_length": 20}
+        body = client.get("/api/rank", params=params).json()
+        last = (body["results"][:1] + body["chain"])[-1]
+        return last["stop_skill"], last["stop_reason"]
+
+    assert climb_end("Young") == (75, "cap")  # Journeyman asks for level 10
+    assert climb_end("Grown")[0] == 95  # trained up as they go
+
+
 def test_skill_up_keeps_what_no_vendor_buys(client: TestClient, priced: Connection) -> None:
     priced.execute(update(schema.items).where(schema.items.c.id == 3).values(sell_price=0))
     assert client.get("/api/rank", params={**SKILL_UP, "exits": ["vendor"]}).json()["results"] == []
