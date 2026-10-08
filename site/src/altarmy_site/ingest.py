@@ -609,10 +609,33 @@ def _item_ids(path: Path | None) -> list[int]:
 def trainer_costs(path: Path | None) -> dict[int, tuple[int, int]]:
     """Spell -> (what a trainer asks to teach it, the skill they ask for), from a version's
     `trainer_costs.csv` (`vmangos.trainer_costs`; a file from before the skill column reads 0); nothing if
-    there is no such file."""
+    there is no such file. The emulator's skill is vanilla's: where the game moved the recipe's colours down
+    (`yellow_shift`, from `yellow_shifts`) it is taught as much earlier, never below 1."""
     if not path or not path.exists():
         return {}
-    return {_int(r["spell_id"]): (_int(r["cost"]), _int(r.get("req_skill"))) for r in _rows(path)}
+    out: dict[int, tuple[int, int]] = {}
+    for r in _rows(path):
+        req, shift = _int(r.get("req_skill")), _int(r.get("yellow_shift"))
+        out[_int(r["spell_id"])] = (_int(r["cost"]), max(1, req + shift) if req and shift < 0 else req)
+    return out
+
+
+def yellow_shifts(game: Path, reference: Path) -> dict[int, int]:
+    """Spell -> how far the game's SkillLineAbility moved its yellow threshold down from the reference
+    client's (Forever against TBC Anniversary, whose vanilla recipes kept vanilla's colours): Forever moved
+    many recipes 20-45 points lower. Only moves down between real thresholds count; a spell on several rows
+    counts its lowest yellow on each side."""
+
+    def yellows(path: Path) -> dict[int, int]:
+        out: dict[int, int] = {}
+        for r in _rows(path):
+            spell, low = _int(r["Spell"]), _int(r["TrivialSkillLineRankLow"])
+            if low > 0:
+                out[spell] = min(low, out.get(spell, low))
+        return out
+
+    ours, theirs = yellows(game), yellows(reference)
+    return {s: ours[s] - theirs[s] for s in sorted(ours) if s in theirs and ours[s] < theirs[s]}
 
 
 def build_db(

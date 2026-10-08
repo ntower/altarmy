@@ -254,6 +254,60 @@ def test_build_db_charges_a_trainers_recipe_what_the_trainer_asks(
     assert ingest.trainer_costs(old) == {900: (600, 0)}
 
 
+def test_yellow_shifts_are_how_far_the_game_moved_a_recipe_down_against_the_reference(tmp_path: Path) -> None:
+    header = ["ID", "Spell", "TrivialSkillLineRankLow", "TrivialSkillLineRankHigh"]
+
+    def abilities(name: str, rows: list[tuple[int, int, int]]) -> Path:
+        return write_csv(
+            tmp_path / name,
+            header,
+            [
+                {
+                    "ID": i,
+                    "Spell": spell,
+                    "TrivialSkillLineRankLow": low,
+                    "TrivialSkillLineRankHigh": low + 10,
+                }
+                for i, (spell, low, _) in enumerate(rows)
+            ],
+        )
+
+    game = abilities("game.csv", [(1, 110, 0), (2, 100, 0), (3, 0, 0), (4, 70, 0), (5, 50, 0), (5, 60, 0)])
+    reference = abilities(
+        "ref.csv", [(1, 135, 0), (2, 100, 0), (3, 40, 0), (4, 55, 0), (5, 80, 0), (6, 9, 0)]
+    )
+    # Bolt of Silk Cloth's yellow moved 135 -> 110; unmoved, no thresholds (0) or moved up: nothing; a spell
+    # on several rows counts its lowest yellow on each side
+    assert ingest.yellow_shifts(game, reference) == {1: -25, 5: -30}
+
+
+def test_build_db_learns_a_trainers_recipe_earlier_by_its_yellow_shift(
+    db2_paths: dict[str, Path], conn: Connection, tmp_path: Path
+) -> None:
+    effects = db2_paths["ItemEffect"]
+    rows: list[dict[str, object]] = [
+        dict(r, TriggerType="0") if r["SpellID"] == "900" else dict(r) for r in ingest._rows(effects)
+    ]
+    write_csv(effects, list(rows[0]), rows)  # a trainer teaches the robe
+
+    def learned(req: int, shift: int) -> int:
+        fees = write_csv(
+            tmp_path / "trainer_costs.csv",
+            ["spell_id", "cost", "req_skill", "yellow_shift"],
+            [{"spell_id": 900, "cost": 600, "req_skill": req, "yellow_shift": shift}],
+        )
+        ingest.build_db(db2_paths, conn, FOREVER, trainer_costs_csv=fees)
+        return int(conn.execute(select(schema.recipes.c.learn_skill)).scalar_one())
+
+    assert learned(125, -25) == 100  # the game moved its colours down: the trainer teaches it as much earlier
+    assert learned(125, 0) == 125
+    assert learned(20, -25) == 1  # never below the first point
+    assert learned(0, -25) == 0  # nothing said where it is learned: still nothing
+    assert ingest.trainer_costs(write_csv(tmp_path / "t.csv", ["spell_id", "cost", "req_skill"], [
+        {"spell_id": 900, "cost": 600, "req_skill": 125}
+    ])) == {900: (600, 125)}  # fmt: skip
+
+
 def test_craft_stations_are_the_foci_profession_spells_need(db2_paths: dict[str, Path]) -> None:
     assert ingest.craft_stations(db2_paths) == {1: "Anvil"}  # the robe's; the forge and fire go unused
 

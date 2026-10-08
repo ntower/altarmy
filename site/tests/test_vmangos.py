@@ -117,8 +117,12 @@ def test_trainer_costs_are_the_least_any_trainer_asks_for_the_spell_taught(world
 
 def test_write_trainer_costs_csv(tmp_path: Path) -> None:
     path = tmp_path / "trainer_costs.csv"
-    vmangos.write_trainer_costs_csv([(3491, 600, 90)], path)
-    assert path.read_text(encoding="utf-8").splitlines() == ["spell_id,cost,req_skill", "3491,600,90"]
+    vmangos.write_trainer_costs_csv([(3491, 600, 90), (3492, 250, 125)], path, {3492: -25})
+    assert path.read_text(encoding="utf-8").splitlines() == [
+        "spell_id,cost,req_skill,yellow_shift",
+        "3491,600,90,0",
+        "3492,250,125,-25",
+    ]
 
 
 def test_write_csv_round_trips(tmp_path: Path) -> None:

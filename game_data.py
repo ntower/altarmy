@@ -197,6 +197,9 @@ def cmd_update(args: argparse.Namespace) -> None:
             pin.build,
             "--world-db",
             worlds[key],
+            # Forever's trainer learn levels follow how far its colours moved from TBC's
+            "--reference-build",
+            new["tbc"].build,
             cwd=SITE,
         )
     run(

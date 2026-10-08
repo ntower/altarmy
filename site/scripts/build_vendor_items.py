@@ -3,7 +3,11 @@ trainer_costs.csv) from an open-source world database.
 
 Forever (vanilla-based) reads vmangos' database, TBC reads cmangos' tbc-db: by default the release pinned in
 data/game-data.json, from the repo's .cache/ (`gamedata.world_db`), and the zone maps of the pinned build.
+Forever's trainer_costs.csv also says how far the game moved each spell's colours down from vanilla's
+(`ingest.yellow_shifts`, against the reference build: by default TBC Anniversary's pinned one), since vmangos'
+trainers ask for vanilla's skill.
 Usage: python scripts/build_vendor_items.py [--game-version forever|tbc] [--build B] [--world-db SQLITE]
+       [--reference-build B]
 The monorepo's game_data.py runs this with the builds and releases it moves the pins to. Then run that
 version's game data update (or `altarmy-site --game-version <v> ingest`) to load it.
 """
@@ -24,11 +28,16 @@ def main() -> None:
     p.add_argument(
         "--world-db", type=Path, help="the emulator's world database (default: the pinned release)"
     )
+    p.add_argument(
+        "--reference-build",
+        help="the build whose colours Forever's are compared with (default: TBC Anniversary's pinned build)",
+    )
     args = p.parse_args()
     version = versions.VERSIONS[args.game_version]
     source = cmangos if args.game_version == "tbc" else vmangos
     out = ROOT / version.vendor_csv
-    pin = gamedata.read_pins(ROOT / gamedata.PINS)[version.key]
+    pins = gamedata.read_pins(ROOT / gamedata.PINS)
+    pin = pins[version.key]
     build = args.build or pin.build
     world = args.world_db or source.download_world_db(gamedata.REPO_CACHE, pin.release)
     conn = sqlite3.connect(world)
@@ -55,7 +64,9 @@ def main() -> None:
         print(f"wrote {len(sources)} recipe item sources to {sources_out}")
     if fees is not None:
         fees_out = ROOT / version.trainer_costs_csv
-        vmangos.write_trainer_costs_csv(fees, fees_out)
+        reference = args.reference_build or pins["tbc"].build
+        sla = [ingest.download("SkillLineAbility", b, gamedata.REPO_CACHE) for b in (build, reference)]
+        vmangos.write_trainer_costs_csv(fees, fees_out, ingest.yellow_shifts(*sla))
         print(f"wrote {len(fees)} trainer costs to {fees_out}")
 
 

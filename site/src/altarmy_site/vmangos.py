@@ -616,8 +616,13 @@ def write_csv(rows: list[tuple[int, str]], path: Path) -> None:
         w.writerows(rows)
 
 
-def write_trainer_costs_csv(rows: list[tuple[int, int, int]], path: Path) -> None:
+def write_trainer_costs_csv(
+    rows: list[tuple[int, int, int]], path: Path, shifts: Mapping[int, int] | None = None
+) -> None:
+    """`trainer_costs`' rows, each with how far the game moved the spell's colours down from the emulator's
+    (`ingest.yellow_shifts`; 0 when not), which ingest takes off the skill the trainer asks for."""
+    shifts = shifts or {}
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f, lineterminator="\n")
-        w.writerow(["spell_id", "cost", "req_skill"])
-        w.writerows(rows)
+        w.writerow(["spell_id", "cost", "req_skill", "yellow_shift"])
+        w.writerows((spell, cost, req, shifts.get(spell, 0)) for spell, cost, req in rows)
