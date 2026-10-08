@@ -155,6 +155,12 @@ recipes = Table(
     # copper the cheapest trainer asks to teach it (the version's trainer_costs.csv); 0 if none does or
     # nothing says (revision 0024)
     Column("train_cost", Integer, nullable=False, default=0, server_default="0"),
+    # skill points a craft gives while it can (SkillLineAbility.NumSkillUps): 0 when DB2 says none, or for a
+    # craft or enchant with no thresholds at all, which the game shows grey (revision 0025)
+    Column("num_skill_ups", Integer, nullable=False, default=1, server_default="1"),
+    # the spell's cooldown, ms: the longer of SpellCooldowns' RecoveryTime and CategoryRecoveryTime, the
+    # normal difficulty's row first; 0 for none (revision 0025)
+    Column("cooldown_ms", Integer, nullable=False, default=0, server_default="0"),
 )
 
 recipe_reagents = Table(

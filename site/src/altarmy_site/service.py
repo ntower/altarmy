@@ -1213,6 +1213,8 @@ def _later_recipes(
         p = held.get(r.skill_name.lower())
         if r.anyone or p is None or r.required_skill <= p.rank or r.spell_id in climber.known_recipes:
             continue
+        if r.slow_cooldown or not r.num_skill_ups:
+            continue  # never a climb's run (`Market._candidates`)
         if can_learn(r, crafter, ahead):
             later.setdefault((r.skill_name, r.required_skill), []).append(r)
     out = []

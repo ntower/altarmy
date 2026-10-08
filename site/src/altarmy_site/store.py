@@ -145,6 +145,8 @@ def load_market(
             source=r.source,
             train_cost=r.train_cost,
             kind=r.kind,
+            num_skill_ups=r.num_skill_ups,
+            cooldown_ms=r.cooldown_ms,
         )
         for r in conn.execute(select(rt).where(rt.c.game_version == game_version).order_by(rt.c.id))
     ]

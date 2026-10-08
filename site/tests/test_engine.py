@@ -781,7 +781,10 @@ def test_can_skill_up_below_grey_and_under_the_cap() -> None:
     assert not can_skill_up(recipe, smith(55))  # grey
     assert not can_skill_up(recipe, smith(40, cap=40))  # must train first
     assert not can_skill_up(recipe, crafter("Tailor", ("Tailoring", 1)))  # not their profession
-    assert can_skill_up(replace(recipe, trivial_low=0, trivial_high=0), smith(300, cap=300))  # unknown
+    unknown = replace(recipe, trivial_low=0, trivial_high=0)
+    assert can_skill_up(unknown, smith(299, cap=300))  # thresholds unknown: a point a craft
+    assert not can_skill_up(unknown, smith(300, cap=300))  # but never past the cap
+    assert not can_skill_up(replace(recipe, num_skill_ups=0), smith(1))  # DB2 says it gives none
 
 
 def test_skill_up_chance_falls_from_yellow_to_grey() -> None:
@@ -799,7 +802,8 @@ def test_skill_up_chance_falls_from_yellow_to_grey() -> None:
     assert skill_up_chance(recipe, smith(55)) == 0.0  # grey
     assert skill_up_chance(recipe, smith(40, cap=40)) == 0.0  # must train first
     assert skill_up_chance(recipe, crafter("Tailor", ("Tailoring", 1))) == 0.0  # not their profession
-    assert skill_up_chance(replace(recipe, trivial_low=0, trivial_high=0), smith(300, cap=300)) == 1.0
+    assert skill_up_chance(replace(recipe, trivial_low=0, trivial_high=0), smith(299, cap=300)) == 1.0
+    assert skill_up_chance(replace(recipe, num_skill_ups=0), smith(1)) == 0.0
     assert skill_up_chance(replace(recipe, trivial_low=55), smith(54)) == 1.0  # orange up to grey
 
 
@@ -1247,6 +1251,30 @@ def test_a_recipe_the_climber_cant_craft_yet_is_no_run() -> None:
     assert m.evaluate(later, skill_run=engine.SkillRuns()) is None
     ranked = [r.recipe.name for r in m.rank(min_profit=-(10**9), skill_run=engine.SkillRuns())]
     assert "Later" not in ranked and "Heavy Copper Maul" in ranked
+
+
+def test_a_recipe_giving_no_skill_points_is_never_climbed() -> None:
+    pointless = replace(_recipe(1, 80, 100), num_skill_ups=0)
+    assert expected_skill_ups(pointless, _smith(10), 50) == 0.0
+    assert expected_skill_ups(pointless, None, 50) == 0.0  # nor for nobody in particular
+    assert engine.useful_crafts(pointless, _smith(10)) == 1
+    climb = _climb(
+        _smith(10, 60), engine.Candidate(pointless, 1.0), engine.Candidate(_recipe(2, 80, 100), 9.0)
+    )
+    assert _route(climb.best) == [("R2", 10, 60)]
+    assert not engine.can_start_climb([pointless], _smith(10), "Blacksmithing")
+
+
+def test_a_recipe_with_an_hour_long_cooldown_is_no_climb_candidate() -> None:
+    # a transmute a climber can cast once an hour: never a climb's run, though it is still a craft
+    slow = replace(GREY_AT_60, cooldown_ms=engine.CLIMB_COOLDOWN_MS)
+    m = maul_market(NOVICE_SMITH, LEATHERY, recipes=(CURE, slow), skill_crafters=frozenset({"Novice"}))
+    assert m.evaluate(slow) is not None
+    assert m.evaluate(slow, skill_run=engine.SkillRuns()) is None
+    assert not engine.can_start_climb([slow], NOVICE_SMITH, "Blacksmithing")
+    quick = replace(GREY_AT_60, cooldown_ms=engine.CLIMB_COOLDOWN_MS - 1)  # ten minutes is fine
+    m = maul_market(NOVICE_SMITH, LEATHERY, recipes=(CURE, quick), skill_crafters=frozenset({"Novice"}))
+    assert m.evaluate(quick, skill_run=engine.SkillRuns()) is not None
 
 
 def test_crafts_quantile_buys_for_unlucky_runs() -> None:

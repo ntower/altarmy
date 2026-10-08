@@ -334,6 +334,50 @@ def test_build_db_without_cast_time_or_focus_reads_zero(
     assert (recipe.cast_time_ms, recipe.station) == (0, "")
 
 
+def test_build_db_gives_no_skill_points_without_thresholds_or_skill_ups(
+    db2_paths: dict[str, Path], conn: Connection
+) -> None:
+    def skill_ups(**changes: object) -> int:
+        abilities = db2_paths["SkillLineAbility"]
+        rows: list[dict[str, object]] = [
+            {**r, **changes} if r["Spell"] == "900" else dict(r) for r in ingest._rows(abilities)
+        ]
+        write_csv(abilities, list(rows[0]), rows)
+        ingest.build_db(db2_paths, conn, FOREVER)
+        return int(conn.execute(select(schema.recipes.c.num_skill_ups)).scalar_one())
+
+    assert skill_ups() == 1  # a client without the column: a point a craft
+    assert skill_ups(NumSkillUps="1") == 1
+    assert skill_ups(NumSkillUps="0") == 0  # DB2 says it gives none
+    # no thresholds at all: the game shows it grey (Forever's First Aid Kit, camp furnishings)
+    assert skill_ups(NumSkillUps="1", TrivialSkillLineRankLow="0", TrivialSkillLineRankHigh="0") == 0
+
+
+def test_build_db_loads_the_longest_cooldown(
+    db2_paths: dict[str, Path], conn: Connection, tmp_path: Path
+) -> None:
+    header = ["ID", "DifficultyID", "CategoryRecoveryTime", "RecoveryTime", "StartRecoveryTime", "SpellID"]
+    rows: list[dict[str, object]] = [
+        {"ID": 1, "DifficultyID": 1, "CategoryRecoveryTime": 0, "RecoveryTime": 999, "SpellID": 900},
+        {
+            "ID": 2,
+            "DifficultyID": 0,
+            "CategoryRecoveryTime": 3_600_000,
+            "RecoveryTime": 600_000,
+            "SpellID": 900,
+        },
+    ]
+    paths = {**db2_paths, "SpellCooldowns": write_csv(tmp_path / "SpellCooldowns.csv", header, rows)}
+    ingest.build_db(paths, conn, FOREVER)
+    assert conn.execute(select(schema.recipes.c.cooldown_ms)).scalar_one() == 3_600_000
+    # the normal difficulty's row wins whatever the order
+    as_read = [{k: str(v) for k, v in r.items()} for r in rows]
+    assert ingest.cooldowns(reversed(as_read)) == {900: 3_600_000}
+    # without the table (a client that doesn't serve it) nothing has a cooldown
+    ingest.build_db(db2_paths, conn, FOREVER)
+    assert conn.execute(select(schema.recipes.c.cooldown_ms)).scalar_one() == 0
+
+
 def test_build_db_loads_tooltip_fields(db2_paths: dict[str, Path], conn: Connection) -> None:
     ingest.build_db(db2_paths, conn, FOREVER)
     robe = item(conn, 3)._mapping

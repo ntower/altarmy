@@ -103,6 +103,7 @@ def test_load_market_keeps_spell_ids(db2_paths: dict[str, Path], conn: Connectio
     assert recipe.spell_id == 900
     assert (recipe.trivial_low, recipe.trivial_high) == (30, 60)
     assert (recipe.cast_time_ms, recipe.station) == (3000, "anvil")
+    assert (recipe.num_skill_ups, recipe.cooldown_ms) == (1, 0)
 
 
 def test_characters_round_trip_and_replace(conn: Connection) -> None:

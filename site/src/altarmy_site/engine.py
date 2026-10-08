@@ -31,6 +31,9 @@ SKILL_EXIT = "skill"
 KEEP_EXIT = "keep"
 # A skill-up run (`SkillRuns`) never asks for more crafts than this at once
 RUN_CEILING = 100
+# A recipe whose cooldown is at least this long (an hour: the transmutes, Mooncloth) is never part of a
+# skill-up climb: its crafts would take that long each. The gold list still ranks it.
+CLIMB_COOLDOWN_MS = 3_600_000
 # WoW: Forever's Arcane Salvager (an Enchanting-made station): near it a disenchant has this chance of a
 # second roll of the same table, so it yields 1.1 times the materials on average
 ARCANE_SALVAGER_BONUS = 0.10
@@ -100,6 +103,13 @@ class Recipe:
     # which makes none (`output_item_id` 0): it has only the `SKILL_EXIT`, and only someone it can skill up
     # casts it
     kind: str = "craft"
+    num_skill_ups: int = 1  # skill points a craft gives while it can; 0: none (DB2's NumSkillUps)
+    cooldown_ms: int = 0  # the spell's cooldown; 0 for none
+
+    @property
+    def slow_cooldown(self) -> bool:
+        """Whether its cooldown keeps it out of skill-up climbs (`CLIMB_COOLDOWN_MS`)."""
+        return self.cooldown_ms >= CLIMB_COOLDOWN_MS
 
     @property
     def is_conversion(self) -> bool:
@@ -203,13 +213,16 @@ def can_learn(recipe: Recipe, crafter: Crafter, unlearned: Learning | Unlearned)
 
 def can_skill_up(recipe: Recipe, crafter: Crafter) -> bool:
     """Whether crafting `recipe` can raise `crafter`'s skill: it isn't grey for them and they aren't at their
-    profession's cap. Recipes without skill thresholds count as able to; conversions and flips never do."""
-    if recipe.anyone:
+    profession's cap. Recipes without skill thresholds count as able to (under the cap); conversions, flips
+    and recipes giving no points (`num_skill_ups` 0) never do."""
+    if recipe.anyone or not recipe.num_skill_ups:
+        return False
+    skill = crafter.skill(recipe.skill_name)
+    if skill is not None and skill[0] >= skill[1]:
         return False
     if not recipe.trivial_high:
         return True
-    skill = crafter.skill(recipe.skill_name)
-    return skill is not None and skill[0] < recipe.trivial_high and skill[0] < skill[1]
+    return skill is not None and skill[0] < recipe.trivial_high
 
 
 def skill_up_chance(recipe: Recipe, crafter: Crafter) -> float:
@@ -233,7 +246,7 @@ def expected_skill_ups(recipe: Recipe, crafter: Crafter | None, crafts: int) -> 
     chance exactly; only a session crossing into yellow, reaching the cap or reaching a chance of 1 with
     the bonus is approximate. Without a crafter every craft counts (but a
     conversion's or a flip's)."""
-    if recipe.anyone:
+    if recipe.anyone or not recipe.num_skill_ups:
         return 0.0
     if crafter is None:
         return float(crafts)
@@ -265,6 +278,8 @@ def _chance_at(recipe: Recipe, crafter: Crafter, level: float) -> float:
     """`skill_up_chance`'s rule at `level` (orange: 1; then falling evenly to 0 at grey; plus the crafter's
     `skill_bonus`), for a skill the crafter is expected to reach."""
     low, high = recipe.trivial_low, recipe.trivial_high
+    if not recipe.num_skill_ups:
+        return 0.0
     if not high or level < low:
         return 1.0
     if level >= high or high <= low:
@@ -660,6 +675,7 @@ def can_start_climb(recipes: Iterable[Recipe], crafter: Crafter, profession: str
     rank, wanted = skill[0], profession.lower()
     return any(
         not r.anyone
+        and not r.slow_cooldown
         and r.skill_name.lower() == wanted
         and (r.spell_id in crafter.known_spells or r.required_skill <= rank)
         and _chance_at(r, crafter, rank) > 0
@@ -2066,7 +2082,11 @@ class Market:
             # A Master Chef's extra results are counted at their expected number; mailing them is not charged.
             bonus = self._bonus_output(recipe, who) * n
             chance = (
-                skill_up_chance(recipe, crafter) if crafter is not None else 0.0 if recipe.anyone else 1.0
+                skill_up_chance(recipe, crafter)
+                if crafter is not None
+                else 0.0
+                if recipe.anyone or not recipe.num_skill_ups
+                else 1.0
             )
             ups = expected_skill_ups(recipe, crafter, n)
             ups_bonus = (
@@ -2176,7 +2196,7 @@ class Market:
         if found is None:
             found = []
             for r in self.recipes:
-                if r.anyone or r.skill_name.lower() != key[0]:
+                if r.anyone or r.slow_cooldown or r.skill_name.lower() != key[0]:
                     continue
                 if not can_skill_up(r, crafter):
                     continue

@@ -1534,3 +1534,23 @@ def test_later_recipes_are_worked_out_again_whenever_an_input_moves() -> None:
     # what is handed out is a copy: changing it changes nothing kept
     service.later_recipes(base, **asked).clear()
     assert service.later_recipes(base, **asked) == first
+
+
+def test_later_recipes_leave_out_what_never_climbs() -> None:
+    base, who = ladder()
+
+    def later(market: engine.Market) -> list[str]:
+        found = service._later_recipes(
+            market, [who], engine.Learning("train", 0, frozenset({"trainer", "recipe"})),
+            frozenset({"vendor", engine.KEEP_EXIT}), frozenset(), frozenset({who.name}), False, "Tailoring",
+            None, engine.TimeModel(timing.TimeConfig(), timing.ANYWHERE),
+        )  # fmt: skip
+        return sorted(c.recipe.name for c in found)
+
+    def changed(name: str, **change: Any) -> engine.Market:
+        recipes = [replace(r, **change) if r.name == name else r for r in base.recipes]
+        return engine.Market(base.items, recipes, base.prices)
+
+    assert later(base) == ["B", "C"]
+    assert later(changed("B", cooldown_ms=engine.CLIMB_COOLDOWN_MS)) == ["C"]  # an hour a craft
+    assert later(changed("C", num_skill_ups=0)) == ["B"]  # gives no point

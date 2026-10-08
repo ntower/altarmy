@@ -49,6 +49,7 @@ OPTIONAL_TABLES = [
     "ItemXItemEffect",  # Forever links items to effects through it; TBC's ItemEffect names the item
     "SpellAuraOptions",
     "SpellRadius",
+    "SpellCooldowns",  # profession spells' cooldowns (transmutes, Mooncloth)
 ]
 EFFECT_CREATE_ITEM = 24
 EFFECT_ENCHANT_ITEM = 53  # enchants an item the caster holds: nothing is made
@@ -140,6 +141,22 @@ def cast_times(spell_misc: Path, spell_cast_times: Path) -> dict[int, int]:
         spell = _int(r["SpellID"])
         if spell not in out or _int(r.get("DifficultyID")) == 0:
             out[spell] = base.get(_int(r["CastingTimeIndex"]), 0)
+    return out
+
+
+def cooldowns(rows: Iterable[dict[str, str]]) -> dict[int, int]:
+    """Spell id -> cooldown in ms, from SpellCooldowns: the longer of its own (RecoveryTime) and its
+    category's (CategoryRecoveryTime). A spell has a row per difficulty; the normal one (DifficultyID 0)
+    wins, else the first."""
+    out: dict[int, int] = {}
+    normal: set[int] = set()
+    for r in rows:
+        spell = _int(r["SpellID"])
+        if spell in normal or (spell in out and _int(r.get("DifficultyID")) != 0):
+            continue
+        out[spell] = max(_int(r.get("RecoveryTime")), _int(r.get("CategoryRecoveryTime")))
+        if _int(r.get("DifficultyID")) == 0:
+            normal.add(spell)
     return out
 
 
@@ -674,6 +691,7 @@ def build_db(
 
     spell_names = {_int(r["ID"]): r["Name_lang"] for r in _rows(paths["SpellName"])}
     cast_ms = cast_times(paths["SpellMisc"], paths["SpellCastTimes"])
+    cool_ms = cooldowns(_optional_rows(paths, "SpellCooldowns"))
     stations = spell_stations(paths["SpellCastingRequirements"], paths["SpellFocusObject"])
     learned_at = learn_skills(paths, skill_ranks)
     fees = trainer_costs(trainer_costs_csv)
@@ -747,6 +765,7 @@ def build_db(
         # a recipe that comes with the profession (AcquireMethod 1) is known from skill 1, for nothing
         if source == "trainer" and _int(r.get("AcquireMethod")) == ACQUIRE_WITH_SKILL:
             fee, trainer_skill = 0, 1
+        low, high = _int(r["TrivialSkillLineRankLow"]), _int(r["TrivialSkillLineRankHigh"])
         recipes[rid] = {  # a later row with the same id replaces an earlier one
             "game_version": game_version,
             "id": rid,
@@ -756,8 +775,8 @@ def build_db(
             "skill_line": line,
             "skill_name": skill_names[line],
             "min_skill": _int(r["MinSkillLineRank"]),
-            "trivial_low": _int(r["TrivialSkillLineRankLow"]),
-            "trivial_high": _int(r["TrivialSkillLineRankHigh"]),
+            "trivial_low": low,
+            "trivial_high": high,
             "output_item_id": out_item,
             "output_count": out_count,
             "cast_time_ms": cast_ms.get(spell, 0),
@@ -765,6 +784,9 @@ def build_db(
             "learn_skill": learned_at.get(spell) or (trainer_skill if source == "trainer" else 0),
             "source": source,
             "train_cost": fee if source == "trainer" else 0,
+            # no thresholds at all: the game shows it grey, so it gives no point (First Aid Kit)
+            "num_skill_ups": 0 if not low and not high else _int(r.get("NumSkillUps"), 1),
+            "cooldown_ms": cool_ms.get(spell, 0),
         }
         for k in [k for k in recipe_reagents if k[0] == rid]:
             del recipe_reagents[k]
@@ -797,6 +819,8 @@ def build_db(
             "learn_skill": 0,
             "source": "trainer",
             "train_cost": 0,
+            "num_skill_ups": 0,
+            "cooldown_ms": cool_ms.get(spell, 0),
         }
         recipe_reagents[rid, item] = {
             "game_version": game_version,

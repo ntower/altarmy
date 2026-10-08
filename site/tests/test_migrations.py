@@ -507,3 +507,17 @@ def test_0023_counts_the_scan_pairs_sales_were_seen_in(database: db.Database) ->
         )
         db.upgrade(conn)
         assert conn.execute(select(schema.price_sales_daily.c.pairs)).scalar_one() == 0
+
+
+def test_0025_recipes_give_a_point_and_have_no_cooldown_until_reloaded(database: db.Database) -> None:
+    t = schema.recipes
+    with database.engine.begin() as conn:
+        command.downgrade(db.alembic_config(conn), "0024")
+        assert "num_skill_ups" not in {c["name"] for c in inspect(conn).get_columns("recipes")}
+        old = MetaData()
+        old.reflect(conn, only=["recipes"])
+        required = {c.name: 0 for c in old.tables["recipes"].columns if not c.nullable}
+        values = {**required, "game_version": "forever", "id": 1, "name": "Linen Bandage", "skill_name": ""}
+        conn.execute(old.tables["recipes"].insert().values(**values))
+        db.upgrade(conn)
+        assert tuple(conn.execute(select(t.c.num_skill_ups, t.c.cooldown_ms)).one()) == (1, 0)
