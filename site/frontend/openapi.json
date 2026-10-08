@@ -2313,6 +2313,16 @@
             ],
             "title": "Climb Cost"
           },
+          "climb_end": {
+            "default": 0,
+            "title": "Climb End",
+            "type": "integer"
+          },
+          "climb_unknown": {
+            "default": 0,
+            "title": "Climb Unknown",
+            "type": "integer"
+          },
           "climb_without": {
             "default": [],
             "items": {

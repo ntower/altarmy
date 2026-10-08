@@ -81,6 +81,8 @@ export const robeResult: RankResult = {
   crafts_p80: 0,
   reach_chances: [],
   climb_without: [],
+  climb_unknown: 0,
+  climb_end: 0,
   milestones: [],
   exits: [
     { kind: 'vendor', value: 500, materials: [], postage: 0, mail_to: '' },

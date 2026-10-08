@@ -1,5 +1,5 @@
 import { type CSSProperties, Fragment, type ReactNode, type Ref, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Accordion, ActionIcon, Alert, Badge, Box, Button, Checkbox, Divider, Group, Loader, NumberInput, Paper, Stack, Text, Title, Tooltip, UnstyledButton } from '@mantine/core'
+import { Accordion, Alert, Badge, Box, Button, Checkbox, Divider, Group, Loader, NumberInput, Paper, Stack, Text, Title, Tooltip, UnstyledButton } from '@mantine/core'
 import { LayoutGroup, animate, motion } from 'motion/react'
 import { useDebouncedValue } from '@mantine/hooks'
 import { z } from 'zod'
@@ -21,6 +21,7 @@ import { layoutTop, scrollTarget } from '../lib/scroll'
 import { useStoredState } from '../lib/storage'
 import type { Holder } from '../lib/setup'
 import {
+  an,
   AT_WHICH_POINT,
   CHEAPER,
   craftsToReach,
@@ -66,12 +67,10 @@ function netPerPoint(r: RankResult): number | null {
   return r.skill_ups ? (r.profit - (r.learn_cost ?? 0)) / r.skill_ups : null
 }
 
-/** The options cheapest climb first: a run's own cost per point says little, since a run from lower down takes in
- * cheap orange points another run doesn't; climbs of unknown cost (a pattern without a price) last. */
-function byClimbCost(options: readonly RankResult[]): RankResult[] {
-  const key = (r: RankResult) => r.climb_cost ?? Infinity
-  return [...options].sort((a, b) => key(a) - key(b))
-}
+/** What the Recommended badge weighs, on hover. */
+const RECOMMENDED_TIP =
+  'Reaches the highest skill of these options for the least: fewest patterns of unknown price first, then copper, ' +
+  'counting spare materials for unlucky runs and what each craft is worth to you'
 
 /** What the climb a run starts is expected to come to by each profession rank's cap it reaches (those reached
  * already left out): spent in red, earned in green, patterns without a price named apart. It moves with its
@@ -178,7 +177,11 @@ function learnNote(r: RankResult, learn: Learn | undefined): ReactNode {
 }
 
 /** An option card's last row when the climber lacks the recipe and what learning it costs is counted. */
-const TRAIN_NOTE = 'You will need to train this recipe (included in the cost)'
+function includedNote(learn: Learn | undefined): string {
+  if (learn?.source === 'trainer') return 'You will need to train this recipe (included in the cost)'
+  if (learn) return 'You will need to buy the pattern (included in the cost)'
+  return 'You will need to learn this recipe (included in the cost)'
+}
 
 /** One option in the overview: the recipe, what its run comes to per skill point, how far it goes, how it is
  * learned. Without `onChoose`, a summary of a run to come (in the chain), with nothing to click; `fade`: it fades
@@ -198,7 +201,7 @@ function OptionCard({
   action = 'Choose',
   layoutId,
   article,
-  cheapest,
+  recommended,
 }: {
   result: RankResult
   items: ItemMap
@@ -210,8 +213,8 @@ function OptionCard({
   action?: string
   layoutId?: string
   article?: boolean
-  /** the cheapest climb among the options side by side: badged Recommended */
-  cheapest?: boolean
+  /** the server's best among the options side by side, reaching as high as any: badged Recommended */
+  recommended?: boolean
 }) {
   const body = (
           <Stack gap={4}>
@@ -219,10 +222,12 @@ function OptionCard({
               <Text fw={600} size="sm">
                 <RecipeName result={r} items={items} />
               </Text>
-              {cheapest && (
-                <Badge size="sm" variant="light" color="green" style={{ flexShrink: 0 }}>
-                  Recommended
-                </Badge>
+              {recommended && (
+                <Tooltip label={RECOMMENDED_TIP} withArrow multiline w={260}>
+                  <Badge size="sm" variant="light" color="green" style={{ flexShrink: 0 }}>
+                    Recommended
+                  </Badge>
+                </Tooltip>
               )}
             </Group>
             <Text size="lg" fw={700}>
@@ -234,7 +239,7 @@ function OptionCard({
             {/* a recipe the climber lacks: its pattern is counted in the cost, unless nobody can price it */}
             {mustLearn(r) && (
               <Text size="xs" c={r.learn_cost === null ? 'orange' : 'dimmed'}>
-                {r.learn_cost === null ? learnNote(r, learn) : TRAIN_NOTE}
+                {r.learn_cost === null ? learnNote(r, learn) : includedNote(learn)}
               </Text>
             )}
           </Stack>
@@ -515,10 +520,11 @@ export function SkillWorkspace({
   const [openAt, setOpenAt] = useState<number | null>(null)
   const results = rank.data?.results ?? []
   // The options side by side: the runs starting the cheapest climbs, each what picking it gives, else as listed;
-  // cheapest climb first.
-  const listed = rank.data?.options?.length ? rank.data.options : results.slice(0, OPTIONS)
-  const options = useMemo(() => byClimbCost(listed), [listed])
+  // in the server's order (a climb that ends lower may cost less, but isn't the better one).
+  const options = rank.data?.options?.length ? rank.data.options : results.slice(0, OPTIONS)
   const bestId = results[0]?.recipe_id
+  // the highest skill any option's climb reaches: Recommended only goes to the best if it gets there
+  const highest = Math.max(0, ...options.map((r) => r.climb_end))
   // The option to craft now: the best unless the user picked another of the first few (null: the best).
   const [pickedId, setPickedId] = useState<number | null>(null)
   const nowIndex = Math.max(
@@ -548,7 +554,7 @@ export function SkillWorkspace({
   // A picked option's chain on its way: its own as it came with the list meanwhile, never the one shown before
   const current =
     picked && chainPending && !longer
-      ? (rank.data?.option_chains?.[listed.indexOf(ranked)] ?? NO_RUNS)
+      ? (rank.data?.option_chains?.[options.indexOf(ranked)] ?? NO_RUNS)
       : (chainData?.chain ?? rank.data?.chain ?? NO_RUNS)
   // The chain as last settled: what stays shown while a longer one is on its way.
   const [settled, setSettled] = useState(current)
@@ -699,7 +705,7 @@ export function SkillWorkspace({
   )
   const capCard = atCap && (
     <Alert color="orange" title={`You're at your ${profession} cap (${climber.maxRank})`}>
-      Visit a {profession} trainer to learn the next rank, then /reload so Alt Army Sync uploads it.
+      Visit {an(profession)} {profession} trainer to learn the next rank, then /reload so Alt Army Sync uploads it.
     </Alert>
   )
   if (!results.length) {
@@ -915,7 +921,7 @@ export function SkillWorkspace({
     />
   )
   // Each option's chain as it came with the list, by recipe
-  const optionChains = new Map(listed.map((r, i) => [r.recipe_id, rank.data?.option_chains?.[i] ?? NO_RUNS]))
+  const optionChains = new Map(options.map((r, i) => [r.recipe_id, rank.data?.option_chains?.[i] ?? NO_RUNS]))
 
   return (
     <CharacterClasses.Provider value={rank.data.classes}>
@@ -926,7 +932,7 @@ export function SkillWorkspace({
           <Stack ref={areaRef} gap="xs" component="section" aria-label="Your options" pos="relative">
             <div className={classes.heading}>
               <Text size="lg" fw={600} ta="center" className={classes.title}>
-                What to craft next:
+                What to craft next
               </Text>
               {picked && (
                 <Button size="compact-sm" variant="light" className={classes.reset} onClick={reset}>
@@ -958,8 +964,7 @@ export function SkillWorkspace({
                         learn={learn[r.recipe_id]}
                         fade={r.recipe_id !== now?.recipe_id}
                         lit
-                        // the options are cheapest climb first
-                        cheapest={i === 0 && r.climb_cost != null}
+                        recommended={r.recipe_id === bestId && r.climb_end >= highest}
                         onChoose={() => pick(r.recipe_id)}
                       />
                     </div>
@@ -1003,21 +1008,19 @@ export function SkillWorkspace({
                     </div>
                   )}
                   {options.length > 1 && openAt !== 0 && (
-                    <Tooltip label="Show me other options" withArrow>
-                      <ActionIcon
-                        variant="subtle"
-                        size="lg"
-                        className={classes.more}
-                        aria-label="Show me other options"
-                        onClick={() => {
-                          choose(null)
-                          setFreshChain(false)
-                          setExpanded(true)
-                        }}
-                      >
-                        <IconSwap size={20} />
-                      </ActionIcon>
-                    </Tooltip>
+                    <Button
+                      variant="subtle"
+                      size="compact-sm"
+                      className={classes.more}
+                      leftSection={<IconSwap size={16} />}
+                      onClick={() => {
+                        choose(null)
+                        setFreshChain(false)
+                        setExpanded(true)
+                      }}
+                    >
+                      Other options ({options.length - 1})
+                    </Button>
                   )}
                   {chainView}
                 </div>

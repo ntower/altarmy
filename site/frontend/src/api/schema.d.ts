@@ -1381,6 +1381,16 @@ export interface components {
             /** Climb Cost */
             climb_cost?: number | null;
             /**
+             * Climb End
+             * @default 0
+             */
+            climb_end: number;
+            /**
+             * Climb Unknown
+             * @default 0
+             */
+            climb_unknown: number;
+            /**
              * Climb Without
              * @default []
              */

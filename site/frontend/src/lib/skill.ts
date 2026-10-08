@@ -75,13 +75,16 @@ export function runLead(r: Count): string {
 export function runReason(r: Pick<Run, 'stop_reason'>): string | null {
   switch (r.stop_reason) {
     case 'trivial':
-      return 'this recipe is about to turn grey'
+      return 'this recipe turns grey'
     case 'cap':
       return 'you reach your skill cap'
     default:
       return null
   }
 }
+
+/** The article before `word`: "an" before a vowel ("an Alchemy trainer"), else "a". */
+export const an = (word: string): string => (/^[aeiou]/i.test(word) ? 'an' : 'a')
 
 export const AT_WHICH_POINT = ', at which point '
 export const CHEAPER = ' becomes a cheaper option'

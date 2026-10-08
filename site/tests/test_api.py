@@ -962,8 +962,11 @@ def test_each_option_side_by_side_never_comes_back_to_those_before_it(
     assert body["results"][1]["overtaken_by"] == "Linen Belt"
     assert second["overtaken_by"] != "Linen Belt" and second["stop_skill"] > body["results"][1]["stop_skill"]
     assert all(r["recipe_id"] != belt for r in body["option_chains"][1])
-    # the robe's run without either goes on until it turns grey, and nothing follows it
+    # the robe's run without either goes on until it turns grey, and nothing follows it: a climb that ends
+    # lower than the others, though it costs less
     assert (third["stop_reason"], third["stop_skill"]) == ("trivial", 60)
+    assert (first["climb_end"], second["climb_end"], third["climb_end"]) == (95, 90, 60)
+    assert third["climb_cost"] < first["climb_cost"] and third["climb_unknown"] == 0
     assert body["option_chains"][2] == []
     # picked, an option is the run and the chain its card shows
     picked = client.get("/api/rank", params={**params, "chain_from": cap, "top": 1}).json()

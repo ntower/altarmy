@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { professionRanks, robeResult } from '../test/results'
-import { craftsToReach, craftUntil, perPoint, ranksToTrain, runLead, runText, scaleRun, stepsText } from './skill'
+import { an, craftsToReach, craftUntil, perPoint, ranksToTrain, runLead, runText, scaleRun, stepsText } from './skill'
 
 describe('craftsToReach', () => {
   const run = { crafts: 3, crafts_p80: 5, reach_chances: [0, 0.2, 0.5, 0.79, 0.8, 0.9, 0.95] }
@@ -50,7 +50,7 @@ describe('runText', () => {
       'Craft until 85 skill (~17 times), at which point Heavy Copper Maul becomes a cheaper option',
     )
     expect(runText({ ...run, stop_reason: 'trivial' })).toBe(
-      'Craft until 85 skill (~17 times), at which point this recipe is about to turn grey',
+      'Craft until 85 skill (~17 times), at which point this recipe turns grey',
     )
     expect(runText({ ...run, stop_reason: 'cap' })).toBe(
       'Craft until 85 skill (~17 times), at which point you reach your skill cap',
@@ -138,5 +138,13 @@ describe('scaleRun', () => {
     // and the flow chart: 6 robes, 15 linen for them
     expect([more.tree.quantity, more.tree.crafts, more.tree.inputs[0]?.quantity]).toEqual([2, 2, 15])
     expect(scaleRun(plan, 4)).toBe(plan)
+  })
+})
+
+describe('an', () => {
+  it('takes "an" before a vowel', () => {
+    expect(`${an('Alchemy')} Alchemy trainer`).toBe('an Alchemy trainer')
+    expect(`${an('Engineering')} Engineering trainer`).toBe('an Engineering trainer')
+    expect(`${an('Tailoring')} Tailoring trainer`).toBe('a Tailoring trainer')
   })
 })

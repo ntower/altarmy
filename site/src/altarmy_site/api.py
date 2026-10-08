@@ -425,10 +425,14 @@ class RankResult(BaseModel):
     crafts_p80: int = 0
     # the chance of reaching `stop_skill` after each of 1, 2, ... crafts (past the end, at least the last)
     reach_chances: list[float] = Field(default_factory=list)
-    # a run that starts a climb: the whole climb's expected copper with it first (crafts, the spare materials
-    # bought for each run, patterns); None for a later run of a climb, without a run, or when a pattern the
-    # climb buys has no known price
+    # a run that starts a climb: what the whole climb with it first is chosen by (`ClimbPlan.cost`: crafts
+    # at their floored cost and craft value, spare materials, effort, the patterns of known price); None for a
+    # later run of a climb or without a run
     climb_cost: int | None = None
+    # ... and how many patterns that climb buys have no known price (counted before the copper), and the
+    # skill it reaches (the cap, or where nothing gives a point any more)
+    climb_unknown: int = 0
+    climb_end: int = 0
     # a run that starts a climb: what the climb is expected to come to by each profession rank's cap it
     # reaches above the crafter's skill now (`ClimbPlan.spent_by`)
     milestones: list[MilestoneOut] = []
@@ -1948,7 +1952,9 @@ def _result_out(
         overtaken_by_item=r.overtaken_by_item,
         crafts_p80=r.crafts_p80,
         reach_chances=[round(c, 4) for c in r.reach_chances],
-        climb_cost=round(r.climb_cost) if r.climb_cost is not None and not r.climb_unknown else None,
+        climb_cost=round(r.climb_cost) if r.climb_cost is not None else None,
+        climb_unknown=r.climb_unknown,
+        climb_end=r.climb.runs[-1].stop_skill if r.climb is not None and r.climb.runs else 0,
         milestones=_milestones(r.climb),
         climb_without=sorted(r.climb_without),
         sell_options=[SellOptionOut(**asdict(o)) for o in r.sell_options],
