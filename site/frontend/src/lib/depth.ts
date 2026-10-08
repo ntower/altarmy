@@ -10,7 +10,7 @@ type Level = ItemInfo['ah_levels'][number]
 
 /** One stretch of the staircase: units `x0`..`x1` at `price`. `you`: the plan's own units, put in where they would be
  * listed; `uncounted`: a level plans don't count on (just listed, far under the usual price); `tail`: the level that
- * pools every dearer one. `taken`: the units of it the plan buys. */
+ * pools every dearer one. `taken`: the units of it the plan buys; `age`: the scans it has survived (0 for `you`). */
 export interface DepthStep {
   x0: number
   x1: number
@@ -18,6 +18,7 @@ export interface DepthStep {
   kind: 'level' | 'uncounted' | 'tail' | 'you'
   taken: number
   listings: number
+  age: number
 }
 
 /** The price levels end to end, cheapest first, with `insert` (units the plan lists) put in after the levels at its
@@ -29,19 +30,19 @@ export function depthSteps(
   const steps: DepthStep[] = []
   let x = 0
   let inserted = !insert || insert.units <= 0
-  const put = (price: number, units: number, kind: DepthStep['kind'], took: number, listings: number) => {
-    steps.push({ x0: x, x1: x + units, price, kind, taken: took, listings })
+  const put = (price: number, units: number, kind: DepthStep['kind'], took: number, listings: number, age: number) => {
+    steps.push({ x0: x, x1: x + units, price, kind, taken: took, listings, age })
     x += units
   }
   levels.forEach((level, i) => {
     if (!inserted && insert && level.price > insert.price) {
-      put(insert.price, insert.units, 'you', 0, 0)
+      put(insert.price, insert.units, 'you', 0, 0, 0)
       inserted = true
     }
     const kind = !level.counted ? 'uncounted' : level.more ? 'tail' : 'level'
-    put(level.price, level.quantity, kind, taken?.[i] ?? 0, level.listings)
+    put(level.price, level.quantity, kind, taken?.[i] ?? 0, level.listings, level.age)
   })
-  if (!inserted && insert) put(insert.price, insert.units, 'you', 0, 0)
+  if (!inserted && insert) put(insert.price, insert.units, 'you', 0, 0, 0)
   return { steps, total: x }
 }
 
@@ -59,10 +60,18 @@ export function priceRange(prices: readonly number[]): { lo: number; hi: number 
   return { lo: Math.max(0, lo), hi }
 }
 
-/** A linear map from `[d0, d1]` onto `[r0, r1]` (a flat domain maps to the middle). */
-export function scale(d0: number, d1: number, r0: number, r1: number): (v: number) => number {
-  if (d1 === d0) return () => (r0 + r1) / 2
-  return (v) => r0 + ((v - d0) * (r1 - r0)) / (d1 - d0)
+/** Labels at a chart's right edge, by the y each wants, moved down where needed so none comes closer than `gap` px
+ * to another (in the order they want, top first). */
+export function spread(ys: readonly number[], gap = 13): number[] {
+  const order = ys.map((y, i) => ({ y, i })).sort((a, b) => a.y - b.y)
+  const out = [...ys]
+  let last = -Infinity
+  for (const { y, i } of order) {
+    const placed = Math.max(y, last + gap)
+    out[i] = placed
+    last = placed
+  }
+  return out
 }
 
 /** The session's profit if every unit it makes sells on the auction house at `price` each: the plan's own AH profit

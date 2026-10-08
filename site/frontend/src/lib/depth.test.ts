@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { robeResult } from '../test/results'
-import { depthSteps, priceRange, profitAt, scale } from './depth'
+import { depthSteps, priceRange, profitAt, spread } from './depth'
 
 const level = (price: number, quantity: number, counted = true, more = false) => ({
   price,
@@ -30,9 +30,17 @@ describe('depthSteps', () => {
     expect(depthSteps(levels, { insert: { price: 200, units: 1 } }).steps.at(-1)).toMatchObject({ kind: 'you', x0: 20 })
     expect(depthSteps(levels, { taken: [0, 4, 1, 0] }).steps.map((s) => s.taken)).toEqual([0, 4, 1, 0])
   })
+
+  it('carries each level’s listings and age, none for the plan’s own units', () => {
+    const { steps } = depthSteps([{ ...level(100, 4), age: 3 }], { insert: { price: 200, units: 1 } })
+    expect(steps.map((s) => [s.listings, s.age])).toEqual([
+      [2, 3],
+      [0, 0],
+    ])
+  })
 })
 
-describe('ranges and scales', () => {
+describe('ranges', () => {
   it('leaves room around the prices, never under 0', () => {
     const { lo, hi } = priceRange([100, 200])
     expect(lo).toBeLessThan(100)
@@ -41,9 +49,13 @@ describe('ranges and scales', () => {
     expect(priceRange([1]).lo).toBe(0)
   })
 
-  it('maps a domain onto a range, a flat one to the middle', () => {
-    expect(scale(0, 10, 0, 100)(5)).toBe(50)
-    expect(scale(3, 3, 0, 100)(3)).toBe(50)
+})
+
+describe('spread', () => {
+  it('moves labels down until none is closer than the gap, keeping each where it wants when it can', () => {
+    expect(spread([50, 10, 55])).toEqual([50, 10, 63])
+    expect(spread([20, 20, 20], 10)).toEqual([20, 30, 40])
+    expect(spread([])).toEqual([])
   })
 })
 

@@ -1,0 +1,148 @@
+/* The charts (visx on the theme's colours): the Market section's order book and profit by listing price, and the
+   skill-up chance. Each is measured to its container, so the text keeps its size on a phone. */
+.frame {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.chart {
+  display: block;
+  overflow: visible;
+  touch-action: none;
+}
+
+.axis {
+  fill: var(--mantine-color-dimmed);
+  font: 11px var(--mantine-font-family-monospace);
+}
+
+.caption {
+  fill: var(--mantine-color-dimmed);
+  font: 11px var(--mantine-font-family);
+}
+
+.note {
+  font: 11px var(--mantine-font-family-monospace);
+}
+
+/* visx's grids draw their own lines, each with its own stroke: style the lines */
+.grid line,
+.dashedGrid line {
+  stroke: var(--mantine-color-default-border);
+  stroke-width: 1;
+}
+
+.dashedGrid line {
+  stroke-dasharray: 3 3;
+}
+
+/* the marks under an axis where its numbers stand */
+.tickMark {
+  stroke: var(--mantine-color-dimmed);
+  stroke-width: 1;
+}
+
+.base {
+  stroke: var(--mantine-color-dimmed);
+  stroke-width: 1;
+}
+
+.rule {
+  stroke-width: 1.5;
+  stroke-dasharray: 2 4;
+}
+
+.cross {
+  stroke: var(--mantine-color-dimmed);
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+.dot {
+  fill: var(--mantine-color-body);
+  stroke: var(--mantine-color-text);
+  stroke-width: 2;
+  pointer-events: none;
+}
+
+.hit {
+  fill: transparent;
+  cursor: crosshair;
+}
+
+/* the tones: SVG text and shapes take fill and stroke, the HTML legend its colour */
+.toneCost {
+  color: var(--mantine-color-red-text);
+  fill: var(--mantine-color-red-text);
+  stroke: var(--mantine-color-red-text);
+}
+
+.toneProfit {
+  color: var(--mantine-color-teal-text);
+  fill: var(--mantine-color-teal-text);
+  stroke: var(--mantine-color-teal-text);
+}
+
+.tonePlain {
+  color: var(--mantine-color-dimmed);
+  fill: var(--mantine-color-dimmed);
+  stroke: var(--mantine-color-dimmed);
+}
+
+.toneYou {
+  color: var(--mantine-primary-color-filled);
+  fill: var(--mantine-primary-color-filled);
+  stroke: var(--mantine-primary-color-filled);
+}
+
+/* text labels take only a fill */
+text.toneCost,
+text.toneProfit,
+text.tonePlain,
+text.toneYou {
+  stroke: none;
+}
+
+/* the right-edge labels, under a narrow chart */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  font: 11px var(--mantine-font-family-monospace);
+}
+
+.legend li::before {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  margin-right: 5px;
+  vertical-align: middle;
+  border-top: 2px dotted currentColor;
+}
+
+.tooltip {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  padding: 5px 8px;
+  max-width: 260px;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-sm);
+  background: var(--mantine-color-body);
+  box-shadow: var(--mantine-shadow-sm);
+  color: var(--mantine-color-text);
+  font: 12px/1.4 var(--mantine-font-family);
+  white-space: nowrap;
+}
+
+.tooltip strong {
+  font-weight: 600;
+}
+
+.tooltip .dim {
+  color: var(--mantine-color-dimmed);
+}

@@ -112,26 +112,9 @@
   font-weight: 400;
 }
 
-/* --- charts ------------------------------------------------------------------------------------------- */
-.chart {
-  display: block;
-  width: 100%;
-  max-width: 720px;
-  height: auto;
-}
-
-.axis {
-  fill: var(--mantine-color-dimmed);
-  font: 11px var(--mantine-font-family-monospace);
-}
-
-.note {
-  font: 11px var(--mantine-font-family-monospace);
-}
-
-.grid {
-  stroke: var(--mantine-color-default-border);
-  stroke-width: 1;
+/* --- charts (the shared styles are in Charts.module.css) ----------------------------------------------- */
+.chartFrame {
+  max-width: 760px;
 }
 
 .step {
@@ -151,14 +134,14 @@
   opacity: 0.45;
 }
 
-.hatch {
-  stroke: var(--mantine-color-dimmed);
-  stroke-width: 1.5;
-  opacity: 0.6;
-}
-
 .taken {
   fill: var(--mantine-primary-color-light);
+}
+
+/* the level under the pointer */
+.hovered {
+  fill: var(--mantine-color-default-hover);
+  pointer-events: none;
 }
 
 .you {
@@ -170,42 +153,10 @@
   font: 600 11px var(--mantine-font-family-monospace);
 }
 
-.rule {
-  stroke-width: 1.5;
-  stroke-dasharray: 2 4;
-}
-
 .profitLine {
+  fill: none;
   stroke: var(--mantine-color-teal-text);
   stroke-width: 2.5;
-}
-
-.toneCost {
-  fill: var(--mantine-color-red-text);
-  stroke: var(--mantine-color-red-text);
-}
-
-.toneProfit {
-  fill: var(--mantine-color-teal-text);
-  stroke: var(--mantine-color-teal-text);
-}
-
-.tonePlain {
-  fill: var(--mantine-color-dimmed);
-  stroke: var(--mantine-color-dimmed);
-}
-
-.toneYou {
-  fill: var(--mantine-primary-color-filled);
-  stroke: var(--mantine-primary-color-filled);
-}
-
-/* text labels take only a fill */
-text.toneCost,
-text.toneProfit,
-text.tonePlain,
-text.toneYou {
-  stroke: none;
 }
 
 .tableWrap {
