@@ -892,6 +892,7 @@ class Result:
     skill_chance: float = 0.0  # that the first craft gives `crafter` a skill point (1 without characters)
     skill_ups: float = 0.0  # the skill points `crafter` can expect from all `crafts` (`expected_skill_ups`)
     skill_ups_bonus: float = 0.0  # the part of `skill_ups` owed to the crafter's `skill_bonus`
+    skill_bonus: float = 0.0  # what the crafter's talents add to every chance of a point (Working Overtime)
     # As a skill-up run (`evaluate`'s `skill_run`, `Climb`): the skill it takes the crafter to, why it stops
     # there (`SkillRun.reason`), the recipe the climb goes on with (its output's name, and its item id unless
     # it is an enchant; "" and 0 unless `stop_reason` is rival), the crafts that get there four times in five
@@ -2198,6 +2199,7 @@ class Market:
                     who,
                     bonus_output=bonus,
                     skill_chance=chance,
+                    skill_bonus=crafter.skill_bonus if crafter is not None else 0.0,
                     skill_ups=ups,
                     skill_ups_bonus=ups_bonus,
                     seconds=seconds,

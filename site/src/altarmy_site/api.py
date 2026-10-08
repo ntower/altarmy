@@ -378,6 +378,8 @@ class RankResult(BaseModel):
     # the skill points the crafter can expect from all crafts, each craft's chance falling as the skill rises
     skill_ups: float
     skill_ups_bonus: float = 0.0  # the part of `skill_ups` owed to Working Overtime
+    # what the crafter's Working Overtime adds to every chance of a point while the recipe isn't grey
+    skill_bonus: float = 0.0
     exits: list[ExitOut]
     reagents: list[ItemCount]
     steps: list[StepOut]  # per character: buys, crafts (intermediates first), mails; then the sale
@@ -1909,6 +1911,7 @@ def _result_out(
         mail_to=r.mail_to,
         bonus_output=r.bonus_output,
         skill_chance=r.skill_chance,
+        skill_bonus=round(r.skill_bonus, 4),
         confidence=ConfidenceOut(**asdict(sure)) if sure else None,
         skill_ups=r.skill_ups,
         skill_ups_bonus=r.skill_ups_bonus,

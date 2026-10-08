@@ -1508,6 +1508,11 @@ export interface components {
             sell_options: components["schemas"]["SellOptionOut"][];
             /** Short */
             short: number;
+            /**
+             * Skill Bonus
+             * @default 0
+             */
+            skill_bonus: number;
             /** Skill Chance */
             skill_chance: number;
             /** Skill Ups */

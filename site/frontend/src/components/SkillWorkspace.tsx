@@ -1,5 +1,5 @@
 import { type CSSProperties, Fragment, type ReactNode, type Ref, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Accordion, Alert, Badge, Box, Button, Checkbox, Divider, Group, Loader, NumberInput, Paper, Stack, Text, Title, Tooltip, UnstyledButton } from '@mantine/core'
+import { Accordion, Alert, Badge, Box, Button, Checkbox, Divider, Group, Loader, NumberInput, Paper, SimpleGrid, Stack, Text, Title, Tooltip, UnstyledButton } from '@mantine/core'
 import { LayoutGroup, animate, motion } from 'motion/react'
 import { useDebouncedValue } from '@mantine/hooks'
 import { z } from 'zod'
@@ -22,8 +22,6 @@ import { useStoredState } from '../lib/storage'
 import type { Holder } from '../lib/setup'
 import {
   an,
-  AT_WHICH_POINT,
-  CHEAPER,
   craftsToReach,
   DEFAULT_REACH_TARGET,
   rangeText,
@@ -32,6 +30,7 @@ import { CharacterClasses } from '../lib/characterClasses'
 import { IconSwap } from './icons'
 import { ItemLink } from './ItemTooltip'
 import { LearnStep, LearnTooltip } from './LearnTooltip'
+import { SkillChanceChart } from './SkillChanceChart'
 import { MarketSection, MarketSummary } from './MarketSection'
 import { Earned, Money } from './Money'
 import { RecipeFlow } from './RecipeFlow'
@@ -138,19 +137,9 @@ function RecipeName({ result, items }: { result: RankResult; items: ItemMap }) {
   return <ItemLink item={items[result.output_item_id]} name={result.output_name} />
 }
 
-/** How far to craft and why then, the recipe that gives a cheaper point by then as an item link (icon, its
- * quality's colour, tooltip). */
-function RunText({ result: r, items }: { result: RankResult; items: ItemMap }) {
-  if (r.stop_reason !== 'rival') return <>{runText(r)}</>
-  const rival = r.overtaken_by_item ? items[r.overtaken_by_item] : undefined
-  return (
-    <>
-      {runLead(r)}
-      {AT_WHICH_POINT}
-      <ItemLink item={rival} name={r.overtaken_by || 'another recipe'} />
-      {CHEAPER}
-    </>
-  )
+/** How far to craft and, unless another recipe takes over there, why it stops. */
+function RunText({ result: r }: { result: RankResult }) {
+  return <>{runText(r)}</>
 }
 
 // The size of the spinner beside the odds (px).
@@ -247,7 +236,7 @@ function OptionCard({
               <NetPerPoint result={r} />
             </Text>
             <Text size="xs" c="dimmed">
-              <RunText result={r} items={items} />
+              {runLead(r)}
             </Text>
             {/* a recipe the climber lacks: its pattern is counted in the cost, unless nobody can price it */}
             {mustLearn(r) && (
@@ -797,14 +786,20 @@ export function SkillWorkspace({
                 Close
               </Button>
             </Group>
-            <Text size="lg" fw={700}>
-              {/* the user's changed plan costs what it costs; otherwise the run as ranked */}
-              <NetPerPoint result={(modified && planned) || open} />
-            </Text>
-            <Text size="sm">
-              <RunText result={open} items={items} />
-            </Text>
-            <RunSpread result={open} range />
+            {/* what the run comes to and how far it goes on the left, its skill-up chance on the right */}
+            <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md" verticalSpacing="xs">
+              <Stack gap="xs">
+                <Text size="lg" fw={700}>
+                  {/* the user's changed plan costs what it costs; otherwise the run as ranked */}
+                  <NetPerPoint result={(modified && planned) || open} />
+                </Text>
+                <Text size="sm">
+                  <RunText result={open} />
+                </Text>
+                <RunSpread result={open} range />
+              </Stack>
+              <SkillChanceChart result={open} from={openFrom} />
+            </SimpleGrid>
             <TrainNote training={training} from={openFrom} to={open.stop_skill} first={openAt === 0} />
             {learn[open.recipe_id] && mustLearn(open) && (
               <Text size="sm">

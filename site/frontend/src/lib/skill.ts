@@ -111,17 +111,89 @@ export function rangeText(r: Pick<RankResult, 'reach_chances'>): string | null {
   return `Usually ${low + 1}–${high + 1} crafts`
 }
 
+/** The chance a craft of a recipe gives a point at `skill`, as the server reckons it (`engine._chance_at`): 1 while
+ * orange (below yellow), then falling evenly to 0 at grey, plus the crafter's `bonus` (Working Overtime), up to 1;
+ * nothing once grey. */
+export function chanceAt(r: Pick<RankResult, 'trivial_low' | 'trivial_high'>, skill: number, bonus = 0): number {
+  const { trivial_low: low, trivial_high: high } = r
+  if (!high || skill < low) return 1
+  if (skill >= high || high <= low) return 0
+  return Math.min(1, (high - skill) / (high - low) + bonus)
+}
+
+/** `chanceAt` as a line, for drawing: the same up to grey, and at grey itself what it comes to just before (it drops
+ * to nothing there, a step of its own). */
+function lineAt(r: Pick<RankResult, 'trivial_low' | 'trivial_high'>, skill: number, bonus: number): number {
+  const { trivial_low: low, trivial_high: high } = r
+  if (skill < low || high <= low) return 1
+  return Math.min(1, Math.max(0, (high - skill) / (high - low)) + bonus)
+}
+
+/** A recipe's difficulty colours over the skills a chart of it spans, as the game shows them. */
+export type Difficulty = 'orange' | 'yellow' | 'green' | 'grey'
+
+/** A stretch of a recipe's skill-up chance in one difficulty colour: (skill, chance) points along it. */
+export interface ChanceBand {
+  difficulty: Difficulty
+  points: [number, number][]
+}
+
+/**
+ * A recipe's skill-up chance from `start` (where the chart begins: the lower of the skill it is learned at and where
+ * the run starts) to grey, as the game's colours: orange until yellow, yellow until green (halfway to grey), then
+ * green; with the crafter's `bonus` (Working Overtime) the chance stays sure past yellow and is still the bonus just
+ * before grey, where a grey step drops it to nothing. `ticks`: where each colour starts, and grey. `under(from, to)`:
+ * the outline of the area under the line between two skills, for shading. Null when the recipe has no thresholds (a
+ * sure point to the cap: nothing to draw).
+ */
+export function chanceBands(
+  r: Pick<RankResult, 'trivial_low' | 'trivial_high' | 'learn_skill'>,
+  from: number,
+  bonus = 0,
+): {
+  bands: ChanceBand[]
+  ticks: number[]
+  start: number
+  end: number
+  under: (a: number, b: number) => [number, number][]
+} | null {
+  const { trivial_low: low, trivial_high: high } = r
+  if (!high) return null
+  const start = Math.max(0, Math.min(from, r.learn_skill || low, low))
+  if (start >= high) return null
+  const green = high > low ? Math.round((low + high) / 2) : high
+  // where the line bends: the colours' edges and, with a bonus, where the chance stops being sure
+  const sure = high > low ? high - (1 - Math.min(1, bonus)) * (high - low) : high
+  const bends = [...new Set([start, low, green, sure, high])].filter((s) => s >= start && s <= high).sort((x, y) => x - y)
+  const along = (a: number, b: number): [number, number][] =>
+    [...new Set([a, ...bends.filter((s) => s > a && s < b), b])].map((s) => [s, lineAt(r, s, bonus)])
+  const edges: [Difficulty, number, number][] = [
+    ['orange', start, Math.min(low, high)],
+    ['yellow', Math.max(start, low), green],
+    ['green', Math.max(start, green), high],
+  ]
+  const bands: ChanceBand[] = edges.filter(([, a, b]) => b > a).map(([difficulty, a, b]) => ({ difficulty, points: along(a, b) }))
+  const last = lineAt(r, high, bonus)
+  if (last > 0) bands.push({ difficulty: 'grey', points: [[high, last], [high, 0]] })
+  const ticks = [...new Set([start, ...(low > start && low < high ? [low] : []), ...(green > start && green < high ? [green] : []), high])]
+  const under = (a: number, b: number): [number, number][] => {
+    const lo = Math.max(start, Math.min(a, high))
+    const hi = Math.max(lo, Math.min(b, high))
+    return hi > lo ? [[lo, 0], ...along(lo, hi), [hi, 0]] : []
+  }
+  return { bands, ticks, start, end: high, under }
+}
+
 /** The article before `word`: "an" before a vowel ("an Alchemy trainer"), else "a". */
 export const an = (word: string): string => (/^[aeiou]/i.test(word) ? 'an' : 'a')
 
 export const AT_WHICH_POINT = ', at which point '
-export const CHEAPER = ' becomes a cheaper option'
 
-/** The whole run as plain text: "Craft until 85 skill (~17 times), at which point Heavy Copper Maul becomes a
- * cheaper option", "…, at which point this recipe is about to turn grey"; just the lead when the ceiling cut it short. */
+/** The whole run as plain text: "Craft until 85 skill (~17 times)", "…, at which point this recipe turns grey";
+ * just the lead when the ceiling cut it short or another recipe takes over. */
 export function runText(r: Run): string {
   const lead = runLead(r)
-  if (r.stop_reason === 'rival') return `${lead}${AT_WHICH_POINT}${r.overtaken_by || 'another recipe'}${CHEAPER}`
+  if (r.stop_reason === 'rival') return lead
   const reason = runReason(r)
   return reason ? `${lead}${AT_WHICH_POINT}${reason}` : lead
 }

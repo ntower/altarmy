@@ -791,6 +791,7 @@ def test_skill_up_ranks_each_recipe_as_the_first_run_of_its_climb(
     assert r["climb_cost"] is not None and r["climb_cost"] > -r["profit"]  # what it costs, spares too
     assert r["milestones"] == []  # the climb ends at 60, short of the next rank's cap (75)
     assert r["overtaken_by_item"] == 0
+    assert r["skill_bonus"] == 0.0  # no Working Overtime
     assert r["crafts_p80"] >= r["crafts"]
     assert r["reach_chances"][r["crafts_p80"] - 1] >= 0.8  # the odds of reaching stop_skill by each craft
     # the crafts each of its ten points is expected to take: ~30/(60 - s) at skill s

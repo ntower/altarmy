@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { professionRanks, robeResult } from '../test/results'
-import { an, rangeText, tailText, craftsToReach, craftUntil, perPoint, ranksToTrain, runLead, runText, scaleRun, stepsText } from './skill'
+import { an, chanceAt, chanceBands, rangeText, tailText, craftsToReach, craftUntil, perPoint, ranksToTrain, runLead, runText, scaleRun, stepsText } from './skill'
 
 describe('craftsToReach', () => {
   const run = { crafts: 3, crafts_p80: 5, reach_chances: [0, 0.2, 0.5, 0.79, 0.8, 0.9, 0.95] }
@@ -47,7 +47,7 @@ describe('runText', () => {
   it('says to which skill to craft, how many times, and why then', () => {
     const run = { crafts: 17, stop_skill: 85, stop_reason: 'rival', overtaken_by: 'Heavy Copper Maul' }
     expect(runText(run)).toBe(
-      'Craft until 85 skill (~17 times), at which point Heavy Copper Maul becomes a cheaper option',
+      'Craft until 85 skill (~17 times)',
     )
     expect(runText({ ...run, stop_reason: 'trivial' })).toBe(
       'Craft until 85 skill (~17 times), at which point this recipe turns grey',
@@ -170,5 +170,59 @@ describe('an', () => {
     expect(`${an('Alchemy')} Alchemy trainer`).toBe('an Alchemy trainer')
     expect(`${an('Engineering')} Engineering trainer`).toBe('an Engineering trainer')
     expect(`${an('Tailoring')} Tailoring trainer`).toBe('a Tailoring trainer')
+  })
+})
+
+describe('chanceBands', () => {
+  // Elixir of Minor Defense: learned at 1, yellow at 55, grey at 95 (green from 75)
+  const defense = { learn_skill: 1, trivial_low: 55, trivial_high: 95 }
+
+  it('reckons the chance of a point as the server does', () => {
+    expect(chanceAt(defense, 30)).toBe(1)
+    expect(chanceAt(defense, 55)).toBe(1)
+    expect(chanceAt(defense, 75)).toBe(0.5)
+    expect(chanceAt(defense, 95)).toBe(0)
+    expect(chanceAt(defense, 75, 0.2)).toBeCloseTo(0.7) // Working Overtime adds to it...
+    expect(chanceAt(defense, 60, 0.2)).toBe(1) // ...up to a sure point
+    expect(chanceAt(defense, 95, 0.2)).toBe(0) // ...but never once grey
+    expect(chanceAt({ trivial_low: 0, trivial_high: 0 }, 300)).toBe(1) // no thresholds: a sure point
+  })
+
+  it('colours the chance orange to yellow, yellow to green, green to grey', () => {
+    const chart = chanceBands(defense, 21)
+    expect(chart?.ticks).toEqual([1, 55, 75, 95])
+    expect(chart?.bands).toEqual([
+      { difficulty: 'orange', points: [[1, 1], [55, 1]] },
+      { difficulty: 'yellow', points: [[55, 1], [75, 0.5]] },
+      { difficulty: 'green', points: [[75, 0.5], [95, 0]] },
+    ])
+  })
+
+  it("keeps the chance sure longer with Working Overtime, and drops it at grey", () => {
+    // +20%: sure until 63 (where the plain chance is 80%), 70% at green, 20% just before grey, then nothing
+    const chart = chanceBands(defense, 21, 0.2)!
+    const yellow = chart.bands.find((b) => b.difficulty === 'yellow')!.points
+    expect(yellow.map(([s]) => s)).toEqual([55, 63, 75])
+    expect(yellow[1]![1]).toBe(1)
+    expect(yellow[2]![1]).toBeCloseTo(0.7)
+    expect(chart.bands.at(-1)).toEqual({ difficulty: 'grey', points: [[95, 0.2], [95, 0]] })
+  })
+
+  it('outlines the area under the line between two skills', () => {
+    const chart = chanceBands(defense, 21)!
+    expect(chart.under(50, 75)).toEqual([[50, 0], [50, 1], [55, 1], [75, 0.5], [75, 0]])
+    expect(chart.under(90, 120)).toEqual([[90, 0], [90, 0.125], [95, 0], [95, 0]]) // never past grey
+    expect(chart.under(60, 60)).toEqual([])
+  })
+
+  it('starts where the recipe is learned or the run starts, whichever is lower', () => {
+    // Mana Well: no learn level known, yellow at 20, grey at 25: from yellow, or from the run's start if lower
+    const well = { learn_skill: 0, trivial_low: 20, trivial_high: 25 }
+    expect(chanceBands(well, 20)?.bands.map((b) => b.difficulty)).toEqual(['yellow', 'green'])
+    expect(chanceBands(well, 18)?.start).toBe(18)
+  })
+
+  it('draws nothing for a recipe without thresholds', () => {
+    expect(chanceBands({ learn_skill: 0, trivial_low: 0, trivial_high: 0 }, 10)).toBeNull()
   })
 })

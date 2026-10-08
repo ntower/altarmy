@@ -221,7 +221,7 @@ describe('SkillWorkspace', () => {
     show()
     await userEvent.click(await screen.findByRole('button', { name: /^Other options/ }))
     expect(screen.getByRole('button', { name: 'Choose Linen Cap' })).toHaveTextContent(
-      'Craft until 60 skill (~30 times), at which point Linen Boots becomes a cheaper option',
+      'Craft until 60 skill (~30 times)',
     )
   })
 
@@ -329,7 +329,7 @@ describe('SkillWorkspace', () => {
     expect(asked?.searchParams.get('top')).toBe('1')
     expect(asked?.searchParams.getAll('skip')).toEqual([]) // nothing passed over: its climb may come back to the robe
     const card = within(options).getByRole('button', { name: 'Choose Linen Cap' })
-    expect(card).toHaveTextContent('Craft until 60 skill (~30 times), at which point Linen Boots becomes a cheaper option')
+    expect(card).toHaveTextContent('Craft until 60 skill (~30 times)')
     // opened and closed, it is still the one to craft now
     await userEvent.click(within(options).getByRole('button', { name: 'Choose Linen Cap' }))
     const run = screen.getByRole('region', { name: 'Run details' })
@@ -393,6 +393,8 @@ describe('SkillWorkspace', () => {
     // opened, the run also says its usual spread: 10% done after 11 crafts, 90% after 17
     const run = await choose('Green Robe')
     expect(run).toHaveTextContent('Usually 11–17 crafts. The last point takes ~4 of these ~12 crafts')
+    // beside it, the recipe's skill-up chance by skill, the run's stretch shaded
+    expect(within(run).getByRole('img', { name: /^Skill-up chance for Green Robe by skill/ })).toBeInTheDocument()
   })
 
   it('says what the best run is worth and how far it goes', async () => {
@@ -400,9 +402,7 @@ describe('SkillWorkspace', () => {
     show()
     const options = await screen.findByRole('region', { name: 'Your options' })
     const cards = within(options).getAllByRole('button', { name: /^Choose / })
-    expect(cards[0]).toHaveTextContent('Craft until 45 skill (~12 times), at which point Linen Cap becomes a cheaper option')
-    // the cheaper recipe's item in its quality's colour, with its tooltip
-    expect(within(cards[0]!).getByText('Linen Cap').closest('[data-quality]')).toHaveAttribute('data-quality', '2')
+    expect(cards[0]).toHaveTextContent('Craft until 45 skill (~12 times)')
     // one amount: what the run comes to per skill point after selling, a loss in red with its minus sign
     expect(within(cards[0]!).getByText(/per skill point/)).toBeInTheDocument()
     const silver = within(cards[0]!).getByTitle('silver')
@@ -429,7 +429,8 @@ describe('SkillWorkspace', () => {
     const fetch = api()
     show()
     const run = await choose('Green Robe')
-    expect(run).toHaveTextContent(/Craft until 45 skill \(~12 times\), at which point Linen Cap becomes a cheaper option/)
+    expect(run).toHaveTextContent(/Craft until 45 skill \(~12 times\)/)
+    expect(run).not.toHaveTextContent(/cheaper option/)
     // the crafts to buy for: enough to reach the target four times in five
     expect(within(run).getByRole('textbox', { name: 'Crafts to buy for' })).toHaveValue('14')
     expect(within(run).getByText('82% chance to reach your target of 45 skill')).toBeInTheDocument()
@@ -638,7 +639,7 @@ describe('SkillWorkspace', () => {
     expect(writeText).toHaveBeenCalledTimes(1)
     const [text] = writeText.mock.calls[0] as unknown as [string]
     expect(text.split('\n')[0]).toBe(
-      'Tailoring: Green Robe. Craft until 45 skill (~12 times), at which point Linen Cap becomes a cheaper option',
+      'Tailoring: Green Robe. Craft until 45 skill (~12 times)',
     )
     expect(text).toContain('1. Tailor Guy: Buy 12x Linen Cloth on the AH') // for the 14 crafts to buy for
     expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument()

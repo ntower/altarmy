@@ -59,6 +59,7 @@ export const robeResult: RankResult = {
   skill_chance: 1,
   skill_ups: 1,
   skill_ups_bonus: 0,
+  skill_bonus: 0,
   learn_cost: 0,
   buy_flags: [],
   likely_profit: 200,

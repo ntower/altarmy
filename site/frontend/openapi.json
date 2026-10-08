@@ -2564,6 +2564,11 @@
             "title": "Short",
             "type": "integer"
           },
+          "skill_bonus": {
+            "default": 0.0,
+            "title": "Skill Bonus",
+            "type": "number"
+          },
           "skill_chance": {
             "title": "Skill Chance",
             "type": "number"

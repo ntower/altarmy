@@ -1620,6 +1620,7 @@ def test_result_says_how_many_skill_ups_working_overtime_adds() -> None:
     assert res.skill_ups == pytest.approx(expected_skill_ups(GREY_AT_60, overtime, 4))
     assert res.skill_ups_bonus == pytest.approx(res.skill_ups - without)
     assert res.skill_ups_bonus > 0
+    assert res.skill_bonus == pytest.approx(0.2)  # what Working Overtime adds to every chance, for the chart
 
 
 # --- Legacy talents -------------------------------------------------------------------------------------
