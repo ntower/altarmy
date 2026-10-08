@@ -930,7 +930,7 @@ def tailoring_options(conn: Connection) -> tuple[int, int, int]:
     """Two more Tailoring recipes beside the Green Robe (10 linen and a thread; yellow from 30, grey at 60),
     each making an item of its own: the Linen Cap (1 linen; yellow from 45, grey at 90) and the Linen Belt
     (2 linen; yellow from 48, grey at 95). A tailor at 50 who knows all three: the cap is the cheapest
-    point, the belt the next, the robe the dearest. Their recipe ids (robe, cap, belt)."""
+    point, the belt the next, the robe the costliest. Their recipe ids (robe, cap, belt)."""
     robe = (
         conn.execute(select(schema.recipes).where(schema.recipes.c.game_version == FOREVER)).mappings().one()
     )

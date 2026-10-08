@@ -85,8 +85,8 @@ const SECONDARY = new Set(['cooking', 'first aid', 'fishing'])
 /** Whether a profession is a secondary one (Cooking, First Aid, Fishing). */
 export const isSecondary = (profession: string): boolean => SECONDARY.has(profession.toLowerCase())
 
-/** Gathering professions, never offered for skilling up, though a few recipes name them (Mining's smelting, Skinning's). */
-const NOT_SKILLED = new Set(['herbalism', 'mining', 'skinning'])
+/** Gathering professions and Fishing, never offered for skilling up, though a few recipes name them (Mining's smelting, Skinning's). */
+const NOT_SKILLED = new Set(['fishing', 'herbalism', 'mining', 'skinning'])
 
 /**
  * What a character nobody uploaded is called: the server plans for whatever one name `skill_crafters` gives with
@@ -97,7 +97,7 @@ export const CLIMBER_NAME = 'Your character'
 
 /**
  * The professions someone could skill up without having uploaded a character: every one of the version's with
- * recipes (`withRecipes`), Herbalism, Mining and Skinning left out, nobody holding them, alphabetically.
+ * recipes (`withRecipes`), Fishing, Herbalism, Mining and Skinning left out, nobody holding them, alphabetically.
  */
 export const professionsToImagine = (withRecipes: readonly string[]): ProfessionChoice[] =>
   withRecipes
@@ -115,7 +115,7 @@ export const hypotheticalProfessions = (profession: string, skill: number, maxRa
 ]
 
 /**
- * The professions the group's characters have, by name, each once, with who has it at what skill, Herbalism, Mining
+ * The professions the group's characters have, by name, each once, with who has it at what skill, Fishing, Herbalism, Mining
  * and Skinning left out. With `withRecipes` (the version's professions that have recipes), only those: gathering skills have nothing
  * to rank.
  */

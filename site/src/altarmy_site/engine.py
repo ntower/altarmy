@@ -866,7 +866,7 @@ class Node:
     postage: int = 0  # copper for that mail, included in cost
     discount: int = 0  # bought from a vendor: percent off the buyer gets (Bartering)
     rep_discount: int = 0  # bought from a vendor: percent off for their standing with the vendor's faction
-    short: int = 0  # bought on the AH: units more than it lists, counted at its dearest price
+    short: int = 0  # bought on the AH: units more than it lists, counted at its highest price
     # every way to get these items, cheapest first; empty for the recipe's own craft
     options: tuple[Option, ...] = field(default=(), compare=False)
     option: str = field(default="", compare=False)  # the key of the option taken; "" for the recipe's craft
@@ -1570,7 +1570,7 @@ class Market:
 
         An item in `books` is bought up its ladder instead (`book.cost`): the units listed at each price,
         cheapest first, so what it costs depends on how many are needed; units the book is short of are
-        counted at its dearest price and reported (`Node.short`). Branches of one plan buying the same
+        counted at its highest price and reported (`Node.short`). Branches of one plan buying the same
         item share its ladder (`_share_books`). A disenchant material in `sell_depth` sells on the AH only
         as many units as its market has shown it takes (`_disenchant_shortfall`); the rest go to a vendor.
 

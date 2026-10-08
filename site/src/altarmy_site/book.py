@@ -185,7 +185,7 @@ def quantity(ladder: Ladder) -> int:
 
 def cost(ladder: Ladder, qty: int) -> tuple[int, int] | None:
     """(copper for `qty` units bought cheapest first, units short); None when nothing is listed. Units
-    the book is short of cost the dearest level's price: they are not there to buy."""
+    the book is short of cost the highest level's price: they are not there to buy."""
     if not ladder:
         return None
     total, left = 0, qty

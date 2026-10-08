@@ -192,7 +192,7 @@ class NodeOut(BaseModel):
     convert: bool = False  # crafted by an essence conversion
     flip: bool = False  # a flip's root: nothing is crafted, its one input (bought) is what is sold
     enchant: bool = False  # an enchant's root: no item (`item_id` 0), named after the spell
-    short: int = 0  # bought on the AH: units more than its ladder lists (priced at its dearest level)
+    short: int = 0  # bought on the AH: units more than its ladder lists (priced at its highest level)
     inputs: list[NodeOut]
 
 
@@ -244,7 +244,7 @@ class LevelOut(BaseModel):
     # False: first seen in the newest scan and far under the usual price, so plans don't count on it
     # (it may be gone before you get there)
     counted: bool
-    more: bool  # pools every dearer level too (`price` is the cheapest of them)
+    more: bool  # pools every higher-priced level too (`price` is the cheapest of them)
     listings: int  # the auctions at that price
     age: int  # the scans before the newest that already had it (0: just listed)
 
@@ -375,7 +375,7 @@ class RankResult(BaseModel):
     best_exit: str
     slow: bool  # the AH sale may take over service.SLOW_DAYS at the rate it sold lately (informational)
     days_to_sell: float | None  # how long that sale may take; None if unknown or not sold on the AH
-    short: int  # units the plan buys on the AH beyond what is listed (counted at the dearest price)
+    short: int  # units the plan buys on the AH beyond what is listed (counted at the highest price)
     postage: int  # copper to mail the output to whoever sells it (included in cost)
     mail_to: str  # who the output is mailed to; "" if the crafter sells it
     bonus_output: float = 0.0  # expected extra units from the crafter's talents (Master Chef), all crafts

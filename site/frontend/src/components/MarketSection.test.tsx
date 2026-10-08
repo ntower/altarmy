@@ -71,7 +71,7 @@ describe('MarketSection', () => {
     await userEvent.click(tile(/^Linen Cloth/))
     expect(tile(/^Linen Cloth/)).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText(/^Buying 10 for/)).toHaveTextContent(/2 more than are listed, priced at the dearest 3 0/)
-    expect(screen.getByText(/dearer than the usual/)).toHaveTextContent(/about 16% dearer than the usual 2 50/)
+    expect(screen.getByText(/above the usual/)).toHaveTextContent(/about 16% above the usual 2 50/)
     await userEvent.click(tile(/^Coarse Thread/))
     expect(screen.getByText(/^Bought from a vendor/)).toBeInTheDocument()
   })

@@ -1103,13 +1103,13 @@ describe('SearchTab', () => {
     renderWithProviders(<SearchTab />)
     await openOptions()
     const chance = await screen.findByRole('textbox', { name: 'Chance to reach target skill' })
-    expect(chance).toHaveValue('80%')
+    expect(chance).toHaveValue('75%')
     // the info icon beside the label says what it means
     const info = chance.closest('.mantine-InputWrapper-root')!.querySelector('label [aria-hidden="true"]')!
     await userEvent.hover(info)
     expect(await screen.findByText(/Since skill ups are random/)).toHaveTextContent(
-      'so you have an 80% chance to reach the target skill level' +
-        "Put another way: 80% of the time, you won't need to make a second trip to the auction house",
+      'so you have a 75% chance to reach the target skill level' +
+        "Put another way: 75% of the time, you won't need to make a second trip to the auction house",
     )
     await waitFor(() => expect(urls(fetch, '/api/rank')).toHaveLength(1))
     fireEvent.change(chance, { target: { value: '95' } })

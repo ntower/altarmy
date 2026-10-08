@@ -82,7 +82,7 @@ function StepTip({ step: s, insertLabel }: { step: DepthStep; insertLabel: strin
 /**
  * The order book as a staircase: units listed along, price up, cheapest first. What the plan lists (`insert`) is put
  * in as a block where it would sit; what it buys (`taken`) is shaded. Levels plans don't count on are dashed, the
- * level pooling every dearer one is named at the right end; `rules` mark prices across it (break-even, the usual
+ * level pooling every higher-priced one is named at the right end; `rules` mark prices across it (break-even, the usual
  * price). Hovering a level tells its units, listings and age.
  */
 export function DepthChart({

@@ -106,7 +106,7 @@ def test_trainer_costs_are_the_least_any_trainer_asks_for_the_spell_taught(world
         "INSERT INTO npc_trainer VALUES (?,?,?,?,?)",
         [
             (1, 3516, 600, 90, 5875),
-            (2, 3516, 900, 90, 5875),  # a dearer trainer
+            (2, 3516, 900, 90, 5875),  # a pricier trainer
             (3, 3516, 100, 90, 4695),  # a fee a later patch changed
             (1, 7000, 50, 0, 5875),  # listed as the spell itself: no teach spell; a class spell, no skill
         ],

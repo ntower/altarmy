@@ -187,7 +187,7 @@ function UsualLine({ item, now }: { item: ItemInfo; now: number | null }) {
     )
   return (
     <>
-      about {Math.round(Math.abs(move) * 100)}% {move > 0 ? 'dearer' : 'cheaper'} than the usual <Money copper={usual} /> (
+      about {Math.round(Math.abs(move) * 100)}% {move > 0 ? 'above' : 'below'} the usual <Money copper={usual} /> (
       {days(item)})
     </>
   )

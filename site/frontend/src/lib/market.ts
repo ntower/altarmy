@@ -183,7 +183,7 @@ export function priceNow(m: MarketItem, item: ItemInfo | undefined): number | nu
   return item.ah_sell_price ?? item.market_price ?? null
 }
 
-/** How far `now` is from the usual price, as a fraction (0.09: 9% dearer); null without a usual price. */
+/** How far `now` is from the usual price, as a fraction (0.09: 9% above); null without a usual price. */
 export function moveFromUsual(now: number | null, item: ItemInfo | undefined): number | null {
   const usual = usualPrice(item)
   return now === null || usual === null || usual <= 0 ? null : (now - usual) / usual
@@ -202,7 +202,7 @@ const percent = (fraction: number) => `${Math.round(Math.abs(fraction) * 100)}%`
 
 /** The one thing most worth knowing about an item's market, if anything: short of units, not listed, flooded by the
  * plan's disenchants, a thin market for what is sold, then a notable move from the usual price (coloured by whether it
- * hurts the plan: dearer to buy, cheaper to sell). */
+ * hurts the plan: pricier to buy, cheaper to sell). */
 export function cue(m: MarketItem, r: RankResult, items: ItemMap): Cue | null {
   const item = items[m.itemId]
   if (m.short > 0)
@@ -231,11 +231,11 @@ export function cue(m: MarketItem, r: RankResult, items: ItemMap): Cue | null {
   }
   const move = moveFromUsual(priceNow(m, item), item)
   if (move === null || Math.abs(move) < NOTABLE_MOVE) return null
-  const dearer = move > 0
-  const hurts = m.group === 'buy' ? dearer : !dearer
+  const above = move > 0
+  const hurts = m.group === 'buy' ? above : !above
   return {
-    text: `${dearer ? '▲' : '▼'}${percent(move)}`,
-    label: `${percent(move)} ${dearer ? 'dearer' : 'cheaper'} than usual`,
+    text: `${above ? '▲' : '▼'}${percent(move)}`,
+    label: `${percent(move)} ${above ? 'above' : 'below'} usual`,
     tone: hurts ? 'bad' : 'good',
   }
 }

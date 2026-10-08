@@ -72,7 +72,7 @@ export function craftUntil(r: Count): string {
 }
 
 /** The default chance, in percent, that the crafts a run's checklist buys for reach its skill. */
-export const DEFAULT_REACH_TARGET = 80
+export const DEFAULT_REACH_TARGET = 75
 /** The most the user may ask for (the server's odds go at least this far). */
 export const MAX_REACH_TARGET = 95
 export const MIN_REACH_TARGET = 50

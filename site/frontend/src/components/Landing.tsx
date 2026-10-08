@@ -33,15 +33,14 @@ const ADDON_SHOWCASE: Showcase = {
     "quickly view a summary of their current state, or search for that item or recipe you're interested in.",
   note: 'Versions supported: Forever, and Burning Crusade',
   cue: 'Get the Addon',
-  // The addon's CurseForge screenshots (https://www.curseforge.com/wow/addons/alt-army).
   slides: [
     { src: '/landing/addon-summary.png', alt: 'Alt Army: a summary of every character' },
     { src: '/landing/addon-search.png', alt: 'Alt Army: searching every character for an item' },
+    { src: '/landing/addon-economy.png', alt: 'Alt Army: Waylaid Crates priced from the auction house' },
     { src: '/landing/addon-gear.png', alt: "Alt Army: a character's gear" },
-    { src: '/landing/addon-graphs.png', alt: 'Alt Army: graphs of time played per level, character by character' },
-    { src: '/landing/addon-guild.png', alt: 'Alt Army: your guilds' },
-    { src: '/landing/addon-cooldowns.png', alt: 'Alt Army: profession cooldowns' },
+    { src: '/landing/addon-inventory.png', alt: "Alt Army: a character's bags" },
     { src: '/landing/addon-reputation.png', alt: 'Alt Army: reputations' },
+    { src: '/landing/addon-graphs.png', alt: 'Alt Army: graphs of time played per level, character by character' },
   ],
 }
 

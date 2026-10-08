@@ -10,7 +10,7 @@ type Level = ItemInfo['ah_levels'][number]
 
 /** One stretch of the staircase: units `x0`..`x1` at `price`. `you`: the plan's own units, put in where they would be
  * listed; `uncounted`: a level plans don't count on (just listed, far under the usual price); `tail`: the level that
- * pools every dearer one. `taken`: the units of it the plan buys; `age`: the scans it has survived (0 for `you`). */
+ * pools every higher-priced one. `taken`: the units of it the plan buys; `age`: the scans it has survived (0 for `you`). */
 export interface DepthStep {
   x0: number
   x1: number
