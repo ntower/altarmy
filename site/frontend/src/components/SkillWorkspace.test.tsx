@@ -381,6 +381,20 @@ describe('SkillWorkspace', () => {
     expect(within(options).queryByRole('button', { name: 'Reset to recommended' })).not.toBeInTheDocument()
   })
 
+  it("says where a run's last points get slow, and how many crafts it usually takes", async () => {
+    // eight orange points, then one at 1 in 4
+    const slow = { ...robeRun, point_crafts: [1, 1, 1, 1, 1, 1, 1, 1, 4] }
+    api({ '/api/rank': { ...ranked, results: [slow, capRun] } })
+    show()
+    const options = await screen.findByRole('region', { name: 'Your options' })
+    const card = within(options).getByRole('button', { name: 'Choose Green Robe' })
+    expect(card).toHaveTextContent('The last point takes ~4 of these ~12 crafts')
+    expect(card).not.toHaveTextContent('Usually')
+    // opened, the run also says its usual spread: 10% done after 11 crafts, 90% after 17
+    const run = await choose('Green Robe')
+    expect(run).toHaveTextContent('Usually 11–17 crafts. The last point takes ~4 of these ~12 crafts')
+  })
+
   it('says what the best run is worth and how far it goes', async () => {
     const fetch = api()
     show()

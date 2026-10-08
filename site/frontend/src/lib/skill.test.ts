@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { professionRanks, robeResult } from '../test/results'
-import { an, craftsToReach, craftUntil, perPoint, ranksToTrain, runLead, runText, scaleRun, stepsText } from './skill'
+import { an, rangeText, tailText, craftsToReach, craftUntil, perPoint, ranksToTrain, runLead, runText, scaleRun, stepsText } from './skill'
 
 describe('craftsToReach', () => {
   const run = { crafts: 3, crafts_p80: 5, reach_chances: [0, 0.2, 0.5, 0.79, 0.8, 0.9, 0.95] }
@@ -138,6 +138,30 @@ describe('scaleRun', () => {
     // and the flow chart: 6 robes, 15 linen for them
     expect([more.tree.quantity, more.tree.crafts, more.tree.inputs[0]?.quantity]).toEqual([2, 2, 15])
     expect(scaleRun(plan, 4)).toBe(plan)
+  })
+})
+
+describe('tailText', () => {
+  it('says how many crafts a run\'s slow last points take', () => {
+    const run = { crafts: 30, point_crafts: [1, 1, 1, 1, 1, 2, 3, 5, 15] }
+    expect(tailText(run)).toBe('The last 3 points take ~23 of these ~30 crafts')
+    expect(tailText({ crafts: 22, point_crafts: [1, 1, 1, 1, 1, 2, 15] })).toBe('The last point takes ~15 of these ~22 crafts')
+  })
+  it('says nothing of a run without slow last points, or with only slow ones', () => {
+    expect(tailText({ crafts: 10, point_crafts: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1] })).toBeNull()
+    expect(tailText({ crafts: 50, point_crafts: [5, 10, 35] })).toBeNull()
+    expect(tailText({ crafts: 40, point_crafts: [1, 1, 1, 30, 1, 1, 1, 3] })).toBeNull() // 3 of 40: not worth a word
+    expect(tailText({ crafts: 1 })).toBeNull()
+  })
+})
+
+describe('rangeText', () => {
+  it('gives the crafts that get there one time in ten to nine in ten', () => {
+    expect(rangeText({ reach_chances: [0, 0.05, 0.1, 0.5, 0.85, 0.9, 1] })).toBe('Usually 3–6 crafts')
+  })
+  it('says nothing of a run sure to take its crafts', () => {
+    expect(rangeText({ reach_chances: [0, 0, 1, 1] })).toBeNull()
+    expect(rangeText({})).toBeNull()
   })
 })
 

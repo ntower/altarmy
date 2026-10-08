@@ -1474,6 +1474,8 @@ export interface components {
              * @default 0
              */
             overtaken_by_item: number;
+            /** Point Crafts */
+            point_crafts?: number[];
             /** Postage */
             postage: number;
             /** Profession */

@@ -26,7 +26,8 @@ import {
   CHEAPER,
   craftsToReach,
   DEFAULT_REACH_TARGET,
-  ranksToTrain, runLead, runText, scaleRun, stepsText } from '../lib/skill'
+  rangeText,
+  ranksToTrain, runLead, runText, scaleRun, stepsText, tailText } from '../lib/skill'
 import { CharacterClasses } from '../lib/characterClasses'
 import { IconSwap } from './icons'
 import { ItemLink } from './ItemTooltip'
@@ -65,6 +66,18 @@ function NetPerPoint({ result }: { result: RankResult }) {
 /** What a run comes to per skill point, its pattern included (gained positive, spent negative); null without one. */
 function netPerPoint(r: RankResult): number | null {
   return r.skill_ups ? (r.profit - (r.learn_cost ?? 0)) / r.skill_ups : null
+}
+
+/** How a run's crafts spread: where its last points get slow (`tailText`) and, with `range`, how many crafts it
+ * usually takes (`rangeText`); nothing for a run that is all orange. */
+function RunSpread({ result: r, range }: { result: RankResult; range?: boolean }) {
+  const lines = [range ? rangeText(r) : null, tailText(r)].filter((line) => line !== null)
+  if (!lines.length) return null
+  return (
+    <Text size="xs" c="dimmed">
+      {lines.join('. ')}
+    </Text>
+  )
 }
 
 /** What the Recommended badge weighs, on hover. */
@@ -242,6 +255,7 @@ function OptionCard({
                 {r.learn_cost === null ? learnNote(r, learn) : includedNote(learn)}
               </Text>
             )}
+            <RunSpread result={r} />
           </Stack>
   )
   if (!onChoose) {
@@ -789,6 +803,7 @@ export function SkillWorkspace({
             <Text size="sm">
               <RunText result={open} items={items} />
             </Text>
+            <RunSpread result={open} range />
             <TrainNote training={training} from={openFrom} to={open.stop_skill} first={openAt === 0} />
             {learn[open.recipe_id] && mustLearn(open) && (
               <Text size="sm">

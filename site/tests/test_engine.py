@@ -1191,6 +1191,11 @@ def test_a_run_says_why_it_stops_and_how_many_crafts_to_buy_for() -> None:
     # orange to 40 (a craft a point), then a point at (60 - skill) / 20 a craft
     expected = sum(1 / engine._chance_at(GREY_AT_60, _smith(30), s) for s in range(30, first.stop_skill))
     assert first.crafts == round(expected)
+    # the crafts each of its points is expected to take, in order: a craft a point while orange
+    assert len(first.point_crafts) == first.stop_skill - 30 and sum(first.point_crafts) == pytest.approx(
+        expected
+    )
+    assert first.point_crafts[:10] == (1.0,) * 10 and first.point_crafts[-1] > first.point_crafts[10]
     assert first.crafts_p80 >= first.crafts
     assert len(first.reach) >= first.crafts_p80 + engine.REACH_MORE
     assert first.reach[first.crafts_p80 - 1] >= 0.8

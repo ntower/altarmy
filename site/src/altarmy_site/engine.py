@@ -379,7 +379,8 @@ class SkillRun:
     expected to take and the crafts that get there four times in five, and why it stops there (`reason`:
     rival, the climb goes on with another recipe (`rival`), cheaper from there; ceiling, `SkillRuns.ceiling`
     crafts (the climb goes on with the same recipe); trivial, the recipe turns grey; cap, the
-    crafter's profession cap). `reach`: the chance of having got there after each of 1, 2, ... crafts."""
+    crafter's profession cap). `reach`: the chance of having got there after each of 1, 2, ... crafts;
+    `point_crafts`: the crafts each of its points is expected to take, in order."""
 
     crafts: int
     stop_skill: int
@@ -389,6 +390,7 @@ class SkillRun:
     reach: tuple[float, ...] = ()
     recipe: Recipe | None = None
     start_skill: int = 0
+    point_crafts: tuple[float, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -666,7 +668,8 @@ class Climb:
         # far enough for any chance the checklist may be asked to buy for (the front end reads it off these)
         reach_all = crafts_quantile(recipe, there, points, REACH_TOP, most)
         reach = reach_chances(recipe, there, points, max(2 * p80, p80 + REACH_MORE, reach_all))
-        run = SkillRun(crafts, stop, reason, rival, p80, reach, recipe, start)
+        each = tuple(u.crafts[i + 1] - u.crafts[i] for i in range(start - u.lo, stop - u.lo))
+        run = SkillRun(crafts, stop, reason, rival, p80, reach, recipe, start, each)
         self._runs[key] = run
         return run
 
@@ -900,6 +903,8 @@ class Result:
     # the chance the crafter has reached `stop_skill` after each of 1, 2, ... crafts (`reach_chances`; past
     # the end, at least the last)
     reach_chances: tuple[float, ...] = ()
+    # the crafts each of the run's points is expected to take, in order (`SkillRun.point_crafts`)
+    point_crafts: tuple[float, ...] = ()
     # As the first run of a climb (`Climb.first`): the whole climb's expected cost (`ClimbPlan.cost`), how
     # many of its patterns have no known price, and the runs after this one; None, 0 and () otherwise
     climb_cost: float | None = field(default=None, compare=False)
@@ -2218,6 +2223,7 @@ class Market:
                     else 0,
                     crafts_p80=run.crafts_p80 if run is not None else 0,
                     reach_chances=run.reach if run is not None else (),
+                    point_crafts=run.point_crafts if run is not None else (),
                     climb_cost=plan.cost if plan is not None else None,
                     climb_unknown=plan.unknown if plan is not None else 0,
                     climb_after=plan.runs[1:] if plan is not None else (),

@@ -425,6 +425,8 @@ class RankResult(BaseModel):
     crafts_p80: int = 0
     # the chance of reaching `stop_skill` after each of 1, 2, ... crafts (past the end, at least the last)
     reach_chances: list[float] = Field(default_factory=list)
+    # the crafts each of the run's points is expected to take, in order: where its last points get slow
+    point_crafts: list[float] = Field(default_factory=list)
     # a run that starts a climb: what the whole climb with it first is chosen by (`ClimbPlan.cost`: crafts
     # at their floored cost and craft value, spare materials, effort, the patterns of known price); None for a
     # later run of a climb or without a run
@@ -1952,6 +1954,7 @@ def _result_out(
         overtaken_by_item=r.overtaken_by_item,
         crafts_p80=r.crafts_p80,
         reach_chances=[round(c, 4) for c in r.reach_chances],
+        point_crafts=[round(c, 2) for c in r.point_crafts],
         climb_cost=round(r.climb_cost) if r.climb_cost is not None else None,
         climb_unknown=r.climb_unknown,
         climb_end=r.climb.runs[-1].stop_skill if r.climb is not None and r.climb.runs else 0,

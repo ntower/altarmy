@@ -83,6 +83,34 @@ export function runReason(r: Pick<Run, 'stop_reason'>): string | null {
   }
 }
 
+/** A point taking at least this many crafts is a slow one: a run's tail of them is worth a word. */
+export const TAIL_CRAFTS = 3
+
+/** Where a run's last points get slow: "The last 4 points take ~83 of these ~211 crafts" when its trailing points
+ * each take `TAIL_CRAFTS` or more and come to at least a quarter of its crafts; null otherwise (and when every point
+ * is slow, which the run's own count already says). */
+export function tailText(r: Pick<RankResult, 'crafts' | 'point_crafts'>): string | null {
+  const each = r.point_crafts ?? []
+  let k = 0
+  while (k < each.length && each[each.length - 1 - k]! >= TAIL_CRAFTS) k++
+  if (k === 0 || k >= each.length) return null
+  const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0)
+  const tail = sum(each.slice(each.length - k))
+  if (tail < sum(each) / 4) return null
+  const points = k === 1 ? 'The last point takes' : `The last ${k} points take`
+  return `${points} ~${Math.round(tail)} of these ~${r.crafts} crafts`
+}
+
+/** How many crafts a run usually takes, from its odds of being done after each craft: "Usually 158–275 crafts", the
+ * crafts that get there one time in ten and nine times in ten; null when that is one number (an orange run). */
+export function rangeText(r: Pick<RankResult, 'reach_chances'>): string | null {
+  const odds = r.reach_chances ?? []
+  const low = odds.findIndex((c) => c >= 0.1)
+  const high = odds.findIndex((c) => c >= 0.9)
+  if (low === -1 || high === -1 || low === high) return null
+  return `Usually ${low + 1}–${high + 1} crafts`
+}
+
 /** The article before `word`: "an" before a vowel ("an Alchemy trainer"), else "a". */
 export const an = (word: string): string => (/^[aeiou]/i.test(word) ? 'an' : 'a')
 

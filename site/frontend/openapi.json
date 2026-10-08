@@ -2472,6 +2472,13 @@
             "title": "Overtaken By Item",
             "type": "integer"
           },
+          "point_crafts": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Point Crafts",
+            "type": "array"
+          },
           "postage": {
             "title": "Postage",
             "type": "integer"
