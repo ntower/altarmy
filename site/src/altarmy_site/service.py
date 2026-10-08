@@ -724,6 +724,7 @@ def _market(
         sell_prices=base.sell_prices,
         time=time,
         books=base.books,
+        sell_depth=base.sell_depth,
         reputation_discounts=base.reputation_discounts,
         arcane_salvager=arcane_salvager,
         gathered=gathered,
@@ -838,12 +839,10 @@ def ah_sale(r: Result, listings: Mapping[int, prices.Listing], sell_price: int |
     if all_sold is None or ah is None or r.recipe.is_conversion:
         return None
     listing = listings.get(r.recipe.output_item_id)
-    if listing is None or listing.source != prices.ALTARMY:
+    depth = prices.sale_depth(listing, sell_price) if listing is not None else None
+    if depth is None:
         return AhSale(all_sold, 0, 0)
     units = r.recipe.output_count * r.crafts
-    sold = round((listing.sale_rate or 0.0) * prices.SALES_DAYS)
-    ahead = sum(lv.quantity for lv in listing.ladder if sell_price is not None and lv.price <= sell_price)
-    depth = max(sold, ahead)
     excess = max(0, units - depth)
     fallback = max((e.value - e.postage for e in r.exits if e.kind != "ah"), default=0)
     return AhSale(all_sold - excess * (ah.value - fallback), depth, excess)

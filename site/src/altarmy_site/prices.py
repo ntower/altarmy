@@ -900,6 +900,17 @@ class Listing:
     sold_pairs_7d: int | None = None  # the pairs of scans its sales were seen in lately
 
 
+def sale_depth(listing: Listing, sell_price: int | None) -> int | None:
+    """How many units of an item its market has shown it takes at `sell_price`: the more of those seen sold
+    over the last week and those listed at or under the price (a crude depth, until a model of what sells
+    replaces it); None for a price from another source than Alt Army's scans, which says nothing of it."""
+    if listing.source != ALTARMY:
+        return None
+    sold = round((listing.sale_rate or 0.0) * SALES_DAYS)
+    ahead = sum(lv.quantity for lv in listing.ladder if sell_price is not None and lv.price <= sell_price)
+    return max(sold, ahead)
+
+
 def load_listings(conn: Connection, auction_house_id: int | None) -> dict[int, Listing]:
     """{item_id: Listing} for the auction house; empty for None."""
     if auction_house_id is None:

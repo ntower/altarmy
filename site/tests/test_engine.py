@@ -58,6 +58,7 @@ def make_market(
     extra_items: Sequence[Item] = (),
     time: TimeModel | None = None,
     reputation_discounts: dict[int, int] | None = None,
+    sell_depth: dict[int, int] | None = None,
 ) -> Market:
     items = {
         LINEN: Item(LINEN, "Linen Cloth"),
@@ -85,6 +86,7 @@ def make_market(
         no_ah=no_ah,
         time=time,
         reputation_discounts=reputation_discounts,
+        sell_depth=sell_depth,
     )
 
 
@@ -509,6 +511,59 @@ def de_market(
     *crafters: Crafter, unlearned: Learning | Unlearned = "none", prices: dict[int, int] = DE_PRICES
 ) -> Market:
     return make_market(prices, [ROBE], disenchant=DE_ROWS, crafters=crafters, unlearned=unlearned)
+
+
+def test_disenchanting_counts_on_no_more_materials_than_the_market_takes() -> None:
+    # a robe disenchants into a dust (950 net, against the robe's 500 at a vendor); the market has taken 5
+    both = crafter("Both", ("Enchanting", 10), ("Tailoring", 50), known=frozenset({900}))
+    deep = make_market(DE_PRICES, [ROBE], disenchant=DE_ROWS, crafters=[both])
+    shallow = make_market(DE_PRICES, [ROBE], disenchant=DE_ROWS, crafters=[both], sell_depth={DUST: 5})
+
+    def sold(m: Market, crafts: int) -> Result:
+        res = m.evaluate(ROBE, crafts=crafts)
+        assert res is not None
+        return res
+
+    # within what the market takes, as ever
+    assert (sold(shallow, 4).best_exit, sold(shallow, 4).revenue) == ("disenchant", 4 * ah_net(1000))
+    assert sold(shallow, 4) == sold(deep, 4)
+    # past it, the rest of the dust goes to a vendor (Strange Dust: nothing), so 12 robes disenchanted bring 5
+    # dust's worth, and a vendor's 12 x 500 is more
+    only = make_market(
+        DE_PRICES,
+        [ROBE],
+        disenchant=DE_ROWS,
+        crafters=[both],
+        sell_depth={DUST: 5},
+        exits=frozenset({"disenchant"}),
+    )
+    assert sold(only, 12).revenue == 5 * ah_net(1000)
+    assert sold(shallow, 12).best_exit == "vendor"
+    assert sold(deep, 12).best_exit == "disenchant"
+    # the exit's value per unit (the hover) is still the AH's
+    de = next(e for e in sold(shallow, 12).exits if e.kind == "disenchant")
+    assert de.value == ah_net(1000)
+
+
+def test_materials_past_what_the_market_takes_are_valued_at_a_vendor() -> None:
+    both = crafter("Both", ("Enchanting", 10), ("Tailoring", 50), known=frozenset({900}))
+    dust = Item(DUST, "Strange Dust", sell_price=100)
+    m = make_market(
+        DE_PRICES,
+        [ROBE],
+        disenchant=DE_ROWS,
+        crafters=[both],
+        extra_items=[dust],
+        sell_depth={DUST: 5},
+        exits=frozenset({"disenchant"}),
+    )
+    assert must_evaluate_n(m, ROBE, 8).revenue == 5 * ah_net(1000) + 3 * 100
+
+
+def must_evaluate_n(m: Market, recipe: Recipe, crafts: int) -> Result:
+    res = m.evaluate(recipe, crafts=crafts)
+    assert res is not None
+    return res
 
 
 def test_disenchant_is_free_when_the_crafter_enchants() -> None:

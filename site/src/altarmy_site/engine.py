@@ -1523,6 +1523,7 @@ class Market:
         learn_costs: Mapping[int, float | None] | None = None,
         flips: Sequence[Recipe] | None = None,
         climbs: ClimbStore | None = None,
+        sell_depth: Mapping[int, int] | None = None,
     ):
         """`crafters` are the characters who craft and disenchant, mailing items between them; without
         them one unnamed character does everything. When nobody has learned a recipe, `unlearned` says who
@@ -1541,7 +1542,8 @@ class Market:
         An item in `books` is bought up its ladder instead (`book.cost`): the units listed at each price,
         cheapest first, so what it costs depends on how many are needed; units the book is short of are
         counted at its dearest price and reported (`Node.short`). Branches of one plan buying the same
-        item share its ladder (`_share_books`).
+        item share its ladder (`_share_books`). A disenchant material in `sell_depth` sells on the AH only
+        as many units as its market has shown it takes (`_disenchant_shortfall`); the rest go to a vendor.
 
         `reputation_discounts` is the game version's percent off at a vendor by the buyer's standing with
         the vendor's faction (standing -> percent). It needs the `time` model's city, which says whose
@@ -1567,6 +1569,7 @@ class Market:
         self.recipes = recipes
         self.prices = prices
         self.books = books or {}
+        self.sell_depth = sell_depth or {}
         self.sell_prices = prices if sell_prices is None else sell_prices
         self.disenchant = disenchant or []
         self.arcane_salvager = arcane_salvager
@@ -1666,6 +1669,24 @@ class Market:
                 )
             )
         return out
+
+    def _disenchant_shortfall(self, item_id: int, units: float) -> float:
+        """What disenchanting `units` of the item brings less than `disenchant_value` per unit counts on: a
+        material's units past what its market has shown it takes (`sell_depth`) sell to a vendor instead."""
+        item = self.items.get(item_id)
+        if item is None or not self.sell_depth:
+            return 0.0
+        short = 0.0
+        for d in self._disenchant_rows(item):
+            depth = self.sell_depth.get(d.result_item_id)
+            price = self.sell_prices.get(d.result_item_id)
+            made = units * self._units(d)
+            if depth is None or price is None or made <= depth:
+                continue
+            material = self.items.get(d.result_item_id)
+            vendor = material.sell_price if material is not None else 0
+            short += (made - depth) * max(0.0, ah_net(price, self.ah_cut) - vendor)
+        return short
 
     def disenchant_value(self, item: Item) -> int | None:
         """Expected net AH value of disenchanting one item; None if not applicable/unpriced."""
@@ -2148,7 +2169,12 @@ class Market:
                 ups, ups_bonus = points, (ups_bonus / ups * points if ups else 0.0)
             for exit in here:
                 postage = mail if exit.postage else 0
-                revenue = round(exit.value * (recipe.output_count * n + bonus))
+                units = recipe.output_count * n + bonus
+                revenue = round(exit.value * units)
+                if exit.kind == "disenchant":
+                    revenue = round(
+                        exit.value * units - self._disenchant_shortfall(recipe.output_item_id, units)
+                    )
                 sell_act, sell_est = self._sell_seconds(exit, recipe.output_item_id, tree.made)
                 seconds = tree.seconds + sell_est + (mail_est if exit.postage else 0.0)
                 had = by_exit.get(exit.kind)

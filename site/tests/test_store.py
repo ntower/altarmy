@@ -5,7 +5,7 @@ from sqlalchemy import Connection, insert, update
 
 from altarmy_site import altarmy, ingest, itemstats, schema, store
 
-from .conftest import FOREVER, ME, set_prices
+from .conftest import FOREVER, ME, scanned, set_prices
 from .test_altarmy import ALTARMY_SV
 
 
@@ -213,6 +213,19 @@ def test_load_market_marks_items_that_cannot_be_disenchanted(
     conn.execute(update(t).where(t.c.game_version == FOREVER, t.c.id == 3).values(disenchantable=False))
     items = store.load_market(conn, FOREVER, None).items
     assert (items[1].disenchantable, items[3].disenchantable) == (True, False)
+
+
+def test_load_priced_says_how_deep_each_disenchant_materials_market_is(
+    db2_paths: dict[str, Path], conn: Connection
+) -> None:
+    ingest.build_db(db2_paths, conn, FOREVER)
+    # the robe (item 3: armor, green, level 20) disenchants into linen (item 1), which the AH lists 5 of
+    row = {"item_class": 4, "quality": 2, "min_ilvl": 15, "max_ilvl": 25, "result_item_id": 1, "chance": 1.0}
+    conn.execute(insert(schema.disenchant).values(game_version=FOREVER, min_count=1, max_count=1, **row))
+    ah = scanned(conn, {1: [(100, 5)], 2: [(50, 3)]})
+    priced = store.load_priced(conn, FOREVER, ah)
+    assert priced.market.sell_depth == {1: 5}  # only what a disenchant makes
+    assert store.load_market(conn, FOREVER, ah).sell_depth == {}  # nothing asked of the listings
 
 
 def test_load_cities_reads_every_preset(cities: Path, tmp_path: Path) -> None:

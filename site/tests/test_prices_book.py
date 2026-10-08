@@ -252,3 +252,14 @@ def test_first_party_prices_ignore_other_sources(conn: Connection) -> None:
     books = prices.load_books(conn, ah)
     assert list(books) == [ORE]
     assert set(prices.load_buy_and_sell(conn, ah)[0]) == {ORE, EARTH, BAR}
+
+
+def test_sale_depth_is_the_more_of_seen_sold_and_listed_at_or_under_the_price() -> None:
+    ladder = (Level(100, 5, 1), Level(150, 10, 2))
+    listing = prices.Listing(100, 15, ladder, sale_rate=1.0, source=prices.ALTARMY)
+    assert prices.sale_depth(listing, 120) == max(round(prices.SALES_DAYS), 5)  # a week's sales
+    assert prices.sale_depth(listing, 150) == 15  # everything listed at or under the price
+    assert prices.sale_depth(listing, None) == round(prices.SALES_DAYS)
+    assert prices.sale_depth(prices.Listing(100, 15, ladder, source=prices.ALTARMY), 99) == 0
+    # a price from another source says nothing of how deep the market is
+    assert prices.sale_depth(prices.Listing(100, 15, ladder, sale_rate=1.0, source="manual"), 150) is None

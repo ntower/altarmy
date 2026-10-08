@@ -4,7 +4,7 @@ search an auction house's prices."""
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, fields
 from pathlib import Path
 
@@ -91,11 +91,13 @@ def load_market(
     *,
     ah_cut: float = AH_CUT,
     mail_postage: int = MAIL_POSTAGE,
+    listings: Mapping[int, prices.Listing] | None = None,
 ) -> Market:
     """One version's game data priced by an auction house's current prices (None: no prices), with the
     version's AH cut, postage per attachment and reputation discounts at vendors. Where the version's
     prices are first-party, from Alt Army's scans and hand-set prices alone, the scanned items bought up
-    their ladders (`Market.books`)."""
+    their ladders (`Market.books`). With the house's `listings`, each disenchant material sells only as many
+    units as its market has shown it takes (`Market.sell_depth`)."""
     i, v = schema.items, schema.vendor_items
     sold = (
         select(v.c.item_id)
@@ -168,6 +170,13 @@ def load_market(
     first_party = version.first_party_prices
     buy, sell = prices.load_buy_and_sell(conn, auction_house_id, first_party=first_party)
     books = prices.load_books(conn, auction_house_id) if first_party else {}
+    # how many units of each disenchant material its market has shown it takes (`Market.sell_depth`)
+    depth = {
+        m: units
+        for m in sorted({row.result_item_id for row in de})
+        if (listing := (listings or {}).get(m)) is not None
+        and (units := prices.sale_depth(listing, sell.get(m))) is not None
+    }
     return Market(
         items,
         recipes,
@@ -178,6 +187,7 @@ def load_market(
         sell_prices=sell,
         books=books,
         reputation_discounts=dict(version.reputation_discounts),
+        sell_depth=depth,
     )
 
 
@@ -200,10 +210,11 @@ def load_priced(
     mail_postage: int = MAIL_POSTAGE,
 ) -> Priced:
     """`load_market`, the auction house's listings and its watched hours, read together."""
-    market = load_market(conn, game_version, auction_house_id, ah_cut=ah_cut, mail_postage=mail_postage)
-    return Priced(
-        market, prices.load_listings(conn, auction_house_id), prices.watched_hours(conn, auction_house_id)
+    listings = prices.load_listings(conn, auction_house_id)
+    market = load_market(
+        conn, game_version, auction_house_id, ah_cut=ah_cut, mail_postage=mail_postage, listings=listings
     )
+    return Priced(market, listings, prices.watched_hours(conn, auction_house_id))
 
 
 def load_cities(folder: Path) -> dict[str, timing.CityMap]:
