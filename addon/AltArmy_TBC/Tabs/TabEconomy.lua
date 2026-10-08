@@ -35,7 +35,7 @@ local UI = {
     ICON_SIZE = 14,
     -- Sums to 626: the list viewport's width (window 670, content insets, panel padding, scrollbar gutter).
     -- The same widths as the Craftsman's Writs view's columns.
-    colWidths = { crate = 180, favor = 36, price = 80, buy = 100, craft = 110, perFavor = 120 },
+    colWidths = { crate = 190, favor = 36, price = 100, buy = 100, craft = 100, perFavor = 100 },
     sortKeys = W.SORT_KEYS,
     sortLabels = nil, -- set below: two name the Merchant's Favor icon
     sortJustify = { crate = "LEFT", favor = "RIGHT", price = "RIGHT", buy = "RIGHT", craft = "RIGHT",
@@ -64,9 +64,9 @@ UI.sortLabels = {
     crate = "Waylaid Crate",
     favor = FavorIcon(),
     price = "Crate Price",
-    buy = "Fulfill via AH",
-    craft = "Fulfill via Craft",
-    perFavor = "Total Cost / " .. FavorIcon(),
+    buy = "Fill via AH",
+    craft = "Fill via Craft",
+    perFavor = "Total / " .. FavorIcon(),
 }
 
 local VIEW = {
@@ -518,17 +518,17 @@ local function ShowRowTooltip(row)
         local buyC = both and rd.best ~= "buy" and UI.DIM or 1
         local craftC = both and rd.best ~= "craft" and UI.DIM or 1
         if rd.buy then
-            GameTooltip:AddDoubleLine("Fulfill via AH", MoneyMarked(rd.buy, rd.buyApprox), buyC, buyC, buyC,
+            GameTooltip:AddDoubleLine("Fill via AH", MoneyMarked(rd.buy, rd.buyApprox), buyC, buyC, buyC,
                 buyC, buyC, buyC)
         else
-            AddUnavailableLine("Fulfill via AH")
+            AddUnavailableLine("Fill via AH")
         end
         if rd.craft then
             local who = craftC < 1 and rd.who or CharName(rd.who)
-            GameTooltip:AddDoubleLine("Fulfill via craft on " .. who,
+            GameTooltip:AddDoubleLine("Fill via craft on " .. who,
                 MoneyMarked(rd.craft, rd.craftApprox, rd.craftShort), craftC, craftC, craftC, craftC, craftC, craftC)
         else
-            AddUnavailableLine("Fulfill via craft")
+            AddUnavailableLine("Fill via craft")
         end
         if rd.total then
             GameTooltip:AddDoubleLine("Total cost", Money(rd.total), 1, 0.82, 0, 1, 1, 1)

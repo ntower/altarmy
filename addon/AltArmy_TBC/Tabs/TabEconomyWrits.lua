@@ -27,10 +27,10 @@ local UI = {
     HEADER_ROW_GAP = 3,
     STATUS_HEIGHT = 22,
     ICON_SIZE = 14,
-    colWidths = { writ = 180, rep = 36, writPrice = 80, buy = 100, craft = 110, perRep = 120 }, -- 626
+    colWidths = { writ = 190, rep = 36, writPrice = 100, buy = 100, craft = 100, perRep = 100 }, -- 626
     sortKeys = W.WRITS_SORT_KEYS,
-    sortLabels = { writ = "Craftsman's Writ", rep = "Rep", writPrice = "Writ Price", buy = "Fulfill via AH",
-        craft = "Fulfill via Craft", perRep = "Total Cost / Rep" },
+    sortLabels = { writ = "Craftsman's Writ", rep = "Rep", writPrice = "Writ Price", buy = "Fill via AH",
+        craft = "Fill via Craft", perRep = "Total / Rep" },
     sortJustify = { writ = "LEFT", rep = "RIGHT", writPrice = "RIGHT", buy = "RIGHT", craft = "RIGHT",
         perRep = "RIGHT" },
     headerButtons = {},
@@ -271,17 +271,17 @@ local function ShowRowTooltip(row)
     local buyC = both and rd.best ~= "buy" and UI.DIM or 1
     local craftC = both and rd.best ~= "craft" and UI.DIM or 1
     if rd.buy then
-        GameTooltip:AddDoubleLine("Fulfill via AH", MoneyMarked(rd.buy, rd.buyApprox, rd.buyShort),
+        GameTooltip:AddDoubleLine("Fill via AH", MoneyMarked(rd.buy, rd.buyApprox, rd.buyShort),
             buyC, buyC, buyC, buyC, buyC, buyC)
     else
-        AddUnavailableLine("Fulfill via AH")
+        AddUnavailableLine("Fill via AH")
     end
     if rd.craft then
         local who = craftC < 1 and rd.who or CharName(rd.who)
-        GameTooltip:AddDoubleLine("Fulfill via craft on " .. who,
+        GameTooltip:AddDoubleLine("Fill via craft on " .. who,
             MoneyMarked(rd.craft, rd.craftApprox, rd.craftShort), craftC, craftC, craftC, craftC, craftC, craftC)
     else
-        AddUnavailableLine("Fulfill via craft")
+        AddUnavailableLine("Fill via craft")
     end
     if rd.bestCost and rd.writPrice then
         GameTooltip:AddDoubleLine("Total cost", Money(rd.bestCost + rd.writPrice), 1, 0.82, 0, 1, 1, 1)
