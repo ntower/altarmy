@@ -1,5 +1,5 @@
-import { type CSSProperties, Fragment, type ReactNode, type Ref, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Accordion, Alert, Badge, Box, Button, Checkbox, Divider, Group, Loader, NumberInput, Paper, SimpleGrid, Stack, Text, Title, Tooltip, UnstyledButton } from '@mantine/core'
+import { type CSSProperties, Fragment, type ReactNode, type Ref, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Accordion, Alert, Badge, Box, Button, Checkbox, Divider, Group, List, Loader, NumberInput, Paper, SimpleGrid, Slider, Stack, Text, Title, Tooltip, UnstyledButton } from '@mantine/core'
 import { LayoutGroup, animate, motion } from 'motion/react'
 import { useDebouncedValue } from '@mantine/hooks'
 import { z } from 'zod'
@@ -7,6 +7,7 @@ import type { ItemMap, Learn, ProfessionRank, RankResult } from '../api/client'
 import {
   type EvaluateParams,
   type RankParams,
+  type Strategy,
   useDataVersion,
   useProfessionRanks,
   useRank,
@@ -25,9 +26,20 @@ import {
   craftsToReach,
   DEFAULT_REACH_TARGET,
   rangeText,
-  ranksToTrain, runLead, runText, scaleRun, stepsText, tailText } from '../lib/skill'
+  ranksToTrain, runLead, runText, scaleRun, stepsText, STRATEGY_LABELS, tailText } from '../lib/skill'
+import {
+  BARTERING,
+  BARTERING_PERCENT,
+  BARTERING_RANKS,
+  MASTER_CHEF,
+  MASTER_CHEF_PERCENT,
+  MASTER_CHEF_RANKS,
+  WORKING_OVERTIME,
+  WORKING_OVERTIME_PERCENT,
+  WORKING_OVERTIME_RANKS,
+} from '../lib/talents'
 import { CharacterClasses } from '../lib/characterClasses'
-import { IconSwap } from './icons'
+import { IconChevron, IconSwap } from './icons'
 import { ItemLink } from './ItemTooltip'
 import { LearnStep, LearnTooltip } from './LearnTooltip'
 import { SkillChanceChart } from './SkillChanceChart'
@@ -38,8 +50,6 @@ import { PlanViewSwitch, type PlanView } from './SessionDetails'
 import { StepList } from './StepList'
 import classes from './SkillWorkspace.module.css'
 
-/** Options laid out side by side (the API's `SKILL_OPTIONS`): all the overview asks for. */
-const OPTIONS = 4
 /** The runs the chain holds at first (the API's `SKILL_CHAIN`). */
 const CHAIN = 2
 /** How many more runs each Show more asks for. */
@@ -79,22 +89,111 @@ function RunSpread({ result: r, range }: { result: RankResult; range?: boolean }
   )
 }
 
-/** What the Recommended badge weighs, on hover. */
-const RECOMMENDED_TIP =
-  'Reaches the highest skill of these options for the least: fewest patterns of unknown price first, then copper, ' +
-  'counting spare materials for unlucky runs and what each craft is worth to you'
+/** One strategy's card side by side (`StrategyOut`): its climb's first run and the runs after it. */
+type Option = { key: Strategy; run: RankResult; chain: RankResult[] }
 
-/** What the climb a run starts is expected to come to by each profession rank's cap it reaches (those reached
- * already left out): spent in red, earned in green, patterns without a price named apart. It moves with its
- * option's card between the single column and the options side by side (by position: text isn't stretched);
- * `fade`: it fades in as the other options open out. */
-function Milestones({ result, column, fade }: { result: RankResult | undefined; column?: number; fade?: boolean }) {
-  const milestones = result?.milestones ?? []
-  if (!result || !milestones.length) return null
+/** The Legacy talents a climb can be planned with at another rank than the climber's (the API's
+ * `working_overtime`, `bartering`, `master_chef`), each with what a point of it does; Master Chef only for Cooking. */
+const TALENT_SLIDERS = [
+  {
+    spellId: WORKING_OVERTIME,
+    name: 'Working Overtime',
+    maxRank: WORKING_OVERTIME_RANKS,
+    tip: `Increases your chance to gain a skill increase by ${WORKING_OVERTIME_PERCENT}% per talent point`,
+  },
+  {
+    spellId: BARTERING,
+    name: 'Bartering',
+    maxRank: BARTERING_RANKS,
+    tip: `Reduces the gold price of items from all vendors by ${BARTERING_PERCENT}% per talent point`,
+  },
+  {
+    spellId: MASTER_CHEF,
+    name: 'Master Chef',
+    maxRank: MASTER_CHEF_RANKS,
+    tip: `Gives your cooking recipes a ${MASTER_CHEF_PERCENT}% chance per talent point to create an extra result`,
+  },
+] as const
+type TalentRanks = Record<(typeof TALENT_SLIDERS)[number]['spellId'], number>
+
+/** The sliders shown when skilling up `profession`. */
+const slidersFor = (profession: string) =>
+  TALENT_SLIDERS.filter((t) => t.spellId !== MASTER_CHEF || profession.toLowerCase() === 'cooking')
+
+/** The climber's ranks of the talents the sliders set: as uploaded, 0 for one they lack (or a made-up climber). */
+const climberRanks = (climber: Holder): TalentRanks =>
+  Object.fromEntries(
+    TALENT_SLIDERS.map(({ spellId }) => [spellId, climber.talents?.find((t) => t.spellId === spellId)?.rank ?? 0]),
+  ) as TalentRanks
+
+/** A slider per talent the climb is planned with, what a point of it does on hover. */
+function TalentSliders({
+  ranks,
+  profession,
+  onChange,
+}: {
+  ranks: TalentRanks
+  profession: string
+  onChange: (ranks: TalentRanks) => void
+}) {
+  return (
+    <Group justify="center" gap="xl" className={classes.talents} role="group" aria-label="Legacy talents">
+      {slidersFor(profession).map((t) => {
+        const rank = ranks[t.spellId]
+        return (
+          <Stack key={t.spellId} gap={4} className={classes.talent}>
+            <Group justify="space-between" gap="xs">
+              <Tooltip label={t.tip} withArrow>
+                <Text size="sm" fw={500}>
+                  {t.name}
+                </Text>
+              </Tooltip>
+              <Text size="sm" c="dimmed">
+                {rank}/{t.maxRank}
+              </Text>
+            </Group>
+            <Slider
+              min={0}
+              max={t.maxRank}
+              step={1}
+              value={rank}
+              label={null}
+              marks={Array.from({ length: t.maxRank + 1 }, (_, value) => ({ value }))}
+              thumbLabel={t.name}
+              onChange={(value) => onChange({ ...ranks, [t.spellId]: value })}
+            />
+          </Stack>
+        )
+      })}
+    </Group>
+  )
+}
+
+/** Over a strategy's card: its name, with a button opening what it plans for, then what the climb its run starts
+ * is expected to come to by each profession rank's cap it reaches (those reached already left out): spent in red,
+ * earned in green, and the crafts it takes, patterns without a price named apart. It moves with its strategy's
+ * card between the single column and the strategies side by side (by position: text isn't stretched); `fade`: it
+ * fades in as the other strategies open out. */
+function Milestones({
+  result,
+  strategy,
+  column,
+  fade,
+}: {
+  result: RankResult | undefined
+  strategy: Strategy
+  column?: number
+  fade?: boolean
+}) {
+  const [about, setAbout] = useState(false)
+  const aboutId = useId()
+  if (!result) return null
+  const milestones = result.milestones
+  const { name, detail } = STRATEGY_LABELS[strategy]
   return (
     <motion.div
       layout="position"
-      layoutId={`skill-milestones-${result.recipe_id}`}
+      layoutId={`skill-milestones-${strategy}`}
       transition={LAYOUT}
       initial={fade ? { opacity: 0 } : false}
       animate={{ opacity: 1 }}
@@ -103,23 +202,47 @@ function Milestones({ result, column, fade }: { result: RankResult | undefined; 
       style={column ? ({ '--column': column } as CSSProperties) : undefined}
       aria-label={`Cost to reach each rank with ${result.output_name} first`}
     >
-      <Text size="xs" c="dimmed">
-        Estimated cost to reach
-      </Text>
-      {/* skills aligned on the left, amounts on the right; patterns without a price under their row */}
+      <UnstyledButton
+        className={classes.strategyName}
+        aria-expanded={about}
+        aria-controls={aboutId}
+        onClick={() => setAbout((open) => !open)}
+      >
+        <Text fw={600}>{name}</Text>
+        <span className={classes.chevron} data-open={about || undefined}>
+          <IconChevron size={16} />
+        </span>
+      </UnstyledButton>
+      {about && (
+        <List id={aboutId} size="xs" c="dimmed" ta="left" className={classes.strategyAbout}>
+          {detail.map((line) => (
+            <List.Item key={line}>{line}</List.Item>
+          ))}
+        </List>
+      )}
+      {/* skills on the left, amounts and crafts on the right; patterns without a price under their row */}
+      {milestones.length > 0 && (
       <table className={classes.milestoneTable}>
+        <thead>
+          <tr>
+            <th scope="col">Skill</th>
+            <th scope="col">Cost</th>
+            <th scope="col">Crafts</th>
+          </tr>
+        </thead>
         <tbody>
           {milestones.map((m) => (
             <Fragment key={m.skill}>
               <tr>
-                <th scope="row">{m.skill} skill:</th>
+                <th scope="row">{m.skill}</th>
                 <td>
                   <Earned copper={-m.cost} minus />
                 </td>
+                <td>~{m.crafts}</td>
               </tr>
               {m.unknown > 0 && (
                 <tr>
-                  <td colSpan={2} className={classes.milestoneNote}>
+                  <td colSpan={3} className={classes.milestoneNote}>
                     + {m.unknown} pattern{m.unknown === 1 ? '' : 's'} of unknown price
                   </td>
                 </tr>
@@ -128,6 +251,7 @@ function Milestones({ result, column, fade }: { result: RankResult | undefined; 
           ))}
         </tbody>
       </table>
+      )}
     </motion.div>
   )
 }
@@ -203,7 +327,6 @@ function OptionCard({
   action = 'Choose',
   layoutId,
   article,
-  recommended,
 }: {
   result: RankResult
   items: ItemMap
@@ -215,8 +338,6 @@ function OptionCard({
   action?: string
   layoutId?: string
   article?: boolean
-  /** the server's best among the options side by side, reaching as high as any: badged Recommended */
-  recommended?: boolean
 }) {
   const body = (
           <Stack gap={4}>
@@ -224,13 +345,6 @@ function OptionCard({
               <Text fw={600} size="sm">
                 <RecipeName result={r} items={items} />
               </Text>
-              {recommended && (
-                <Tooltip label={RECOMMENDED_TIP} withArrow multiline w={260}>
-                  <Badge size="sm" variant="light" color="green" style={{ flexShrink: 0 }}>
-                    Recommended
-                  </Badge>
-                </Tooltip>
-              )}
             </Group>
             <Text size="lg" fw={700}>
               <NetPerPoint result={r} />
@@ -515,49 +629,77 @@ export function SkillWorkspace({
   // The price version the list was made at: it moves only on Refresh.
   const [frozen, setFrozen] = useState<number | undefined>(undefined)
   if (frozen === undefined && status) setFrozen(livePrices)
-  const params = useMemo<RankParams>(() => ({ ...filters, top: OPTIONS }), [filters])
+  // The talent ranks the climbs are planned with: the climber's own until the user moves a slider (again theirs for
+  // another climber); planned once the slider settles.
+  const [talents, setTalents] = useState({ who: climber.name, ranks: climberRanks(climber) })
+  if (talents.who !== climber.name) setTalents({ who: climber.name, ranks: climberRanks(climber) })
+  const [ranks] = useDebouncedValue(talents.ranks, 300)
+  const overtimeRank = ranks[WORKING_OVERTIME]
+  const barteringRank = ranks[BARTERING]
+  // Master Chef only counts for Cooking: not sent otherwise
+  const chefRank = profession.toLowerCase() === 'cooking' ? ranks[MASTER_CHEF] : undefined
+  const params = useMemo<RankParams>(
+    () => ({
+      ...filters,
+      workingOvertime: overtimeRank,
+      bartering: barteringRank,
+      ...(chefRank !== undefined ? { masterChef: chefRank } : {}),
+      top: 1,
+    }),
+    [filters, overtimeRank, barteringRank, chefRank],
+  )
   const rank = useRank(params, { priceVersion: frozen })
   const version = useDataVersion()
   // The card opened out in the single column, at most one: 0 the run to craft now, i + 1 the chain's i-th run;
   // null: none.
   const [openAt, setOpenAt] = useState<number | null>(null)
   const results = rank.data?.results ?? []
-  // The options side by side: the runs starting the cheapest climbs, each what picking it gives, else as listed;
-  // in the server's order (a climb that ends lower may cost less, but isn't the better one).
-  const options = rank.data?.options?.length ? rank.data.options : results.slice(0, OPTIONS)
+  // The strategies side by side, each what picking it gives, in the server's order (the recommended one first);
+  // without them, the recommended one as ranked.
+  const options = useMemo<Option[]>(() => {
+    const strategies = rank.data?.strategies ?? []
+    if (strategies.length)
+      return strategies.map((o) => ({ key: o.key, run: o.run, chain: o.chain }))
+    const first = rank.data?.results[0]
+    return first ? [{ key: 'recommended', run: first, chain: rank.data?.chain ?? NO_RUNS }] : []
+  }, [rank.data])
   const bestId = results[0]?.recipe_id
-  // the highest skill any option's climb reaches: Recommended only goes to the best if it gets there
-  const highest = Math.max(0, ...options.map((r) => r.climb_end))
-  // The option to craft now: the best unless the user picked another of the first few (null: the best).
-  const [pickedId, setPickedId] = useState<number | null>(null)
+  // The strategy to craft now: the recommended one unless the user picked another (null: the recommended one).
+  const [pickedKey, setPickedKey] = useState<Strategy | null>(null)
   const nowIndex = Math.max(
     0,
-    options.findIndex((r) => r.recipe_id === (pickedId ?? bestId)),
+    options.findIndex((o) => o.key === (pickedKey ?? 'recommended')),
   )
-  const ranked = options[nowIndex]
-  const picked = ranked !== undefined && ranked.recipe_id !== bestId
+  const nowOption = options[nowIndex]
+  const nowKey: Strategy = nowOption?.key ?? 'recommended'
+  const ranked = nowOption?.run
+  const picked = nowKey !== 'recommended'
   // Whether the first few options are laid out side by side, the user choosing among them.
   const [expanded, setExpanded] = useState(false)
   // How many runs the chain holds: CHAIN, and CHAIN_MORE more with each Show more (back to CHAIN on a pick).
   const [chainLength, setChainLength] = useState(CHAIN)
   const longer = chainLength > CHAIN
-  // A picked option's run and the rest of its climb (the ranking itself is the server's cached one); the best's
-  // come with the list, unless more of them are shown.
+  // A picked strategy's run and the rest of its climb, ranked under it; the recommended one's come with the list,
+  // unless more of them are shown.
   const chainRank = useRank(
-    { ...params, top: 1, chainFrom: ranked?.recipe_id, chainLength: longer ? chainLength : undefined },
+    {
+      ...params,
+      ...(picked ? { strategy: nowKey } : {}),
+      ...(longer ? { chainLength } : {}),
+    },
     { priceVersion: frozen, enabled: picked || longer },
   )
-  const restart = chainRank.data?.chain_start
-  const now = picked && restart?.recipe_id === ranked?.recipe_id ? restart : ranked
-  // The chain's layout id, named after the run it follows: another run's chain never moves into its place
-  const chainId = `skill-chain-${now?.recipe_id ?? 0}`
+  const restart = picked && !chainRank.isPlaceholderData ? chainRank.data?.results[0] : undefined
+  const now = restart?.recipe_id === ranked?.recipe_id ? restart : ranked
+  // The chain's layout id, named after the strategy it follows: another's chain never moves into its place
+  const chainId = `skill-chain-${nowKey}`
   const chainData = picked || longer ? chainRank.data : rank.data
   // The chain on its way: a picked option's (the one shown before it stays, muted) or a longer one.
   const chainPending = (picked || longer) && (chainRank.isPlaceholderData || !chainRank.data)
-  // A picked option's chain on its way: its own as it came with the list meanwhile, never the one shown before
+  // A picked strategy's chain on its way: its own as it came with the list meanwhile, never the one shown before
   const current =
     picked && chainPending && !longer
-      ? (rank.data?.option_chains?.[options.indexOf(ranked)] ?? NO_RUNS)
+      ? (nowOption?.chain ?? NO_RUNS)
       : (chainData?.chain ?? rank.data?.chain ?? NO_RUNS)
   // The chain as last settled: what stays shown while a longer one is on its way.
   const [settled, setSettled] = useState(current)
@@ -583,26 +725,29 @@ export function SkillWorkspace({
     arcaneSalvager: filters.arcaneSalvager,
     runs: filters.runs,
     version,
-    ...(filters.effort !== undefined ? { effort: filters.effort } : {}),
+    strategy: nowKey,
+    workingOvertime: overtimeRank,
+    bartering: barteringRank,
+    ...(chefRank !== undefined ? { masterChef: chefRank } : {}),
     ...(filters.climberSkill !== undefined ? { climberSkill: filters.climberSkill } : {}),
   }
+  // a run of the chain, planned again as the chain has it: at the skill it starts from, in the climb of the run
+  // crafted now; any run under the strategy it was planned by
   const evaluate: EvaluateParams =
-    openAt && now
-      ? // a run of the chain, planned again as the chain has it: at the skill it starts from, in the climb of the run
-        // crafted now (which never comes back to what that one leaves out)
-        { ...planParams, climbWithout: now.climb_without, chain: { from: now.recipe_id, at: openAt } }
-      : // an option side by side never comes back to those before it: planned again the same way
-        { ...planParams, climbWithout: open?.climb_without }
+    openAt && now ? { ...planParams, chain: { from: now.recipe_id, at: openAt } } : planParams
   // The crafts the checklist buys for: what the user typed, else enough to reach the run's target with the chance
   // the Options ask for; planned again (debounced) when that isn't the ranked run's own count.
   const [typed, setTyped] = useState<number | null>(null)
   const buyCount = open ? (typed ?? craftsToReach(open, reachTarget)) : 0
   const [settledCount] = useDebouncedValue(buyCount, 400)
-  // Each option's plan for the crafts it opens with, fetched ahead: opening one finds it ready.
+  // Each strategy's plan for the crafts it opens with, fetched ahead: opening one finds it ready.
   usePrefetchSessionPlans(
-    [...options, ...(now && now !== ranked ? [now] : [])].flatMap((r) => {
+    [
+      ...options.map((o) => ({ r: o.run, strategy: o.key })),
+      ...(now && now !== ranked ? [{ r: now, strategy: nowKey }] : []),
+    ].flatMap(({ r, strategy }) => {
       const copies = craftsToReach(r, reachTarget)
-      return copies > r.crafts ? [{ recipeId: r.recipe_id, copies }] : []
+      return copies > r.crafts ? [{ recipeId: r.recipe_id, copies, strategy }] : []
     }),
     planParams,
   )
@@ -724,8 +869,8 @@ export function SkillWorkspace({
 
   // Another run to craft now: its chain fades in under it, the one shown before fading out where it was (a copy,
   // laid over the options, since what it hung under is gone).
-  const leave = (id: number) => {
-    if (id === now?.recipe_id) return
+  const leave = (key: Strategy) => {
+    if (key === nowKey) return
     setFreshChain(true)
     const el = chainRef.current
     const area = areaRef.current
@@ -743,25 +888,25 @@ export function SkillWorkspace({
       width: box.width,
     })
   }
-  // Picking one of the options side by side makes it the one to craft now, the others folding away around it.
-  const pick = (id: number) => {
-    leave(id)
-    setPickedId(id === bestId ? null : id)
+  // Picking one of the strategies side by side makes it the one to craft now, the others folding away around it.
+  const pick = (key: Strategy) => {
+    leave(key)
+    setPickedKey(key === 'recommended' ? null : key)
     setChainLength(CHAIN)
     setExpanded(false)
   }
   // Back to the recommended climb, when another run to craft now was picked: the best and its own chain.
   const reset = () => {
-    if (bestId !== undefined) leave(bestId)
+    leave('recommended')
     choose(null)
-    setPickedId(null)
+    setPickedKey(null)
     setChainLength(CHAIN)
     setExpanded(false)
   }
   // The run opened out, in place of the card it grows out of
   const panel = open && (
     <motion.div
-      layoutId={openAt === 0 ? `skill-option-${open.recipe_id}` : `${chainId}-run-${(openAt ?? 1) - 1}`}
+      layoutId={openAt === 0 ? `skill-option-${nowKey}` : `${chainId}-run-${(openAt ?? 1) - 1}`}
       transition={LAYOUT}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -931,8 +1076,6 @@ export function SkillWorkspace({
       opened={panel && openAt !== null && openAt > 0 ? { index: openAt - 1, panel } : undefined}
     />
   )
-  // Each option's chain as it came with the list, by recipe
-  const optionChains = new Map(options.map((r, i) => [r.recipe_id, rank.data?.option_chains?.[i] ?? NO_RUNS]))
 
   return (
     <CharacterClasses.Provider value={rank.data.classes}>
@@ -941,16 +1084,18 @@ export function SkillWorkspace({
         {refresh}
         <LayoutGroup>
           <Stack ref={areaRef} gap="xs" component="section" aria-label="Your options" pos="relative">
-            <div className={classes.heading}>
-              <Text size="lg" fw={600} ta="center" className={classes.title}>
-                What to craft next
-              </Text>
-              {picked && (
+            {picked && (
+              <div className={classes.heading}>
                 <Button size="compact-sm" variant="light" className={classes.reset} onClick={reset}>
                   Reset to recommended
                 </Button>
-              )}
-            </div>
+              </div>
+            )}
+            <TalentSliders
+              ranks={talents.ranks}
+              profession={profession}
+              onChange={(ranks) => setTalents({ who: climber.name, ranks })}
+            />
             {expanded ? (
               <div
                 className={classes.options}
@@ -961,30 +1106,32 @@ export function SkillWorkspace({
                   } as CSSProperties
                 }
               >
-                {options.map((r, i) => (
-                  <Fragment key={r.recipe_id}>
+                {options.map(({ key, run: r, chain: after }, i) => (
+                  <Fragment key={key}>
                     <Milestones
-                      result={r.recipe_id === now?.recipe_id ? now : r}
+                      result={key === nowKey && now ? now : r}
+                      strategy={key}
                       column={i + 1}
-                      fade={r.recipe_id !== now?.recipe_id}
+                      fade={key !== nowKey}
                     />
                     <div className={classes.option} style={{ '--column': i + 1 } as CSSProperties}>
                       <OptionCard
-                        result={r}
+                        result={key === nowKey && now ? now : r}
                         items={items}
                         learn={learn[r.recipe_id]}
-                        fade={r.recipe_id !== now?.recipe_id}
+                        fade={key !== nowKey}
                         lit
-                        recommended={r.recipe_id === bestId && r.climb_end >= highest}
-                        onChoose={() => pick(r.recipe_id)}
+                        layoutId={`skill-option-${key}`}
+                        onChoose={() => pick(key)}
+                        action={`Choose ${STRATEGY_LABELS[key].name}:`}
                       />
                     </div>
-                    {/* every option's chain under it, muted until one is picked */}
-                    {r.recipe_id === now?.recipe_id ? (
+                    {/* every strategy's chain under it, muted until one is picked */}
+                    {key === nowKey ? (
                       chainView
                     ) : (
                       <Chain
-                        runs={optionChains.get(r.recipe_id) ?? NO_RUNS}
+                        runs={after}
                         start={r.stop_skill}
                         items={items}
                         learn={learn}
@@ -1001,23 +1148,7 @@ export function SkillWorkspace({
             ) : (
               now && (
                 <div className={classes.single}>
-                  <Milestones result={now} />
-                  {openAt === 0 && panel ? (
-                    <div className={classes.nowOpen}>{panel}</div>
-                  ) : (
-                    <div className={classes.now}>
-                      <Trained training={training} from={climber.rank} to={now.stop_skill} first>
-                        <OptionCard
-                          result={now}
-                          items={items}
-                          learn={learn[now.recipe_id]}
-                          lit
-                          grow
-                          onChoose={() => choose(0)}
-                        />
-                      </Trained>
-                    </div>
-                  )}
+                  <Milestones result={now} strategy={nowKey} />
                   {options.length > 1 && openAt !== 0 && (
                     <Button
                       variant="subtle"
@@ -1030,8 +1161,25 @@ export function SkillWorkspace({
                         setExpanded(true)
                       }}
                     >
-                      Other options ({options.length - 1})
+                      Compare strategies
                     </Button>
+                  )}
+                  {openAt === 0 && panel ? (
+                    <div className={classes.nowOpen}>{panel}</div>
+                  ) : (
+                    <div className={classes.now}>
+                      <Trained training={training} from={climber.rank} to={now.stop_skill} first>
+                        <OptionCard
+                          result={now}
+                          items={items}
+                          learn={learn[now.recipe_id]}
+                          lit
+                          grow
+                          layoutId={`skill-option-${nowKey}`}
+                          onChoose={() => choose(0)}
+                        />
+                      </Trained>
+                    </div>
                   )}
                   {chainView}
                 </div>

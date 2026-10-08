@@ -3,10 +3,12 @@
 /** Working Overtime (WoW: Forever's Legacy talent): a better chance of a skill point from every craft. */
 export const WORKING_OVERTIME = 1225451
 export const WORKING_OVERTIME_PERCENT = 4
+export const WORKING_OVERTIME_RANKS = 5
 
 /** Master Chef (WoW: Forever's Legacy talent): a chance of an extra result from Cooking, per rank. */
 export const MASTER_CHEF = 1225457
 export const MASTER_CHEF_PERCENT = 10
+export const MASTER_CHEF_RANKS = 5
 
 /** A Legacy talent a character has that matters to their crafting, as the skill workspace names it. */
 export type CraftingTalent = { spellId: number; name: string; rank: number; maxRank: number }

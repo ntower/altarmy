@@ -1,10 +1,35 @@
-import type { FlowNode, ProfessionRank, RankResult } from '../api/client'
+import type { FlowNode, ProfessionRank, RankResult, StrategyOut } from '../api/client'
 import { formatCoords } from './time'
 
 /*
  * Skilling up: what a skill point costs, and how far a run of a recipe goes (the server's `runs`: the first run of
  * the cheapest climb up the profession that starts with the recipe, until the climb goes on with another).
  */
+
+/** The skill workspace's strategy cards (the server's `STRATEGIES`): each one's name and what it plans for. */
+export const STRATEGY_LABELS: Record<StrategyOut['key'], { name: string; detail: string[] }> = {
+  recommended: {
+    name: 'Recommended',
+    detail: [
+      'Uses recipes from both the trainer and from patterns you can buy',
+      'Avoids grinding 50+ crafts on the last few skill points of a near-trivial recipe',
+    ],
+  },
+  cheapest: {
+    name: 'Cheapest',
+    detail: [
+      'Uses recipes from both the trainer and from patterns you can buy',
+      'Always pick the cheapest option, even if it means grinding a near-trivial recipe',
+    ],
+  },
+  no_patterns: {
+    name: 'Trainer only',
+    detail: [
+      'Exclusively use recipes taught by trainers',
+      'Avoids grinding 50+ crafts on the last few skill points of a near-trivial recipe',
+    ],
+  },
+}
 
 /** What an expected skill point costs in copper (negative when the run earns gold); null when it gives none. */
 export const perPoint = (r: Pick<RankResult, 'profit' | 'skill_ups'>): number | null =>
@@ -222,7 +247,7 @@ export function scaleRun<T extends Pick<RankResult, 'crafts' | 'steps' | 'tree'>
   return {
     ...r,
     crafts,
-    steps: r.steps.map((s) => ({ ...s, quantity: up(s.quantity, f), value: Math.round(s.value * f) })),
+    steps: r.steps.map((s) => ({ ...s, quantity: up(s.quantity, f), value: Math.round(s.value * f), bonus: s.bonus * f })),
     tree: scaleNode(r.tree, f),
   }
 }

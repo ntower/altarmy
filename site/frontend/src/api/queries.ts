@@ -5,6 +5,7 @@ import { useCallback, useEffect } from 'react'
 import {
   call,
   client,
+  type StrategyOut,
   type Evaluation,
   type ProfessionRank,
   type Selection,
@@ -124,20 +125,24 @@ export type RankParams = {
   runs: boolean
   /** items the user gathers themselves: had for what selling them would make, instead of bought */
   gathered?: number[]
-  /** skilling up a run: the recipe whose run `chain` follows; unset for the first result's */
-  chainFrom?: number
   /** skilling up a run: the runs `chain` may hold; unset for the API's default (`CHAIN`) */
   chainLength?: number
   /** skilling up a character nobody uploaded: the one name in `skillCrafters` is them, with the one profession in
    * `professions` at this skill (knowing what comes with it and what its trainers teach up to there) */
   climberSkill?: number
-  /** skilling up: how a climb weighs crafts against copper (the API's `CRAFT_VALUES`); unset: balanced */
-  effort?: Effort
+  /** skilling up: how the climb is planned (the skill workspace's strategy cards); unset: recommended */
+  strategy?: Strategy
+  /** skilling up one character: plan as if they had Working Overtime and Bartering at these ranks (unset: as
+   * uploaded) */
+  workingOvertime?: number
+  bartering?: number
+  /** skilling up Cooking: as if they had Master Chef at this rank */
+  masterChef?: number
   top: number
 }
 
-/** The skill Options' Plan for: the least gold, a balance, or fewer crafts for a little more gold. */
-export type Effort = 'cheapest' | 'balanced' | 'fewest'
+/** The skill workspace's strategies: the recommended climb, the cheapest in gold, or one without patterns. */
+export type Strategy = StrategyOut['key']
 
 export type RankSort =
   | 'profit'
@@ -202,10 +207,12 @@ export function useRank(
               order: params.order === 'asc' && (params.sort === 'safe' || params.sort === 'ah') ? 'asc' : undefined,
               runs: params.runs || undefined,
               gathered: params.gathered?.length ? params.gathered : undefined,
-              chain_from: params.chainFrom,
               chain_length: params.chainLength,
               climber_skill: params.climberSkill,
-              effort: params.effort,
+              strategy: params.strategy === 'recommended' ? undefined : params.strategy,
+              working_overtime: params.workingOvertime,
+              bartering: params.bartering,
+              master_chef: params.masterChef,
               top: params.top,
               price_version: priceVersion,
             },
@@ -229,15 +236,16 @@ export type EvaluateParams = Pick<
   | 'exits'
   | 'arcaneSalvager'
   | 'climberSkill'
-  | 'effort'
+  | 'strategy'
+  | 'workingOvertime'
+  | 'bartering'
+  | 'masterChef'
 > & {
   runs?: boolean
   gathered?: number[]
   version?: string
-  /** with `runs`: the recipes the run's climb never crafts (its `climb_without`), when no `copies` are planned */
-  climbWithout?: number[]
-  /** with `runs`: the recipe is the `at`-th run of the chain after `from`'s run (`climbWithout` then being that
-   * run's), planned at the skill it starts from */
+  /** with `runs`: the recipe is the `at`-th run of the chain after `from`'s run (the first under `strategy`),
+   * planned at the skill it starts from */
   chain?: { from: number; at: number }
 }
 
@@ -247,13 +255,13 @@ export type EvaluationState = { data?: Evaluation; isFetching: boolean; error: E
  * previous evaluation stays in `data`. */
 export function useEvaluations(
   choices: Readonly<Record<number, Choices>>,
-  { unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, runs, gathered, version, climberSkill, effort }: EvaluateParams,
+  { unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, runs, gathered, version, climberSkill, strategy }: EvaluateParams,
 ): Readonly<Record<number, EvaluationState>> {
   const ids = Object.keys(choices).map(Number)
   const priceVersion = usePriceVersion()
   return useQueries({
     queries: ids.map((id) => ({
-      queryKey: ['evaluate', GAME_VERSION, version, id, unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, runs, gathered, choices[id], climberSkill ?? null, effort ?? null],
+      queryKey: ['evaluate', GAME_VERSION, version, id, unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, runs, gathered, choices[id], climberSkill ?? null, strategy ?? null],
       queryFn: () =>
         call(
           client.POST('/api/evaluate', {
@@ -270,10 +278,9 @@ export function useEvaluations(
               runs: runs ?? false,
               gathered: gathered ?? [],
               choices: choices[id] ?? {},
-              climb_without: [], // the results table's rows: none left out
               price_version: priceVersion,
               climber_skill: climberSkill,
-              effort: effort ?? 'balanced',
+              strategy: strategy ?? 'recommended',
             },
           }),
         ),
@@ -294,19 +301,16 @@ export function useEvaluations(
  * until they move: never stale. */
 function sessionPlanQuery(
   recipeId: number,
-  { unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, runs, gathered, version, climbWithout, chain, climberSkill, effort }: EvaluateParams,
+  { unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, runs, gathered, version, chain, climberSkill, strategy, workingOvertime, bartering, masterChef }: EvaluateParams,
   choices: Choices | undefined,
   copies: number | null,
   city: string | null,
   crafter: string | null,
   priceVersion: number | undefined,
 ) {
-  // a run planned for some copies is those crafts whatever its climb leaves out; a chain's run is found in the climb
-  // of the run it follows, whatever the copies
-  const without = runs && (copies === null || chain) ? (climbWithout ?? []) : []
   return {
     // under 'evaluate', so whatever re-costs plans (time settings, AH blocks) re-plans sessions too
-    queryKey: ['evaluate', GAME_VERSION, version, recipeId, unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, runs, gathered, choices ?? {}, 'session', copies, city, crafter, without, chain ?? null, climberSkill ?? null, effort ?? null],
+    queryKey: ['evaluate', GAME_VERSION, version, recipeId, unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, runs, gathered, choices ?? {}, 'session', copies, city, crafter, chain ?? null, climberSkill ?? null, strategy ?? null, workingOvertime ?? null, bartering ?? null, masterChef ?? null],
     queryFn: () =>
       call(
         client.POST('/api/evaluate', {
@@ -324,14 +328,16 @@ function sessionPlanQuery(
             gathered: gathered ?? [],
             choices: choices ?? {},
             copies: copies ?? undefined,
-            climb_without: without,
             chain_from: chain?.from,
             chain_at: chain?.at,
             city: city ?? undefined,
             crafter: crafter ?? undefined,
             price_version: priceVersion,
             climber_skill: climberSkill,
-            effort: effort ?? 'balanced',
+            strategy: strategy ?? 'recommended',
+            working_overtime: workingOvertime,
+            bartering,
+            master_chef: masterChef,
           },
         }),
       ),
@@ -359,15 +365,24 @@ export function useSessionPlan(
 }
 
 /** Fetches ahead the session plans of these recipes for these many crafts each (`sessionPlanQuery`, no choices,
- * city or crafter), so opening one finds its plan in the cache. */
-export function usePrefetchSessionPlans(plans: readonly { recipeId: number; copies: number }[], params: EvaluateParams) {
+ * city or crafter), each under its own `strategy` if given, so opening one finds its plan in the cache. */
+export function usePrefetchSessionPlans(
+  plans: readonly { recipeId: number; copies: number; strategy?: Strategy }[],
+  params: EvaluateParams,
+) {
   const queryClient = useQueryClient()
   const priceVersion = usePriceVersion()
   const wanted = JSON.stringify(plans)
   const paramsKey = JSON.stringify(params)
   useEffect(() => {
-    for (const { recipeId, copies } of JSON.parse(wanted) as { recipeId: number; copies: number }[]) {
-      void queryClient.prefetchQuery(sessionPlanQuery(recipeId, JSON.parse(paramsKey) as EvaluateParams, undefined, copies, null, null, priceVersion))
+    const base = JSON.parse(paramsKey) as EvaluateParams
+    for (const { recipeId, copies, strategy } of JSON.parse(wanted) as {
+      recipeId: number
+      copies: number
+      strategy?: Strategy
+    }[]) {
+      const params = strategy === undefined ? base : { ...base, strategy }
+      void queryClient.prefetchQuery(sessionPlanQuery(recipeId, params, undefined, copies, null, null, priceVersion))
     }
   }, [queryClient, wanted, paramsKey, priceVersion])
 }

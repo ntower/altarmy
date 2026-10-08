@@ -466,7 +466,7 @@ describe('SearchTab', () => {
     }
     const TRY = '/profit/skill/classic-beta-pve-horde/tailoring/45'
 
-    it('asks which profession, every one that can be skilled up, then what skill the character has in it', async () => {
+    it('asks which profession, every one that can be skilled up, and plans from skill 1 without asking', async () => {
       at('/profit/skill')
       const fetch = mockApi(nobody)
       renderWithProviders(<SearchTab />)
@@ -475,17 +475,14 @@ describe('SearchTab', () => {
       await waitFor(() => expect(answers('Which profession?')).toEqual(['Tailoring', 'Cooking']))
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
       await userEvent.click(screen.getByRole('button', { name: 'Tailoring' }))
-      const skill = await screen.findByRole('textbox', { name: 'What is your Tailoring skill now?' })
-      expect(skill).toHaveValue('1')
-      await userEvent.clear(skill)
-      await userEvent.type(skill, '45')
-      await userEvent.click(screen.getByRole('button', { name: 'Done' }))
-      expect(window.location.pathname).toBe(TRY)
-      // ranked for a made-up character with Tailoring at 45
+      // nothing asked: straight to the climb from 1, the skill to change on its page
+      expect(screen.queryByRole('textbox', { name: /skill now/ })).not.toBeInTheDocument()
+      expect(window.location.pathname).toBe('/profit/skill/classic-beta-pve-horde/tailoring/1')
+      // ranked for a made-up character with Tailoring at 1
       await waitFor(() => expect(urls(fetch, '/api/rank')).toHaveLength(1))
       const [rank] = urls(fetch, '/api/rank')
       expect(rank?.searchParams.getAll('skill_crafters')).toEqual(['Your character'])
-      expect(rank?.searchParams.get('climber_skill')).toBe('45')
+      expect(rank?.searchParams.get('climber_skill')).toBe('1')
       expect(rank?.searchParams.getAll('professions')).toEqual(['Tailoring'])
       expect(rank?.searchParams.get('runs')).toBe('true')
       expect(rank?.searchParams.get('unlearned')).toBe('train')
@@ -493,12 +490,12 @@ describe('SearchTab', () => {
       expect(JSON.parse(localStorage.getItem('altarmy.setup.g1') ?? '')).toEqual({
         aim: 'skill',
         profession: 'Tailoring',
-        climberSkill: 45,
+        climberSkill: 1,
       })
       // the climber's card: the profession and skill to change, what is assumed, and the upload
       const card = screen.getByRole('region', { name: 'Skilling up' })
       expect(within(card).getByRole('combobox', { name: 'Profession' })).toHaveValue('Tailoring')
-      expect(within(card).getByRole('textbox', { name: 'Current skill' })).toHaveValue('45')
+      expect(within(card).getByRole('textbox', { name: 'Current skill' })).toHaveValue('1')
       expect(within(card).getByText(/Doing our best with no character data/)).toBeInTheDocument()
       expect(within(card).getByRole('button', { name: 'Upload your characters' })).toBeInTheDocument()
       expect(screen.queryByText(/Browsing every recipe/)).not.toBeInTheDocument()
@@ -1082,7 +1079,7 @@ describe('SearchTab', () => {
     expect(screen.queryByRole('slider')).not.toBeInTheDocument() // only what can be trained now
   })
 
-  it('asks what to plan for: the least gold, a balance, or fewer crafts', async () => {
+  it('no longer asks what to plan for: the strategies side by side say', async () => {
     at(TAILOR)
     const fetch = mockApi({
       '/api/status': status(),
@@ -1091,15 +1088,9 @@ describe('SearchTab', () => {
     })
     renderWithProviders(<SearchTab />)
     await openOptions()
-    const plan = await screen.findByRole('radiogroup', { name: 'Plan for' })
-    expect(within(plan).getByRole('radio', { name: 'Balanced' })).toBeChecked()
-    expect(screen.getByText(/Counts each craft as worth 50 copper/)).toBeInTheDocument()
     await waitFor(() => expect(urls(fetch, '/api/rank')).toHaveLength(1))
-    expect(urls(fetch, '/api/rank')[0]?.searchParams.get('effort')).toBe('balanced')
-    await userEvent.click(within(plan).getByRole('radio', { name: 'Fewest crafts' }))
-    expect(localStorage.getItem('altarmy.search.skill.effort')).toBe('"fewest"')
-    expect(screen.getByText(/Counts each craft as worth 2 silver/)).toBeInTheDocument()
-    await waitFor(() => expect(urls(fetch, '/api/rank').at(-1)?.searchParams.get('effort')).toBe('fewest'))
+    expect(screen.queryByRole('radiogroup', { name: 'Plan for' })).not.toBeInTheDocument()
+    expect(urls(fetch, '/api/rank')[0]?.searchParams.get('effort')).toBeNull()
   })
 
   it('asks how sure the materials bought for a run should be to reach its target, saying what that means', async () => {

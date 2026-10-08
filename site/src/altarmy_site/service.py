@@ -15,7 +15,7 @@ from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
 from concurrent.futures import Future
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Literal, TypeVar
+from typing import Literal, TypeVar, cast
 
 from sqlalchemy import Connection
 
@@ -221,18 +221,25 @@ class RankCache:
     def __init__(self, size: int = RANK_CACHE_SIZE) -> None:
         self.size = size
         self._lock = threading.Lock()
-        self._entries: OrderedDict[tuple[Hashable, Hashable], list[Result]] = OrderedDict()
+        self._entries: OrderedDict[tuple[Hashable, Hashable], object] = OrderedDict()
 
     def get(self, key: Hashable, token: Hashable) -> list[Result] | None:
+        return cast("list[Result] | None", self.get_value(key, token))
+
+    def put(self, key: Hashable, token: Hashable, results: list[Result]) -> None:
+        self.put_value(key, token, results)
+
+    def get_value(self, key: Hashable, token: Hashable) -> object | None:
+        """Whatever else is kept beside the rankings (a climb's what-ifs), as `get`."""
         with self._lock:
             found = self._entries.get((key, token))
             if found is not None:
                 self._entries.move_to_end((key, token))
             return found
 
-    def put(self, key: Hashable, token: Hashable, results: list[Result]) -> None:
+    def put_value(self, key: Hashable, token: Hashable, value: object) -> None:
         with self._lock:
-            self._entries[(key, token)] = results
+            self._entries[(key, token)] = value
             self._entries.move_to_end((key, token))
             while len(self._entries) > self.size:
                 self._entries.popitem(last=False)
@@ -513,7 +520,7 @@ def _evaluate_in(
     return _pick_city(found, same or len(found) == len(markets), time.fastest)
 
 
-def climb_options(
+def _climb_markets(
     base: Market,
     chars: Sequence[Character],
     unlearned: Learning | Unlearned,
@@ -524,23 +531,14 @@ def climb_options(
     skill_crafters: frozenset[str],
     arcane_salvager: bool,
     skill_run: SkillRuns,
-    first: Result,
-    count: int,
-    gathered: Mapping[int, int] | None = None,
-    learn_costs: Mapping[int, float | None] | None = None,
-) -> list[Result]:
-    """The skill workspace's `count` options side by side: `first`, the best run of a `search` with
-    `skill_run`, then each the first run of the cheapest climb that never crafts the options before it
-    (`SkillRuns.banned`, `Market.climb_start`): someone looking past the best option doesn't want it, so the
-    second is the best climb without the first, the third the best without either. Fewer when no climb
-    without them gives a point. Planned on one set of markets, as `evaluate` plans a run; with cities that
-    charge the characters differently, the climb is chosen in the first group's (`_models`)."""
-    out = [first]
-    if count <= 1:
-        return out
+    skill_name: str,
+    gathered: Mapping[int, int] | None,
+    learn_costs: Mapping[int, float | None] | None,
+) -> tuple[_Markets, frozenset[int], TimeModel | None]:
+    """The markets a climb up `skill_name` is planned on, as `evaluate` plans a run: one per city group
+    (`_models`), built when first asked for, with the items priced differently and the session's model."""
     if time is not None:
         time = session_model(time, (), None)
-    skill_name = first.recipe.skill_name
     models, differ = _models(base, chars, time)
     later = later_recipes(
         base,
@@ -574,14 +572,69 @@ def climb_options(
             scope=skill_name,
         ),
     )
-    while len(out) < count:
-        runs = replace(skill_run, banned=skill_run.banned | {p.recipe.id for p in out})
-        start = markets[0].climb_start(skill_name, runs)
-        found = _evaluate_in(markets, differ, time, start.id, {}, 1, runs) if start is not None else None
-        if found is None or not found.skill_ups:
-            break
-        out.append(found)
-    return out
+    return markets, differ, time
+
+
+def strategy_start(
+    base: Market,
+    chars: Sequence[Character],
+    unlearned: Learning | Unlearned,
+    exits: frozenset[str],
+    no_ah: frozenset[int],
+    include_trivial: bool,
+    time: TimeModel | None,
+    skill_crafters: frozenset[str],
+    arcane_salvager: bool,
+    skill_run: SkillRuns,
+    skill_name: str,
+    gathered: Mapping[int, int] | None = None,
+    learn_costs: Mapping[int, float | None] | None = None,
+) -> Result | None:
+    """The first run of the cheapest climb up `skill_name` for the one character skilled up
+    (`Market.climb_plan`), planned as `evaluate` plans a run: a skill workspace strategy's card, without
+    ranking every recipe as `search` does. With cities that charge the characters differently, the climb is
+    chosen in the first group's (`_models`). None when nothing gives them a point."""
+    markets, differ, time = _climb_markets(
+        base,
+        chars,
+        unlearned,
+        exits,
+        no_ah,
+        include_trivial,
+        time,
+        skill_crafters,
+        arcane_salvager,
+        skill_run,
+        skill_name,
+        gathered,
+        learn_costs,
+    )
+    plan = markets[0].climb_plan(skill_name, skill_run)
+    start = plan.runs[0].recipe if plan is not None else None
+    if start is None:
+        return None
+    found = _evaluate_in(markets, differ, time, start.id, {}, 1, skill_run)
+    return found if found is not None and found.skill_ups else None
+
+
+def with_talent(chars: Sequence[Character], name: str, spell_id: int, rank: int) -> list[Character]:
+    """`chars` with the character called `name` at `rank` of the Legacy talent `spell_id` (the skill
+    workspace's sliders); rank 0 leaves it out, as the addon does."""
+    return [
+        replace(
+            c,
+            talents=tuple(
+                sorted(
+                    {**dict(c.talents), spell_id: rank}.items()
+                    if rank
+                    else ((s, r) for s, r in c.talents if s != spell_id)
+                )
+            ),
+        )
+        if c.name == name
+        else c
+        for c in chars
+    ]
 
 
 PriceTerms = frozenset[tuple[int, int, int]]  # `engine.city_prices`: what a city's vendors take off for whom
@@ -1239,7 +1292,7 @@ def _later_recipes(
             n = useful_crafts(r, raised)
             one = market.evaluate(r, memo=memo, crafts=n)
             if one is not None and one.crafter == name:
-                out.append(Candidate(r, -one.profit / n, level, gross=one.cost / n))
+                out.append(Candidate(r, -one.profit / n, level))
     return out
 
 

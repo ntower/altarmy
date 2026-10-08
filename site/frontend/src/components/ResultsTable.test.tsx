@@ -419,9 +419,9 @@ describe('ResultsTable', () => {
     expect(screen.getByText(detail('+0.3 expected from Master Chef'))).toBeInTheDocument()
     await showSteps()
     expect(line('Purchase 1x Coarse Thread from a vendor (90, after discount)')).toBeInTheDocument()
-    expect(
-      line('Sell 1x Green Robe (+0.3 expected from Master Chef) to a vendor (Gross 5 0 · Net 2 0)'),
-    ).toBeInTheDocument()
+    // the extra results are made by the craft: said there, not on the sale
+    expect(line('Craft 1x Green Robe (+0.3 expected from Master Chef)')).toBeInTheDocument()
+    expect(line('Sell 1x Green Robe to a vendor (Gross 5 0 · Net 2 0)')).toBeInTheDocument()
   })
 
   it('names the reputation that made a vendor cheaper', async () => {
@@ -733,8 +733,7 @@ describe('ResultsTable', () => {
         runs: false,
         gathered: [],
         choices: { 'r.1': 'ah' },
-        climb_without: [],
-        effort: 'balanced',
+        strategy: 'recommended',
       })
       expect(line('1 50')).toBeInTheDocument() // the row's profit follows the changed plan
       expect(screen.getByLabelText('Changed plan')).toBeInTheDocument()

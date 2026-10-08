@@ -1,32 +1,20 @@
 /* The skill workspace's overview: the run to craft now, centred with the chain of runs after it hung below, or the
    best few options side by side with the chain still under the one it follows. */
 
-/* What to craft next, centred, with Reset to recommended at the right once another run to craft now was picked (under it on a
-   narrow screen). */
+/* Reset to recommended, once another strategy was picked: at the right (centred on a narrow screen). */
 .heading {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  justify-items: center;
-  gap: var(--mantine-spacing-xs);
+  display: flex;
+  justify-content: center;
 }
 
 @media (min-width: 48em) {
   .heading {
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-    align-items: center;
-  }
-
-  .title {
-    grid-column: 2;
-  }
-
-  .reset {
-    grid-column: 3;
-    justify-self: end;
+    justify-content: flex-end;
   }
 }
 
-/* One option: centred, the link to the others beside it (under it on a narrow screen), the chain in the row below. */
+/* One option: centred, the link to the others beside its summary table (under it on a narrow screen), the chain in
+   the rows below. */
 .single {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -47,7 +35,9 @@
     grid-column: 2;
   }
 
+  /* beside the summary table over the card */
   .more {
+    grid-row: 1;
     grid-column: 3;
     justify-self: start;
     align-self: center;
@@ -107,13 +97,36 @@
   display: grid;
 }
 
-/* What a climb comes to by each rank, over its card: at the bottom of its row, so the cards line up. */
+/* Over a strategy's card: its name and what its climb comes to by each rank, from the top of its row, so the
+   names line up across the columns. */
 .milestones {
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  justify-content: flex-start;
   align-items: center;
+  gap: 4px;
   text-align: center;
+}
+
+/* The strategy's name, the chevron beside it opening what it plans for. */
+.strategyName {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chevron {
+  display: inline-flex;
+  color: var(--mantine-color-dimmed);
+  transition: transform 200ms ease;
+}
+
+.chevron[data-open] {
+  transform: rotate(180deg);
+}
+
+.strategyAbout {
+  max-width: 300px;
 }
 
 /* Its rows: the skills aligned on their left edge, the amounts on their right. */
@@ -130,7 +143,20 @@
 
 .milestoneTable td {
   text-align: right;
-  padding: 0;
+  padding: 0 0 0 var(--mantine-spacing-sm);
+}
+
+/* The column headings: small and dimmed, over the right-aligned amounts. */
+.milestoneTable thead th {
+  font-size: var(--mantine-font-size-xs);
+  color: var(--mantine-color-dimmed);
+  text-align: right;
+  padding: 0 0 0 var(--mantine-spacing-sm);
+}
+
+.milestoneTable thead th:first-child {
+  text-align: left;
+  padding: 0 var(--mantine-spacing-sm) 0 0;
 }
 
 .milestoneTable td.milestoneNote {
@@ -252,4 +278,13 @@
 .departing {
   position: absolute;
   pointer-events: none;
+}
+
+/* The talent sliders over the strategies: side by side, centred, each a fixed width. */
+.talents {
+  margin-bottom: var(--mantine-spacing-xs);
+}
+
+.talent {
+  width: 200px;
 }

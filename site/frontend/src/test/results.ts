@@ -81,7 +81,6 @@ export const robeResult: RankResult = {
   overtaken_by_item: 0,
   crafts_p80: 0,
   reach_chances: [],
-  climb_without: [],
   climb_unknown: 0,
   climb_end: 0,
   milestones: [],

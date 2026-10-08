@@ -2,7 +2,7 @@ import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { focusManager } from '@tanstack/react-query'
 import { describe, expect, it, vi } from 'vitest'
-import type { RankResult } from '../api/client'
+import type { RankResult, StrategyOut } from '../api/client'
 import type { RankParams } from '../api/queries'
 import { linen, robe as robeItem, thread } from '../test/items'
 import { professionRanks, robeResult } from '../test/results'
@@ -10,7 +10,7 @@ import { status } from '../test/status'
 import { mockApi, renderWithProviders } from '../test/utils'
 import type { Holder } from '../lib/setup'
 import { scaleRun } from '../lib/skill'
-import { WORKING_OVERTIME } from '../lib/talents'
+import { MASTER_CHEF, WORKING_OVERTIME } from '../lib/talents'
 import { SkillWorkspace } from './SkillWorkspace'
 
 const capItem = { ...robeItem, id: 4, name: 'Linen Cap', quality: 2 }
@@ -46,8 +46,23 @@ const capRun: RankResult = {
 }
 const beltRun: RankResult = { ...robeRun, recipe_id: 102, recipe: 'Linen Belt', output_name: 'Linen Belt', profit: -100 }
 const bootsRun: RankResult = { ...beltRun, recipe_id: 103, recipe: 'Linen Boots', output_item_id: 9004, output_name: 'Linen Boots' }
-// After the robe's run: the belt's, then the boots'.
-const ranked = { results: [robeRun, capRun], total: 2, items, classes: {}, learn: {}, chain: [beltRun, bootsRun] }
+/** A strategy's card as the server sends it. */
+const strategy = (key: StrategyOut['key'], run: RankResult, chain: RankResult[]): StrategyOut => ({ key, run, chain })
+// After the robe's run: the belt's, then the boots'. The cheapest climb starts with the cap, the one without patterns
+// with the belt.
+const ranked = {
+  results: [robeRun],
+  total: 1,
+  items,
+  classes: {},
+  learn: {},
+  chain: [beltRun, bootsRun],
+  strategies: [
+    strategy('recommended', robeRun, [beltRun, bootsRun]),
+    strategy('cheapest', capRun, [bootsRun]),
+    strategy('no_patterns', beltRun, [bootsRun]),
+  ],
+}
 
 const FILTERS: Omit<RankParams, 'top'> = {
   unlearned: 'train',
@@ -92,24 +107,25 @@ function api(over: Record<string, unknown> = {}) {
 const show = (climber: Holder = CLIMBER) =>
   renderWithProviders(<SkillWorkspace filters={FILTERS} climber={climber} profession="Tailoring" />)
 
-/** Open the option named `name` from the overview, picking it among the others first unless it is the one to craft
- * now; the run's details. */
-async function choose(name: string) {
+/** Open the run named `name` from the overview, picking `strategy`'s card among the others first unless it is the
+ * one to craft now; the run's details. */
+async function choose(name: string, strategy = 'Recommended') {
   const options = await screen.findByRole('region', { name: 'Your options' })
   if (!within(options).queryByRole('button', { name: `Choose ${name}` })) {
-    await userEvent.click(within(options).getByRole('button', { name: /^Other options/ }))
-  }
-  // side by side, a click picks it; the one to craft now opens
-  if (within(options).getAllByRole('button', { name: /^Choose / }).length > 1) {
-    await userEvent.click(within(options).getByRole('button', { name: `Choose ${name}` }))
+    const compare = within(options).queryByRole('button', { name: 'Compare strategies' })
+    if (compare) await userEvent.click(compare)
+    // side by side, a click picks it, folding the others away
+    await userEvent.click(within(options).getByRole('button', { name: `Choose ${strategy}: ${name}` }))
   }
   await userEvent.click(within(options).getByRole('button', { name: `Choose ${name}` }))
-  // already side by side, that click only picked it
-  if (!screen.queryByRole('region', { name: 'Run details' })) {
-    await userEvent.click(within(options).getByRole('button', { name: `Choose ${name}` }))
-  }
   return screen.getByRole('region', { name: 'Run details' })
 }
+
+/** The strategies' cards side by side that can be picked, as their buttons name them. */
+const cardNames = (options: HTMLElement) =>
+  within(options)
+    .getAllByRole('button', { name: /^Choose / })
+    .map((c) => c.getAttribute('aria-label'))
 
 /** The chain's recipes, in order. */
 const chainNames = (chain: HTMLElement) =>
@@ -118,13 +134,11 @@ const chainNames = (chain: HTMLElement) =>
     .map((e) => e.getAttribute('aria-label'))
 
 describe('SkillWorkspace', () => {
-  it('starts with the best option and what comes after it, the others side by side on asking', async () => {
+  it('starts with the recommended run and what comes after it, the strategies side by side on asking', async () => {
     api()
     show()
     const options = await screen.findByRole('region', { name: 'Your options' })
-    expect(within(options).getAllByRole('button', { name: /^Choose / }).map((c) => c.getAttribute('aria-label'))).toEqual([
-      'Choose Green Robe',
-    ])
+    expect(cardNames(options)).toEqual(['Choose Green Robe'])
     // the runs that follow it, each opening out in place
     let chain = within(options).getByRole('region', { name: 'What comes after' })
     expect(chainNames(chain)).toEqual(['Linen Belt', 'Linen Boots'])
@@ -132,102 +146,94 @@ describe('SkillWorkspace', () => {
     expect(within(chain).getAllByText(/^At \d+ skill$/).map((e) => e.textContent)).toEqual(['At 45 skill', 'At 45 skill'])
     expect(within(chain).getAllByRole('button', { name: /^Open / })).toHaveLength(2)
     expect(chain).not.toHaveAttribute('aria-disabled')
-    // the others side by side, the cheapest point first, the chain muted until one is picked
-    await userEvent.click(within(options).getByRole('button', { name: /^Other options/ }))
-    const cards = within(options).getAllByRole('button', { name: /^Choose / })
-    expect(cards.map((c) => c.getAttribute('aria-label'))).toEqual(['Choose Green Robe', 'Choose Linen Cap'])
-    expect(within(options).queryByText('Best')).not.toBeInTheDocument()
+    // the strategies side by side, in the server's order, the chain muted until one is picked
+    await userEvent.click(within(options).getByRole('button', { name: 'Compare strategies' }))
+    expect(cardNames(options)).toEqual([
+      'Choose Recommended: Green Robe',
+      'Choose Cheapest: Linen Cap',
+      'Choose Trainer only: Linen Belt',
+    ])
     chain = within(options).getByRole('region', { name: 'What comes after' })
     expect(chain).toHaveAttribute('aria-disabled', 'true')
     expect(screen.queryByRole('region', { name: 'Run details' })).not.toBeInTheDocument()
   })
 
-  it('lays the options out in the server\'s order, each with what its climb comes to by each rank', async () => {
-    // the server puts the best climb first; the cap's climb costs less, but dead-ends at 75: it stays where it is,
-    // and isn't badged
+  it('names each strategy over its card, what it plans for a click away, and what its climb comes to by each rank', async () => {
     const milestones = (at75: number, at150: number) => [
-      { skill: 75, cost: at75, unknown: 0 },
-      { skill: 150, cost: at150, unknown: 0 },
+      { skill: 75, cost: at75, unknown: 0, crafts: 40 },
+      { skill: 150, cost: at150, unknown: 0, crafts: 190 },
     ]
+    const robe = { ...robeRun, milestones: [...milestones(1000, 4000), { skill: 225, cost: 5000, unknown: 1, crafts: 420 }] }
     api({
       '/api/rank': {
         ...ranked,
-        options: [
-          {
-            ...robeRun,
-            climb_cost: 9000,
-            climb_end: 225,
-            milestones: [...milestones(1000, 4000), { skill: 225, cost: 5000, unknown: 1 }],
-          },
-          { ...capRun, climb_cost: 2000, climb_end: 75, milestones: milestones(2000, 2000).slice(0, 1) },
-          { ...beltRun, climb_cost: 9500, climb_end: 225, milestones: milestones(3000, 9000) },
+        results: [robe],
+        strategies: [
+          strategy('recommended', robe, ranked.chain),
+          strategy('cheapest', { ...capRun, milestones: milestones(2000, 2000).slice(0, 1) }, [bootsRun]),
+          strategy('no_patterns', { ...beltRun, milestones: milestones(3000, 9000) }, [robeRun]),
         ],
-        option_chains: [ranked.chain, [bootsRun], [robeRun]],
       },
     })
     show()
     const options = await screen.findByRole('region', { name: 'Your options' })
-    // the best climb's run is the one to craft now, with what its climb comes to over it
-    expect(within(options).getAllByRole('button', { name: /^Choose / }).map((c) => c.getAttribute('aria-label'))).toEqual([
-      'Choose Green Robe',
+    // the recommended run is the one to craft now, named, with what its climb comes to and the crafts it takes
+    const costs = within(options).getByRole('group', { name: 'Cost to reach each rank with Green Robe first' })
+    expect(within(costs).getByText('Recommended')).toBeInTheDocument()
+    expect(within(costs).getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Skill', 'Cost', 'Crafts'])
+    expect(costs).toHaveTextContent('75-10 0~40')
+    expect(costs).toHaveTextContent('225-50 0~420+ 1 pattern of unknown price')
+    // what it plans for, on asking
+    const about = within(costs).getByRole('button', { name: 'Recommended' })
+    expect(about).toHaveAttribute('aria-expanded', 'false')
+    expect(within(costs).queryByText(/Avoids grinding 50\+ crafts/)).not.toBeInTheDocument()
+    await userEvent.click(about)
+    expect(about).toHaveAttribute('aria-expanded', 'true')
+    expect(within(costs).getAllByRole('listitem').map((i) => i.textContent)).toEqual([
+      'Uses recipes from both the trainer and from patterns you can buy',
+      'Avoids grinding 50+ crafts on the last few skill points of a near-trivial recipe',
     ])
-    const robe = within(options).getByRole('group', { name: 'Cost to reach each rank with Green Robe first' })
-    expect(robe).toHaveTextContent('75 skill:-10 0')
-    expect(robe).toHaveTextContent('225 skill:-50 0+ 1 pattern of unknown price')
-    await userEvent.click(within(options).getByRole('button', { name: /^Other options/ }))
-    const cards = within(options).getAllByRole('button', { name: /^Choose / })
-    expect(cards.map((c) => c.getAttribute('aria-label'))).toEqual([
-      'Choose Green Robe',
-      'Choose Linen Cap',
-      'Choose Linen Belt',
+    await userEvent.click(within(options).getByRole('button', { name: 'Compare strategies' }))
+    expect(cardNames(options)).toEqual([
+      'Choose Recommended: Green Robe',
+      'Choose Cheapest: Linen Cap',
+      'Choose Trainer only: Linen Belt',
     ])
-    // the best is badged Recommended, the others not; on hover it says what it weighs
-    expect(within(cards[0]!).getByText('Recommended')).toBeInTheDocument()
-    expect(within(options).getAllByText('Recommended')).toHaveLength(1)
-    await userEvent.hover(within(cards[0]!).getByText('Recommended'))
-    expect(await screen.findByText(/Reaches the highest skill of these options for the least/)).toBeInTheDocument()
-    // each column has its own milestones and chain
-    expect(within(options).getByRole('group', { name: 'Cost to reach each rank with Linen Belt first' })).toHaveTextContent(
-      '150 skill:-90 0',
+    // each column named over its card, the cards themselves unbadged
+    const heads = ['Linen Cap', 'Linen Belt'].map((name) =>
+      within(options).getByRole('group', { name: `Cost to reach each rank with ${name} first` }),
     )
+    expect(within(heads[0]!).getByRole('button', { name: 'Cheapest' })).toBeInTheDocument()
+    expect(within(heads[1]!).getByRole('button', { name: 'Trainer only' })).toBeInTheDocument()
+    expect(within(options).getByRole('button', { name: 'Choose Cheapest: Linen Cap' })).not.toHaveTextContent('Cheapest')
+    await userEvent.click(within(heads[0]!).getByRole('button', { name: 'Cheapest' }))
+    expect(within(heads[0]!).getByText(/Always pick the cheapest option/)).toBeInTheDocument()
+    // each column has its own milestones and chain
+    expect(heads[1]).toHaveTextContent('150-90 0~190')
     expect(chainNames(within(options).getByRole('region', { name: 'What comes after Linen Cap' }))).toEqual(['Linen Boots'])
     expect(chainNames(within(options).getByRole('region', { name: 'What comes after Linen Belt' }))).toEqual(['Green Robe'])
   })
 
-  it('badges the best option even when every climb needs a pattern of unknown price', async () => {
-    api({
-      '/api/rank': {
-        ...ranked,
-        options: [
-          { ...robeRun, climb_cost: 9000, climb_unknown: 1, climb_end: 150 },
-          { ...capRun, climb_cost: 8000, climb_unknown: 1, climb_end: 150 },
-        ],
-        option_chains: [ranked.chain, [bootsRun]],
-      },
-    })
-    show()
-    const options = await screen.findByRole('region', { name: 'Your options' })
-    // a labelled button, saying how many others there are
-    await userEvent.click(within(options).getByRole('button', { name: 'Other options (1)' }))
-    const cards = within(options).getAllByRole('button', { name: /^Choose / })
-    expect(within(cards[0]!).getByText('Recommended')).toBeInTheDocument()
-    expect(within(options).getAllByText('Recommended')).toHaveLength(1)
-  })
-
-  it('shows each option as picking it gives', async () => {
-    // listed, the cap stops where the robe gets cheaper; as an option, as the first run of its own climb, at 60
+  it('shows each strategy as picking it gives', async () => {
+    // the cheapest climb's first run goes on to 60, where the boots take over
     const asOption: RankResult = { ...capRun, crafts: 30, stop_skill: 60, overtaken_by: 'Linen Boots', overtaken_by_item: 9004 }
-    api({ '/api/rank': { ...ranked, options: [robeRun, asOption] } })
+    api({ '/api/rank': { ...ranked, strategies: [ranked.strategies[0]!, strategy('cheapest', asOption, [])] } })
     show()
-    await userEvent.click(await screen.findByRole('button', { name: /^Other options/ }))
-    expect(screen.getByRole('button', { name: 'Choose Linen Cap' })).toHaveTextContent(
+    await userEvent.click(await screen.findByRole('button', { name: 'Compare strategies' }))
+    expect(screen.getByRole('button', { name: 'Choose Cheapest: Linen Cap' })).toHaveTextContent(
       'Craft until 60 skill (~30 times)',
     )
   })
 
-  it("hangs each option's own chain under it, side by side only its next run, and may come back to a recipe", async () => {
+  it("hangs each strategy's own chain under it, side by side only its next run, and may come back to a recipe", async () => {
     const chain = [beltRun, bootsRun, beltRun]
-    api({ '/api/rank': { ...ranked, options: [robeRun, capRun], chain, option_chains: [chain, [bootsRun]] } })
+    api({
+      '/api/rank': {
+        ...ranked,
+        chain,
+        strategies: [strategy('recommended', robeRun, chain.slice(0, 2)), strategy('cheapest', capRun, [bootsRun])],
+      },
+    })
     show()
     const options = await screen.findByRole('region', { name: 'Your options' })
     expect(chainNames(within(options).getByRole('region', { name: 'What comes after' }))).toEqual([
@@ -235,7 +241,7 @@ describe('SkillWorkspace', () => {
       'Linen Boots',
       'Linen Belt',
     ])
-    await userEvent.click(within(options).getByRole('button', { name: /^Other options/ }))
+    await userEvent.click(within(options).getByRole('button', { name: 'Compare strategies' }))
     const best = within(options).getByRole('region', { name: 'What comes after' })
     const cap = within(options).getByRole('region', { name: 'What comes after Linen Cap' })
     expect(chainNames(best)).toEqual(['Linen Belt'])
@@ -260,7 +266,7 @@ describe('SkillWorkspace', () => {
     expect(screen.queryByRole('region', { name: 'Run details' })).not.toBeInTheDocument()
   })
 
-  it('opens any card of the single column in place, one at a time, under What to craft next', async () => {
+  it('opens any card of the single column in place, one at a time', async () => {
     api()
     show()
     const options = await screen.findByRole('region', { name: 'Your options' })
@@ -268,7 +274,7 @@ describe('SkillWorkspace', () => {
     await userEvent.click(within(chain).getByRole('button', { name: 'Open Linen Boots' }))
     let run = within(chain).getByRole('region', { name: 'Run details' })
     expect(within(run).getByRole('heading')).toHaveTextContent(/Linen Boots/)
-    expect(within(options).getByText('What to craft next')).toBeInTheDocument()
+    expect(within(options).queryByText('What to craft next')).not.toBeInTheDocument()
     // the cards around it stay
     expect(within(options).getByRole('button', { name: 'Choose Green Robe' })).toBeInTheDocument()
     expect(within(chain).getByRole('button', { name: 'Open Linen Belt' })).toBeInTheDocument()
@@ -282,7 +288,6 @@ describe('SkillWorkspace', () => {
     await userEvent.click(within(options).getByRole('button', { name: 'Choose Green Robe' }))
     expect(screen.getAllByRole('region', { name: 'Run details' })).toHaveLength(1)
     expect(within(screen.getByRole('region', { name: 'Run details' })).getByRole('heading')).toHaveTextContent(/Green Robe/)
-    expect(within(options).getByText('What to craft next')).toBeInTheDocument()
   })
 
   it('shows three more runs after the chain on asking', async () => {
@@ -297,62 +302,63 @@ describe('SkillWorkspace', () => {
     expect(chainNames(chain)).toEqual(['Run 1', 'Run 2'])
     await userEvent.click(within(chain).getByRole('button', { name: 'Show more' }))
     await waitFor(() => expect(chainNames(chain)).toHaveLength(5))
-    // the longer chain follows the best, the one crafted now
+    // the longer chain follows the recommended run, the one crafted now
     const asked = urls(fetch, '/api/rank').find((u) => u.searchParams.get('chain_length'))
-    expect([asked?.searchParams.get('chain_from'), asked?.searchParams.get('chain_length')]).toEqual(['100', '5'])
+    expect([asked?.searchParams.get('strategy'), asked?.searchParams.get('chain_length')]).toEqual([null, '5'])
     await userEvent.click(within(chain).getByRole('button', { name: 'Show more' }))
     await waitFor(() => expect(chainNames(chain)).toHaveLength(7))
     // fewer than asked for: the chain ended
     expect(within(chain).queryByRole('button', { name: 'Show more' })).not.toBeInTheDocument()
   })
 
-  it('makes a picked option the one to craft now, with what comes after it', async () => {
-    // the cheapest climb starting with the cap: its run goes on to 60, where the boots take over
+  it('makes a picked strategy the one to craft now, with what comes after it', async () => {
+    // ranked under the strategy, the cap's run goes on to 60, where the boots take over
     const longer: RankResult = { ...capRun, crafts: 30, stop_skill: 60, overtaken_by: 'Linen Boots', overtaken_by_item: 9004 }
-    const capChain = { ...ranked, results: [longer], chain: [bootsRun], chain_start: longer }
+    const capChain = { ...ranked, results: [longer], chain: [bootsRun], strategies: [] }
     const fetch = api({
-      '/api/rank': (url: URL) => (url.searchParams.get('chain_from') === '101' ? capChain : ranked),
+      '/api/rank': (url: URL) => (url.searchParams.get('strategy') === 'cheapest' ? capChain : ranked),
     })
     show()
     const options = await screen.findByRole('region', { name: 'Your options' })
-    await userEvent.click(within(options).getByRole('button', { name: /^Other options/ }))
-    await userEvent.click(within(options).getByRole('button', { name: 'Choose Linen Cap' }))
-    // folded back around it
-    expect(within(options).getAllByRole('button', { name: /^Choose / }).map((c) => c.getAttribute('aria-label'))).toEqual([
-      'Choose Linen Cap',
-    ])
+    await userEvent.click(within(options).getByRole('button', { name: 'Compare strategies' }))
+    await userEvent.click(within(options).getByRole('button', { name: 'Choose Cheapest: Linen Cap' }))
+    // folded back around it, badged with its strategy
+    expect(cardNames(options)).toEqual(['Choose Linen Cap'])
     const chain = within(options).getByRole('region', { name: 'What comes after' })
     await waitFor(() => expect(chainNames(chain)).toEqual(['Linen Boots']))
     expect(chain).not.toHaveAttribute('aria-disabled')
-    const asked = urls(fetch, '/api/rank').find((u) => u.searchParams.get('chain_from'))
-    expect(asked?.searchParams.get('chain_from')).toBe('101')
+    const asked = urls(fetch, '/api/rank').find((u) => u.searchParams.get('strategy'))
+    expect(asked?.searchParams.get('strategy')).toBe('cheapest')
     expect(asked?.searchParams.get('top')).toBe('1')
-    expect(asked?.searchParams.getAll('skip')).toEqual([]) // nothing passed over: its climb may come back to the robe
     const card = within(options).getByRole('button', { name: 'Choose Linen Cap' })
-    expect(card).toHaveTextContent('Craft until 60 skill (~30 times)')
+    // named over its card
+    expect(
+      within(options).getByRole('group', { name: 'Cost to reach each rank with Linen Cap first' }),
+    ).toHaveTextContent('Cheapest')
+    await waitFor(() => expect(card).toHaveTextContent('Craft until 60 skill (~30 times)'))
     // opened and closed, it is still the one to craft now
     await userEvent.click(within(options).getByRole('button', { name: 'Choose Linen Cap' }))
     const run = screen.getByRole('region', { name: 'Run details' })
     expect(within(run).getByRole('heading')).toHaveTextContent(/Linen Cap/)
-    expect(run).toHaveTextContent(/Craft until 60 skill/) // the run as it stands after the pick
+    expect(run).toHaveTextContent(/Craft until 60 skill/) // the run as ranked under the strategy
     await userEvent.click(within(run).getByRole('button', { name: 'Close' }))
     const back = await screen.findByRole('region', { name: 'Your options' })
     expect(within(back).getByRole('button', { name: 'Choose Linen Cap' })).toBeInTheDocument()
   })
 
-  it("hangs a picked option's own chain under it while its climb is on its way, never the one shown before", async () => {
+  it("hangs a picked strategy's own chain under it while its climb is on its way, never the one shown before", async () => {
     let release: (value: unknown) => void = () => {}
-    const capChain = { ...ranked, results: [capRun], chain: [bootsRun, beltRun], chain_start: capRun }
+    const capChain = { ...ranked, results: [capRun], chain: [bootsRun, beltRun], strategies: [] }
     api({
       '/api/rank': (url: URL) =>
-        url.searchParams.get('chain_from') === '101'
+        url.searchParams.get('strategy') === 'cheapest'
           ? new Promise((resolve) => (release = () => resolve(capChain)))
-          : { ...ranked, options: [robeRun, capRun], option_chains: [ranked.chain, [bootsRun]] },
+          : ranked,
     })
     show()
     const options = await screen.findByRole('region', { name: 'Your options' })
-    await userEvent.click(within(options).getByRole('button', { name: /^Other options/ }))
-    await userEvent.click(within(options).getByRole('button', { name: 'Choose Linen Cap' }))
+    await userEvent.click(within(options).getByRole('button', { name: 'Compare strategies' }))
+    await userEvent.click(within(options).getByRole('button', { name: 'Choose Cheapest: Linen Cap' }))
     // the cap's chain as it came with the list, muted; the robe's (fading out) is out of the accessibility tree
     const chain = within(options).getByRole('region', { name: 'What comes after' })
     expect(chainNames(chain)).toEqual(['Linen Boots'])
@@ -362,29 +368,85 @@ describe('SkillWorkspace', () => {
     expect(chain).not.toHaveAttribute('aria-disabled')
   })
 
-  it('resets another run picked to craft now back to the recommended one', async () => {
-    const capChain = { ...ranked, results: [capRun], chain: [bootsRun], chain_start: capRun }
-    api({ '/api/rank': (url: URL) => (url.searchParams.get('chain_from') === '101' ? capChain : ranked) })
+  it('resets another strategy picked back to the recommended one', async () => {
+    const capChain = { ...ranked, results: [capRun], chain: [bootsRun], strategies: [] }
+    api({ '/api/rank': (url: URL) => (url.searchParams.get('strategy') === 'cheapest' ? capChain : ranked) })
     show()
     const options = await screen.findByRole('region', { name: 'Your options' })
     // the recommended one: nothing to reset
     expect(within(options).queryByRole('button', { name: 'Reset to recommended' })).not.toBeInTheDocument()
-    await userEvent.click(within(options).getByRole('button', { name: /^Other options/ }))
-    await userEvent.click(within(options).getByRole('button', { name: 'Choose Linen Cap' }))
+    await userEvent.click(within(options).getByRole('button', { name: 'Compare strategies' }))
+    await userEvent.click(within(options).getByRole('button', { name: 'Choose Cheapest: Linen Cap' }))
     const chain = within(options).getByRole('region', { name: 'What comes after' })
     await waitFor(() => expect(chainNames(chain)).toEqual(['Linen Boots']))
     await userEvent.click(within(options).getByRole('button', { name: 'Reset to recommended' }))
-    expect(within(options).getAllByRole('button', { name: /^Choose / }).map((c) => c.getAttribute('aria-label'))).toEqual([
-      'Choose Green Robe',
-    ])
+    expect(cardNames(options)).toEqual(['Choose Green Robe'])
     await waitFor(() => expect(chainNames(within(options).getByRole('region', { name: 'What comes after' }))).toEqual(['Linen Belt', 'Linen Boots']))
     expect(within(options).queryByRole('button', { name: 'Reset to recommended' })).not.toBeInTheDocument()
+  })
+
+  it("plans with the climber's Working Overtime and Bartering, or the ranks the sliders set", async () => {
+    const fetch = api()
+    show({ ...CLIMBER, talents: [overtime(2)] })
+    const sliders = await screen.findByRole('group', { name: 'Legacy talents' })
+    const [wo, barter] = within(sliders).getAllByRole('slider')
+    // the climber's own ranks: 2 of Working Overtime, no Bartering
+    expect(wo).toHaveAttribute('aria-valuenow', '2')
+    expect(barter).toHaveAttribute('aria-valuenow', '0')
+    expect(sliders).toHaveTextContent('Working Overtime2/5')
+    expect(sliders).toHaveTextContent('Bartering0/2')
+    expect(sliders).not.toHaveTextContent('Master Chef') // not Cooking
+    // what a point of each does, whatever the rank
+    await userEvent.hover(within(sliders).getByText('Working Overtime'))
+    expect(
+      await screen.findByText('Increases your chance to gain a skill increase by 4% per talent point'),
+    ).toBeInTheDocument()
+    await userEvent.hover(within(sliders).getByText('Bartering'))
+    expect(
+      await screen.findByText('Reduces the gold price of items from all vendors by 5% per talent point'),
+    ).toBeInTheDocument()
+    const first = urls(fetch, '/api/rank')[0]
+    expect([first?.searchParams.get('working_overtime'), first?.searchParams.get('bartering')]).toEqual(['2', '0'])
+    // moved, the plans follow
+    wo!.focus()
+    await userEvent.keyboard('{ArrowRight}{ArrowRight}{ArrowRight}')
+    expect(sliders).toHaveTextContent('Working Overtime5/5')
+    await waitFor(() => expect(urls(fetch, '/api/rank').at(-1)?.searchParams.get('working_overtime')).toBe('5'))
+    await choose('Green Robe')
+    await waitFor(async () =>
+      expect((await bodies(fetch, '/api/evaluate')).at(-1)).toMatchObject({ working_overtime: 5, bartering: 0 }),
+    )
+  })
+
+  it('offers Master Chef too when skilling up Cooking', async () => {
+    const fetch = api()
+    const chef = { spellId: MASTER_CHEF, name: 'Master Chef', rank: 3, maxRank: 5 }
+    renderWithProviders(
+      <SkillWorkspace
+        filters={{ ...FILTERS, professions: ['Cooking'] }}
+        climber={{ ...CLIMBER, talents: [chef] }}
+        profession="Cooking"
+      />,
+    )
+    const sliders = await screen.findByRole('group', { name: 'Legacy talents' })
+    expect(within(sliders).getAllByRole('slider').map((t) => t.getAttribute('aria-valuenow'))).toEqual(['0', '0', '3'])
+    expect(sliders).toHaveTextContent('Master Chef3/5')
+    expect(urls(fetch, '/api/rank')[0]?.searchParams.get('master_chef')).toBe('3')
+  })
+
+  it('starts the sliders at nothing for a climber without talents', async () => {
+    const fetch = api()
+    show()
+    const sliders = await screen.findByRole('group', { name: 'Legacy talents' })
+    expect(within(sliders).getAllByRole('slider').map((t) => t.getAttribute('aria-valuenow'))).toEqual(['0', '0'])
+    // not Cooking: no Master Chef sent
+    expect(urls(fetch, '/api/rank')[0]?.searchParams.get('master_chef')).toBeNull()
   })
 
   it("says where a run's last points get slow, and how many crafts it usually takes", async () => {
     // eight orange points, then one at 1 in 4
     const slow = { ...robeRun, point_crafts: [1, 1, 1, 1, 1, 1, 1, 1, 4] }
-    api({ '/api/rank': { ...ranked, results: [slow, capRun] } })
+    api({ '/api/rank': { ...ranked, results: [slow], strategies: [strategy('recommended', slow, ranked.chain)] } })
     show()
     const options = await screen.findByRole('region', { name: 'Your options' })
     const card = within(options).getByRole('button', { name: 'Choose Green Robe' })
@@ -412,11 +474,12 @@ describe('SkillWorkspace', () => {
     expect(within(cards[0]!).queryByText(/You know it|You must/)).not.toBeInTheDocument() // known: nothing to say
     expect(within(cards[0]!).queryByRole('img', { name: /Orange/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Run details' })).not.toBeInTheDocument()
-    // each option's plan for the 14 crafts it opens with, fetched ahead
+    // each strategy's plan for the 14 crafts it opens with, under it, fetched ahead
     await waitFor(async () =>
-      expect((await bodies(fetch, '/api/evaluate')).map((b) => [b.recipe_id, b.copies])).toEqual([
-        [100, 14],
-        [101, 14],
+      expect((await bodies(fetch, '/api/evaluate')).map((b) => [b.recipe_id, b.copies, b.strategy])).toEqual([
+        [100, 14, 'recommended'],
+        [101, 14, 'cheapest'],
+        [102, 14, 'no_patterns'],
       ]),
     )
     expect(urls(fetch, '/api/rank')[0]?.searchParams.get('runs')).toBe('true')
@@ -437,7 +500,7 @@ describe('SkillWorkspace', () => {
     expect(within(run).queryByText(/Why this one|Then, at/)).not.toBeInTheDocument()
     expect(screen.queryByText(/after this run/)).not.toBeInTheDocument() // the header stays as it was
     // the checklist buys for the 14 crafts an unlucky run takes, grouped by who does what
-    await waitFor(async () => expect(await bodies(fetch, '/api/evaluate')).toHaveLength(2)) // fetched ahead, once
+    await waitFor(async () => expect(await bodies(fetch, '/api/evaluate')).toHaveLength(3)) // fetched ahead, once each
     const [plan] = await bodies(fetch, '/api/evaluate')
     expect(plan).toMatchObject({ recipe_id: 100, copies: 14, runs: true, skill_crafters: ['Tailor Guy'] })
     // the plan opens as its steps, the flow chart a click away
@@ -490,20 +553,27 @@ describe('SkillWorkspace', () => {
     await waitFor(async () => expect((await bodies(fetch, '/api/evaluate'))[0]).toMatchObject({ copies: 17 }))
   })
 
-  it('plans a run as the Options say to weigh crafts against gold', async () => {
+  it("plans a picked strategy's run under it", async () => {
     const fetch = api()
-    renderWithProviders(
-      <SkillWorkspace filters={{ ...FILTERS, effort: 'fewest' }} climber={CLIMBER} profession="Tailoring" />,
+    show()
+    await choose('Linen Cap', 'Cheapest')
+    expect(urls(fetch, '/api/rank').some((u) => u.searchParams.get('strategy') === 'cheapest')).toBe(true)
+    await waitFor(async () =>
+      expect((await bodies(fetch, '/api/evaluate')).filter((b) => b.recipe_id === 101)).not.toHaveLength(0),
     )
-    await choose('Green Robe')
-    expect(urls(fetch, '/api/rank')[0]?.searchParams.get('effort')).toBe('fewest')
-    await waitFor(async () => expect((await bodies(fetch, '/api/evaluate'))[0]).toMatchObject({ effort: 'fewest' }))
+    for (const body of (await bodies(fetch, '/api/evaluate')).filter((b) => b.recipe_id === 101)) {
+      expect(body).toMatchObject({ strategy: 'cheapest' })
+    }
   })
 
   it('says how many of the skill points counted on come from Working Overtime, after the odds', async () => {
     // the ranked run's 12 crafts expect 0.5 points from the talent; the plan for the 14 bought for, 0.6
     api({
-      '/api/rank': { ...ranked, results: [{ ...robeRun, skill_ups_bonus: 0.48 }, capRun] },
+      '/api/rank': {
+        ...ranked,
+        results: [{ ...robeRun, skill_ups_bonus: 0.48 }],
+        strategies: [strategy('recommended', { ...robeRun, skill_ups_bonus: 0.48 }, ranked.chain)],
+      },
       '/api/evaluate': () => ({ result: { ...scaleRun(robeRun, 14), skill_ups_bonus: 0.56 }, items }),
     })
     show({ ...CLIMBER, talents: [overtime(1)] })
@@ -541,14 +611,19 @@ describe('SkillWorkspace', () => {
         train_cost: 0,
       },
     }
-    api({ '/api/rank': { ...ranked, results: [robeRun, pattern, unknown], total: 3, learn } })
+    const strategies = [
+      strategy('recommended', robeRun, ranked.chain),
+      strategy('cheapest', pattern, []),
+      strategy('no_patterns', unknown, []),
+    ]
+    api({ '/api/rank': { ...ranked, strategies, learn } })
     show()
-    await userEvent.click(await screen.findByRole('button', { name: /^Other options/ }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Compare strategies' }))
     // the cards warn of a pattern nobody can price, and say one whose cost is counted must be trained
     expect(screen.getByText('You must find the pattern (price unknown)')).toBeInTheDocument()
-    const card = screen.getByRole('button', { name: 'Choose Linen Cap' })
+    const card = screen.getByRole('button', { name: 'Choose Cheapest: Linen Cap' })
     expect(within(card).getByText('You will need to buy the pattern (included in the cost)')).toBeInTheDocument()
-    const run = await choose('Linen Cap')
+    const run = await choose('Linen Cap', 'Cheapest')
     // the run names what the pattern costs
     expect(within(run).getByText(/You must buy the pattern/)).toHaveTextContent(/^You must buy the pattern \(12 0\)/)
     // and the checklist starts with buying it from its vendor, the zone map on hover
@@ -564,9 +639,9 @@ describe('SkillWorkspace', () => {
   it('says what a trainer asks to teach a recipe the climber lacks', async () => {
     const trained: RankResult = { ...capRun, crafters: [], learn_cost: 600 }
     const learn = { '101': { source: 'trainer', skill: 0, profession: 'Tailoring', items: [], train_cost: 600 } }
-    api({ '/api/rank': { ...ranked, results: [robeRun, trained], total: 2, learn } })
+    api({ '/api/rank': { ...ranked, strategies: [ranked.strategies[0]!, strategy('cheapest', trained, [])], learn } })
     show()
-    const run = await choose('Linen Cap')
+    const run = await choose('Linen Cap', 'Cheapest')
     expect(within(run).getByText(/You must learn it from a trainer/)).toHaveTextContent(
       /^You must learn it from a trainer \(6 0\)/,
     )
@@ -579,10 +654,10 @@ describe('SkillWorkspace', () => {
     expect(fee).toHaveTextContent('6 0')
   })
 
-  it('opens an option other than the best', async () => {
+  it('opens a strategy other than the recommended one', async () => {
     api()
     show()
-    const run = await choose('Linen Cap')
+    const run = await choose('Linen Cap', 'Cheapest')
     expect(within(run).getByRole('heading')).toHaveTextContent(/Linen Cap/)
   })
 
@@ -606,14 +681,12 @@ describe('SkillWorkspace', () => {
     }
   })
 
-  it('asks only for the options side by side, with no full list', async () => {
-    const many = [robeRun, capRun, beltRun, { ...beltRun, recipe_id: 103, recipe: 'Linen Boots', output_name: 'Linen Boots' }]
-    const fetch = api({ '/api/rank': { ...ranked, results: many, total: 9 } })
+  it('asks only for the first run of each climb, with no full list', async () => {
+    const fetch = api({ '/api/rank': { ...ranked, results: [robeRun, capRun, beltRun], total: 9 } })
     show()
-    await userEvent.click(await screen.findByRole('button', { name: /^Other options/ }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Compare strategies' }))
     expect(screen.queryByRole('button', { name: /See all/ })).not.toBeInTheDocument()
-    expect(urls(fetch, '/api/rank').map((u) => u.searchParams.get('top'))).toContain('4')
-    expect(urls(fetch, '/api/rank').every((u) => Number(u.searchParams.get('top')) <= 4)).toBe(true)
+    expect(urls(fetch, '/api/rank').every((u) => u.searchParams.get('top') === '1')).toBe(true)
   })
 
   it('shows no spinner while the plan fetched ahead is on its way, only for a count the user types', async () => {
@@ -723,38 +796,33 @@ describe('SkillWorkspace', () => {
     expect(within(run).queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument()
   })
 
-  it("plans an option again as its card shows it, never coming back to those it leaves out", async () => {
-    // the cap side by side leaves out the robe; bought for as many crafts as the run asks, so its plan isn't
-    // fetched for a count: a change of source plans the run again, with what it leaves out
+  it('plans a picked strategy again under it, whatever the count', async () => {
+    // bought for as many crafts as the run asks, so its plan isn't fetched for a count: a change of source plans the
+    // run again, under the strategy
     const capOption: RankResult = {
       ...capRun,
       crafts_p80: 12,
       reach_chances: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0.5, 0.7, 0.8, 0.9, 0.95],
-      climb_without: [100],
     }
-    const fetch = api({ '/api/rank': { ...ranked, options: [robeRun, capOption] } })
+    const fetch = api({ '/api/rank': { ...ranked, strategies: [ranked.strategies[0]!, strategy('cheapest', capOption, [])] } })
     show()
-    const run = await choose('Linen Cap')
+    const run = await choose('Linen Cap', 'Cheapest')
     await userEvent.click(await within(run).findByRole('button', { name: 'Change source of Coarse Thread' }))
     await userEvent.click(await screen.findByRole('menuitem', { name: /Buy on the AH/ }))
     await waitFor(async () =>
       expect((await bodies(fetch, '/api/evaluate')).at(-1)).toMatchObject({
         recipe_id: 101,
         runs: true,
-        climb_without: [100],
+        strategy: 'cheapest',
         choices: { 'r.1': 'ah' },
       }),
     )
-    // planned for a count the user types, it is those crafts whatever the climb leaves out
     const input = within(run).getByRole('textbox', { name: 'Crafts to buy for' })
     await userEvent.clear(input)
     await userEvent.type(input, '20')
     await waitFor(async () =>
-      expect((await bodies(fetch, '/api/evaluate')).at(-1)).toMatchObject({ recipe_id: 101, copies: 20, climb_without: [] }),
+      expect((await bodies(fetch, '/api/evaluate')).at(-1)).toMatchObject({ recipe_id: 101, copies: 20, strategy: 'cheapest' }),
     )
-    const counted = (await bodies(fetch, '/api/evaluate')).filter((b) => b.copies !== undefined)
-    expect(counted.length).toBeGreaterThan(0)
-    expect(counted.every((b) => Array.isArray(b.climb_without) && b.climb_without.length === 0)).toBe(true)
   })
 
   it('offers the menus in the flow chart too, and forgets the changes on another option', async () => {
@@ -766,7 +834,7 @@ describe('SkillWorkspace', () => {
     await userEvent.click(await screen.findByRole('menuitem', { name: /Buy on the AH/ }))
     expect(await within(run).findByRole('button', { name: 'Reset' })).toBeInTheDocument()
     await userEvent.click(within(run).getByRole('button', { name: 'Close' }))
-    run = await choose('Linen Cap')
+    run = await choose('Linen Cap', 'Cheapest')
     expect(within(run).queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument()
   })
 
@@ -786,7 +854,7 @@ describe('SkillWorkspace', () => {
         runs: true,
         chain_from: 100,
         chain_at: 2,
-        climb_without: [],
+        strategy: 'recommended',
         choices: { 'r.1': 'ah' },
       }),
     )
@@ -806,13 +874,13 @@ describe('SkillWorkspace', () => {
     // beside the belt's card, and only there
     expect(note.parentElement?.parentElement).toContainElement(within(after).getByRole('article', { name: 'Linen Belt' }))
     expect(screen.getAllByRole('alert', { name: /^Train / })).toHaveLength(1)
-    // the single column only: none among the options side by side
-    await userEvent.click(within(options).getByRole('button', { name: /^Other options/ }))
+    // the single column only: none among the strategies side by side
+    await userEvent.click(within(options).getByRole('button', { name: 'Compare strategies' }))
     expect(screen.queryByRole('alert', { name: /^Train / })).not.toBeInTheDocument()
   })
 
   it('says to visit a trainer at the cap', async () => {
-    api({ '/api/rank': { ...ranked, results: [], total: 0, chain: [] } })
+    api({ '/api/rank': { ...ranked, results: [], total: 0, chain: [], strategies: [] } })
     show({ ...CLIMBER, rank: 75 })
     expect(await screen.findByText("You're at your Tailoring cap (75)")).toBeInTheDocument()
     expect(screen.getByText(/Visit a Tailoring trainer to learn the next rank, then \/reload/)).toBeInTheDocument()

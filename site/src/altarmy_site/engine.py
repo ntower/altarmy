@@ -327,11 +327,9 @@ def crafts_quantile(
 # How many standard deviations of a run's crafts the spare materials bought for it come to: buying for the
 # crafts that get there four times in five (`crafts_quantile`) buys about this many over the expected crafts
 SPARE_Z = 0.8416
-# In a climb a craft costs no less than this share of what goes into it (`Candidate.floored`): a craft that
-# sells for more than it costs earns the same whether or not it gives a point, so its profit mustn't pay for
-# grinding out a low-chance point (a money-maker would be crafted dozens of times a point until grey). The
-# real copper is what every price shows; only plans are chosen by it.
-CLIMB_FLOOR = 0.1
+# The least chance of a skill point a recommended climb crafts at (`SkillRuns.min_chance`): a recipe's last
+# points before grey are left to another, unless nothing at that skill gives a point this often (`Climb`)
+MIN_CHANCE = 0.1
 # What a craft is worth to the climber, in copper (`SkillRuns.craft_value`: the skill Options' Balanced; 0 is
 # Cheapest). A climb charges it for every craft, and again for each point's wasted crafts squared (1/p - 1)^2,
 # p the chance after talents: nothing while orange, a quarter of it at 2/3, 9 times it at 1 in 4, 81 times at
@@ -344,7 +342,7 @@ _EPSILON = 1e-6  # copper: plans this close cost the same (the longer run, the e
 @dataclass(frozen=True)
 class Candidate:
     """A recipe a skill-up climb may craft: what a craft of it comes to (`cost`: spent less what selling what
-    it makes brings back, per craft of a run as long as its `useful_crafts`; `gross` the spending alone), from
+    it makes brings back, per craft of a run as long as its `useful_crafts`; negative when it earns), from
     what skill the climber can craft it (0: they know it, or can learn it now) and what learning it costs them
     (`learn`: a pattern's price, or a trainer's fee; 0 when known or free, None when nothing says)."""
 
@@ -352,25 +350,18 @@ class Candidate:
     cost: float
     from_skill: int = 0
     learn: float | None = 0
-    gross: float = 0.0  # what goes into a craft (materials, postage), before selling what it makes
-
-    @property
-    def floored(self) -> float:
-        """What a craft counts for in a climb: its `cost`, but never under `CLIMB_FLOOR` of what goes into
-        it, so a craft that pays doesn't pay for its own grind."""
-        return max(self.cost, CLIMB_FLOOR * self.gross)
 
 
 @dataclass(frozen=True)
 class SkillRuns:
     """Rank each recipe as the first run of the cheapest climb that starts with it (`plan_climb`), no run
-    asking for more than `ceiling` crafts: a longer one goes on as another of the same recipe. The climbs
-    never craft the `banned` recipes (ids), which get no run: what the user passed over (the skill
-    workspace's other options). `craft_value`: what a craft is worth to the climber (`CRAFT_VALUE`)."""
+    asking for more than `ceiling` crafts: a longer one goes on as another of the same recipe.
+    `craft_value`: what a craft is worth to the climber (`CRAFT_VALUE`); `min_chance`: the least chance of a
+    point a run crafts at, unless nothing gives one that often (`MIN_CHANCE`; 0: any)."""
 
     ceiling: int = RUN_CEILING
-    banned: frozenset[int] = frozenset()
     craft_value: float = CRAFT_VALUE
+    min_chance: float = MIN_CHANCE
 
 
 @dataclass(frozen=True)
@@ -395,10 +386,10 @@ class SkillRun:
 
 @dataclass(frozen=True)
 class ClimbPlan:
-    """A whole climb, its runs in order: what it is chosen by (`cost`: the crafts at their floored cost and
-    craft value, the spare materials bought for each run, the effort of its low-chance points and the
-    patterns', each once however often the climb comes back to it; see `Climb`) and how many of the
-    patterns it buys have no known price."""
+    """A whole climb, its runs in order: what it is chosen by (`cost`: the crafts at their cost and craft
+    value, the spare materials bought for each run, the effort of its low-chance points and the patterns',
+    each once however often the climb comes back to it; see `Climb`) and how many of the patterns it buys
+    have no known price."""
 
     cost: float
     unknown: int
@@ -408,8 +399,8 @@ class ClimbPlan:
 
     def spent_by(self, skill: int) -> tuple[float, int] | None:
         """What the climb is expected to come to by the time it reaches `skill`: its crafts' copper (spent
-        less what selling what they make brings back) and its patterns', without the floor, craft value,
-        spares and effort that only choose the plan, and how many of those patterns have no known price;
+        less what selling what they make brings back) and its patterns', without the craft value, spares
+        and effort that only choose the plan, and how many of those patterns have no known price;
         None when the climb never gets there."""
         if not self.legs or skill > self.legs[-1][2]:
             return None
@@ -425,6 +416,18 @@ class ClimbPlan:
                 unknown += c.learn is None
                 learned.add(c.recipe.id)
         return copper, unknown
+
+    def crafts_by(self, skill: int) -> float | None:
+        """The crafts the climb is expected to take to reach `skill` (as `spent_by`); None when it never
+        gets there."""
+        if not self.legs or skill > self.legs[-1][2]:
+            return None
+        crafts = 0.0
+        for u, start, stop in self.legs:
+            if skill <= start:
+                break
+            crafts += u.expected_crafts(start, min(skill, stop))
+        return crafts
 
 
 # A plan's cost: (patterns of unknown price, copper). Fewer unknown patterns first, then less copper.
@@ -451,8 +454,10 @@ def _repeats(legs: Sequence[tuple[_Usable, int, int]]) -> list[tuple[_Usable, in
 class _Usable:
     """A candidate over the levels it gives a point at, `lo` to `hi` (exclusive), with the running sums of the
     expected crafts per point (1/p), their variance ((1-p)/p^2) and the effort of their wasted crafts
-    (craft value x (1/p - 1)^2) from `lo`; `rate` what a craft counts for (its floored cost and the craft
-    value), `spare` what spare materials cost per standard deviation of crafts."""
+    (craft value x (1/p - 1)^2) from `lo`; `rate` what a craft counts for (its cost and the craft value),
+    `spare` what spare materials cost per standard deviation of crafts; `reach` for each of its levels the
+    furthest a run of it from there may go (exclusive), every level on the way one the climb lets it craft at
+    (`Climb`'s cutoff), -1 at a level it may not."""
 
     candidate: Candidate
     lo: int
@@ -461,6 +466,7 @@ class _Usable:
     effort: tuple[float, ...]
     rate: float
     spare: float
+    reach: tuple[int, ...] = ()
 
     @property
     def hi(self) -> int:
@@ -511,12 +517,14 @@ class Climb:
     """The cheapest ways up `profession` for `crafter` crafting `candidates`, from their skill until their cap
     or a skill nothing gives a point at. A run of a recipe costs its expected crafts (a point at skill s
     costs 1/p(s) crafts, p as `skill_up_chance`, talents included, so the expectation is exact) at what a
-    craft counts for (`Candidate.floored`: a craft that pays counts as costing a tenth of what goes into it,
-    `CLIMB_FLOOR`) plus what a craft is worth to the climber (`craft_value`), plus the spare materials bought
-    for it (`SPARE_Z` standard deviations of its crafts at the floored cost: what buying for an unlucky run
+    craft comes to (`Candidate.cost`, the real copper: a craft that earns lowers the climb's cost) plus what
+    a craft is worth to the climber (`craft_value`), plus the spare materials bought for it (`SPARE_Z`
+    standard deviations of its crafts at the cost, nothing for one that earns: what buying for an unlucky run
     adds, which makes short detours pay for themselves), plus the effort of its low-chance points
     (`craft_value` x (1/p - 1)^2 a point: one exchange rate between copper and crafts at every level), plus
-    its pattern. A run longer than
+    its pattern. A recipe is crafted only at a skill it gives a point at with at least `min_chance`, except
+    where nothing does: at such a skill (a dead end with the cutoff) any recipe giving a point may be, and
+    past it the cutoff applies again. A run longer than
     `ceiling` crafts is one run to the plan (its pattern bought once) and goes on as several (`SkillRuns`); a
     climb that comes back to a recipe after another counts its pattern again (an approximation: the levels
     alone don't say what was learned). `best` is the cheapest climb, `first(recipe id)` the cheapest that
@@ -530,6 +538,7 @@ class Climb:
         candidates: Sequence[Candidate],
         ceiling: int = RUN_CEILING,
         craft_value: float = CRAFT_VALUE,
+        min_chance: float = MIN_CHANCE,
     ) -> None:
         skill = crafter.skill(profession)
         self.crafter, self.profession, self.ceiling = crafter, profession, ceiling
@@ -546,6 +555,17 @@ class Climb:
                 chances.append(p)
             if chances:
                 spans.append((c, lo, chances))
+        end = self.rank
+        while any(lo <= end < lo + len(chances) for _, lo, chances in spans):
+            end += 1
+        self.end = end  # where the climb stops: the cap, or a skill nothing gives a point at
+        # the best chance of a point at each level (to the cap: a recipe learned past a gap has levels past
+        # `end`, which no climb reaches): below the cutoff, a dead end any recipe may get past
+        best = [0.0] * max(0, self.cap - self.rank)
+        for _, lo, chances in spans:
+            for i, p in enumerate(chances):
+                best[lo + i - self.rank] = max(best[lo + i - self.rank], p)
+        cutoff = min_chance - 1e-12
         usable = []
         for c, lo, chances in spans:
             crafts, variance, effort = [0.0], [0.0], [0.0]
@@ -553,14 +573,16 @@ class Climb:
                 crafts.append(crafts[-1] + 1 / p)
                 variance.append(variance[-1] + (1 - p) / p**2)
                 effort.append(effort[-1] + craft_value * (1 / p - 1) ** 2)
-            floored = c.floored
-            rate, spare = floored + craft_value, max(floored, 0.0) * SPARE_Z
-            usable.append(_Usable(c, lo, tuple(crafts), tuple(variance), tuple(effort), rate, spare))
+            allowed = [p >= cutoff or best[lo + i - self.rank] < cutoff for i, p in enumerate(chances)]
+            reach = [-1] * len(chances)
+            for i in range(len(chances) - 1, -1, -1):
+                if allowed[i]:
+                    reach[i] = reach[i + 1] if i + 1 < len(chances) and allowed[i + 1] else lo + i + 1
+            rate, spare = c.cost + craft_value, max(c.cost, 0.0) * SPARE_Z
+            usable.append(
+                _Usable(c, lo, tuple(crafts), tuple(variance), tuple(effort), rate, spare, tuple(reach))
+            )
         self._usable = usable
-        end = self.rank
-        while any(u.lo <= end < u.hi for u in usable):
-            end += 1
-        self.end = end  # where the climb stops: the cap, or a skill nothing gives a point at
         # from each level: the cheapest finish, as (cost, the run to start it with: (candidate, stop))
         self._finish: dict[int, tuple[_Cost, tuple[_Usable, int] | None]] = {end: ((0, 0.0), None)}
         # the same costs as plain lists by level, what `_cheapest_from`'s inner loop reads
@@ -569,17 +591,19 @@ class Climb:
         for start in range(end - 1, self.rank - 1, -1):
             found: tuple[_Cost, tuple[_Usable, int]] | None = None
             for u in usable:
-                if u.lo <= start < u.hi:
+                if u.lo <= start < u.hi and u.reach[start - u.lo] > 0:
                     run = self._cheapest_from(u, start)
                     if run is not None and (found is None or _cheaper(run[0], found[0])):
                         found = run
-            assert found is not None  # something gives a point at every level below `end`
+            # something gives a point at every level below `end`, at or above the cutoff or else at all
+            assert found is not None
             self._finish[start] = found
             self._finish_unknown[start], self._finish_copper[start] = found[0]
         self._runs: dict[tuple[int, int, int, int], SkillRun] = {}
 
     def _cheapest_from(self, u: _Usable, start: int) -> tuple[_Cost, tuple[_Usable, int]] | None:
-        """The cheapest climb from `start` that begins with a run of `u` (the longest of equals)."""
+        """The cheapest climb from `start` that begins with a run of `u` (the longest of equals), as far as
+        the cutoff lets it go (`_Usable.reach`); None when it may not be crafted at `start`."""
         c = u.candidate
         unknown = 1 if c.learn is None else 0
         rate, learn, spare = u.rate, c.learn or 0, u.spare
@@ -588,7 +612,7 @@ class Climb:
         crafts_a, variance_a, effort_a = crafts[a], variance[a], effort[a]
         finish_unknown, finish_copper = self._finish_unknown, self._finish_copper
         best_unknown, best_copper, best_stop = 0, 0.0, -1
-        for stop in range(u.hi, start, -1):
+        for stop in range(u.reach[a], start, -1):
             b = stop - u.lo
             # as `_Usable.cost` (the same sums in the same order), the finish from `stop` added, and
             # `_cheaper`, inlined: the climb's inner loop
@@ -675,8 +699,8 @@ class Climb:
 
 
 # What a climb is worked out from (`Market._climb`): the climber, the profession (lower case), the ceiling,
-# the craft value and the candidates, in order
-ClimbKey = tuple["Crafter", str, int, float, tuple[Candidate, ...]]
+# the craft value, the cutoff and the candidates, in order
+ClimbKey = tuple["Crafter", str, int, float, float, tuple[Candidate, ...]]
 
 
 class ClimbStore:
@@ -710,9 +734,10 @@ def plan_climb(
     candidates: Sequence[Candidate],
     ceiling: int = RUN_CEILING,
     craft_value: float = CRAFT_VALUE,
+    min_chance: float = MIN_CHANCE,
 ) -> Climb:
     """`crafter`'s cheapest ways up `profession` crafting `candidates` (see `Climb`)."""
-    return Climb(crafter, profession, candidates, ceiling, craft_value)
+    return Climb(crafter, profession, candidates, ceiling, craft_value, min_chance)
 
 
 def can_start_climb(recipes: Iterable[Recipe], crafter: Crafter, profession: str) -> bool:
@@ -912,8 +937,6 @@ class Result:
     climb_unknown: int = field(default=0, compare=False)
     climb_after: tuple[SkillRun, ...] = field(default=(), compare=False, repr=False)
     climb: ClimbPlan | None = field(default=None, compare=False, repr=False)  # the whole climb
-    # the recipes (ids) the climb never crafts (`SkillRuns.banned`); empty unless the first run of a climb
-    climb_without: frozenset[int] = field(default=frozenset(), compare=False)
     # With a time model: the estimated play time per craft (what the plan was chosen by), and the per-craft
     # seconds of the sale and of mailing the output to whoever sells it
     seconds: float = field(default=0.0, compare=False)
@@ -1571,7 +1594,7 @@ class Market:
         self.later_recipes = tuple(later_recipes)
         self.learn_costs: Mapping[int, float | None] = dict(learn_costs or {})
         self._candidate_cache: dict[tuple[str, str], list[Candidate]] = {}
-        self._climb_cache: dict[tuple[str, str, int, float, frozenset[int]], Climb] = {}
+        self._climb_cache: dict[tuple[str, str, int, float, float], Climb] = {}
         self.recipes = recipes
         self.prices = prices
         self.books = books or {}
@@ -2135,8 +2158,6 @@ class Market:
                 and not recipe.anyone
                 and crafter.skill(recipe.skill_name) is not None
             )
-            if climbs and stretch is None and skill_run is not None and recipe.id in skill_run.banned:
-                continue  # passed over: no run of it
             plan = (
                 self._climb(recipe.skill_name, crafter, skill_run, memo).first(recipe.id)
                 if climbs and stretch is None and crafter is not None and skill_run is not None
@@ -2230,9 +2251,6 @@ class Market:
                     climb_unknown=plan.unknown if plan is not None else 0,
                     climb_after=plan.runs[1:] if plan is not None else (),
                     climb=plan,
-                    climb_without=skill_run.banned
-                    if plan is not None and skill_run is not None
-                    else frozenset(),
                 )
         if not by_exit:
             return None
@@ -2242,32 +2260,37 @@ class Market:
         picked.sell_options = [SellOption(r.best_exit, r.profit) for r in ranked]
         return picked
 
-    def climb_start(self, skill_name: str, runs: SkillRuns) -> Recipe | None:
-        """The recipe the cheapest climb up `skill_name` starts with (`Climb.best`, never crafting
-        `runs.banned`) for the one character skilled up; None without one, or when nothing gives them a
-        point."""
+    def climb_plan(self, skill_name: str, runs: SkillRuns) -> ClimbPlan | None:
+        """The cheapest climb up `skill_name` (`Climb.best`) for the one character skilled up; None without
+        one, or when nothing gives them a point."""
         if len(self.skill_crafters) != 1:
             return None
         crafter = self._by_name.get(next(iter(self.skill_crafters)))
         if crafter is None or crafter.skill(skill_name) is None:
             return None
         best = self._climb(skill_name, crafter, runs, {}).best
-        return best.runs[0].recipe if best is not None and best.runs else None
+        return best if best is not None and best.runs else None
 
     def _climb(self, skill_name: str, crafter: Crafter, runs: SkillRuns, memo: Memo) -> Climb:
-        """`crafter`'s climbs up `skill_name` (`plan_climb`) over `_candidates` but `runs.banned`; worked out
-        once a market for each set of banned recipes."""
-        key = (skill_name.lower(), crafter.name, runs.ceiling, runs.craft_value, runs.banned)
+        """`crafter`'s climbs up `skill_name` (`plan_climb`) over `_candidates`; worked out once a market."""
+        key = (skill_name.lower(), crafter.name, runs.ceiling, runs.craft_value, runs.min_chance)
         found = self._climb_cache.get(key)
         if found is None:
-            candidates = tuple(
-                c for c in self._candidates(skill_name, crafter, memo) if c.recipe.id not in runs.banned
-            )
+            candidates = tuple(self._candidates(skill_name, crafter, memo))
             # a climb depends on nothing else: markets of the same prices (`climbs`) share it
-            shared: ClimbKey = (crafter, skill_name.lower(), runs.ceiling, runs.craft_value, candidates)
+            shared: ClimbKey = (
+                crafter,
+                skill_name.lower(),
+                runs.ceiling,
+                runs.craft_value,
+                runs.min_chance,
+                candidates,
+            )
             found = self.climbs.get(shared)
             if found is None:
-                found = plan_climb(crafter, skill_name, candidates, runs.ceiling, runs.craft_value)
+                found = plan_climb(
+                    crafter, skill_name, candidates, runs.ceiling, runs.craft_value, runs.min_chance
+                )
                 self.climbs.put(shared, found)
             self._climb_cache[key] = found
         return found
@@ -2291,7 +2314,7 @@ class Market:
                 one = self.evaluate(r, memo=memo, crafts=n)
                 if one is not None and one.crafter == crafter.name:
                     learn = self.learn_costs.get(r.id, 0)
-                    found.append(Candidate(r, -one.profit / n, from_skill, learn, one.cost / n))
+                    found.append(Candidate(r, -one.profit / n, from_skill, learn))
             have = {c.recipe.id for c in found}
             found += [
                 replace(c, learn=self.learn_costs.get(c.recipe.id, c.learn))

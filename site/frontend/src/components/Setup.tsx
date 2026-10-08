@@ -1,5 +1,5 @@
 import { Fragment, useState, type ReactNode } from 'react'
-import { Button, Group, List, NumberInput, Radio, Stack, Text, Title, UnstyledButton } from '@mantine/core'
+import { Button, Group, List, Radio, Stack, Text, Title, UnstyledButton } from '@mantine/core'
 import { motion } from 'motion/react'
 import { useMaxSkill } from '../api/queries'
 import { MAKE_GOLD } from '../lib/features'
@@ -172,50 +172,6 @@ function HolderPicker({
   )
 }
 
-/**
- * A profession card opened to ask what skill a character nobody uploaded has in it (nobody on the realm has the
- * profession): a number from 1 to the highest there is, `initial` to start with, and Done with it.
- */
-function SkillPicker({
-  choice,
-  initial,
-  onDone,
-}: {
-  choice: ProfessionChoice
-  initial: number
-  onDone: (skill: number) => void
-}) {
-  const [typed, setTyped] = useState<number | string>(initial)
-  const maxSkill = useMaxSkill()
-  const skill = typeof typed === 'number' && typed >= 1 && typed <= maxSkill ? Math.round(typed) : null
-  return (
-    <div className={cards.card} data-featured>
-      <Stack gap="sm" p="lg">
-        <Group gap="xs" wrap="nowrap">
-          <ProfessionIcon profession={choice.name} size={24} />
-          <Title order={4}>{choice.name}</Title>
-        </Group>
-        <NumberInput
-          label={`What is your ${choice.name} skill now?`}
-          description="1 if you haven't learned it yet"
-          min={1}
-          max={maxSkill}
-          step={1}
-          allowDecimal={false}
-          value={typed}
-          onChange={setTyped}
-          w={200}
-        />
-        <Group justify="flex-end">
-          <Button disabled={skill === null} onClick={() => skill !== null && onDone(skill)}>
-            Done
-          </Button>
-        </Group>
-      </Stack>
-    </div>
-  )
-}
-
 /** Who to offer first for skilling up a profession: the one picked before, else its lowest-skilled holder. */
 const firstPick = (choice: ProfessionChoice, before: readonly string[] | undefined): string =>
   before?.find((n) => choice.holders.some((h) => h.name === n)) ??
@@ -225,7 +181,7 @@ const firstPick = (choice: ProfessionChoice, before: readonly string[] | undefin
 /**
  * The cards answering `step`, the current answer marked. A profession several characters have first opens its card to
  * pick which of them is skilling up; `onPick` then gets them (none when only one has it). A profession nobody holds
- * (nobody uploaded on the realm) first asks what skill the user's character has in it; `onPick` then gets the skill.
+ * (nobody uploaded on the realm) is skilled up from 1, which the run's page can change: `onPick` gets that skill.
  */
 function StepCards({
   step,
@@ -268,24 +224,14 @@ function StepCards({
     )
   }
   const cardFor = ({ card, icon, titleIcon, body, reason, choice }: (typeof options)[number]) =>
-    choice && choosing === card.key ? (
-      choice.holders.length ? (
-        <HolderPicker
-          key={card.key}
-          choice={choice}
-          // reopened on the profession already picked: who was picked then
-          initial={firstPick(choice, card.key === current ? setup?.characters : undefined)}
-          onDone={(name) => onPick(card.key, [name])}
-        />
-      ) : (
-        <SkillPicker
-          key={card.key}
-          choice={choice}
-          // reopened on the profession already picked: the skill given then
-          initial={(card.key === current ? setup?.climberSkill : undefined) ?? 1}
-          onDone={(skill) => onPick(card.key, undefined, skill)}
-        />
-      )
+    choice && choosing === card.key && choice.holders.length ? (
+      <HolderPicker
+        key={card.key}
+        choice={choice}
+        // reopened on the profession already picked: who was picked then
+        initial={firstPick(choice, card.key === current ? setup?.characters : undefined)}
+        onDone={(name) => onPick(card.key, [name])}
+      />
     ) : (
       <OptionCard
         key={card.key}
@@ -295,7 +241,16 @@ function StepCards({
         body={body}
         picked={card.key === current}
         reason={reason}
-        onPick={() => (choice && choice.holders.length !== 1 ? setChoosing(card.key) : onPick(card.key))}
+        onPick={() =>
+          !choice
+            ? onPick(card.key)
+            : choice.holders.length > 1
+              ? setChoosing(card.key)
+              : // nobody holds it: a character nobody uploaded, from skill 1 (changed on the run's page)
+                choice.holders.length === 0
+                ? onPick(card.key, undefined, 1)
+                : onPick(card.key)
+        }
       />
     )
   if (step === 'aim') {

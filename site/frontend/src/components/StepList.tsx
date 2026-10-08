@@ -58,7 +58,7 @@ function SaleNotes({ result, items }: { result: RankResult; items: ItemMap }) {
  * from or sold to (the detailed view knows it).
  */
 function describe(
-  { action, item_id, name, quantity, value, via, who, discount, rep_discount, rep_faction, bonus, convert, enchant }: Step,
+  { action, item_id, name, quantity, value, via, who, discount, rep_discount, rep_faction, convert, enchant }: Step,
   result: RankResult,
   items: ItemMap,
   vendor?: string,
@@ -67,7 +67,12 @@ function describe(
 ): ReactNode[] {
   const item = <ItemLink item={items[item_id]} name={name} />
   const discounted = discountLabel(discount, rep_discount)
-  const extra = bonus > 0 ? ` (${bonusNote(bonus)})` : ''
+  // Master Chef's extra results come from the crafts: said where they are made (the sale's `bonus` counts them)
+  const made =
+    action === 'craft' && !convert && !enchant
+      ? (result.steps.find((s) => s.action === 'sell' && s.item_id === item_id && s.bonus > 0)?.bonus ?? 0)
+      : 0
+  const extra = made > 0 ? ` (${bonusNote(made)})` : ''
   switch (action) {
     case 'buy':
       return [
@@ -102,6 +107,7 @@ function describe(
       return [
         <>
           {convert ? 'Convert into' : 'Craft'} {quantity}x {item}
+          {extra}
         </>,
       ]
     case 'mail':
@@ -117,7 +123,6 @@ function describe(
           <>
             Disenchant {quantity > 1 ? `${quantity}x ` : ''}
             {item}
-            {extra}
           </>,
           ...materials.map((m) => (
             <>
@@ -136,8 +141,7 @@ function describe(
         return [
           <>
             Disenchant {quantity > 1 ? `${quantity}x ` : ''}
-            {item}
-            {extra} (
+            {item} (
             <DisenchantHover result={result} items={items}>
               <span className={classes.hint}>view expected materials</span>
             </DisenchantHover>
@@ -154,15 +158,13 @@ function describe(
         return [
           <>
             Keep the {quantity > 1 ? `${quantity}x ` : ''}
-            {item}
-            {extra} (no vendor buys it)
+            {item} (no vendor buys it)
           </>,
         ]
       // skilling up sells what was made only to win some of the cost back: no notes on how to post it
       return [
         <>
-          Sell {quantity}x {item}
-          {extra} {via === 'ah' ? 'on the AH' : `to ${vendor ?? 'a vendor'}`} <Sale gross={value} net={result.profit} />
+          Sell {quantity}x {item} {via === 'ah' ? 'on the AH' : `to ${vendor ?? 'a vendor'}`} <Sale gross={value} net={result.profit} />
           {via === 'ah' && !skill && <SaleNotes result={result} items={items} />}
         </>,
       ]

@@ -772,8 +772,8 @@ def test_a_climb_says_what_it_comes_to_by_each_rank_cap_it_reaches() -> None:
     climb = engine.plan_climb(smith, "Blacksmithing", [engine.Candidate(recipe, 10.0, learn=None)]).best
     # 75 reached already; the climb ends where the recipe turns grey, before 300
     assert api._milestones(climb) == [
-        api.MilestoneOut(skill=150, cost=750, unknown=1),
-        api.MilestoneOut(skill=225, cost=1500, unknown=1),
+        api.MilestoneOut(skill=150, cost=750, unknown=1, crafts=75),
+        api.MilestoneOut(skill=225, cost=1500, unknown=1, crafts=150),
     ]
     assert api._milestones(None) == []
 
@@ -787,7 +787,8 @@ def test_skill_up_ranks_each_recipe_as_the_first_run_of_its_climb(
     (r,) = body["results"]
     assert (r["learn_skill"], r["trivial_low"], r["trivial_high"]) == (50, 30, 60)
     assert (r["crafts"], r["stop_skill"], r["stop_reason"], r["overtaken_by"]) == (88, 60, "trivial", "")
-    assert body["chain"] == [] and body["options"] == [r]
+    assert body["chain"] == []
+    assert body["strategies"][0] == {"key": "recommended", "run": r, "chain": []}
     assert r["climb_cost"] is not None and r["climb_cost"] > -r["profit"]  # what it costs, spares too
     assert r["milestones"] == []  # the climb ends at 60, short of the next rank's cap (75)
     assert r["overtaken_by_item"] == 0
@@ -807,7 +808,7 @@ def test_skill_up_ranks_each_recipe_as_the_first_run_of_its_climb(
     # from 20 the robe takes ~130 crafts to grey: more than a run asks for (100), so another run of it follows
     assert r["stop_reason"] == "ceiling" and r["crafts"] <= 100 and r["overtaken_by"] == ""
     (then,) = ranked["chain"]
-    assert ranked["option_chains"] == [ranked["chain"]]  # each option's chain: here the one option's
+    assert ranked["strategies"][0]["chain"] == ranked["chain"]  # the recommended strategy's chain
     assert (then["recipe_id"], then["stop_skill"], then["stop_reason"]) == (r["recipe_id"], 60, "trivial")
     assert then["climb_cost"] is None  # a later run of the climb
     assert then["skill_chance"] < 1  # planned from where the first run stops: yellow by then
@@ -865,28 +866,28 @@ def test_a_run_of_the_chain_is_planned_again_as_the_chain_has_it(
     assert client.post("/api/evaluate", json={**body, "recipe_id": 999999}).status_code == 404
     # a chain needs the run it follows
     assert client.post("/api/evaluate", json={**body, "chain_from": None}).status_code == 400
-    # planned under another effort setting, as ranked under it
-    fewest = client.get("/api/rank", params={**params, "effort": "fewest"}).json()
-    if fewest["chain"]:
-        again = {**body, "recipe_id": fewest["chain"][0]["recipe_id"], "effort": "fewest"}
-        again["chain_from"] = fewest["results"][0]["recipe_id"]
-        assert client.post("/api/evaluate", json=again).json()["result"] == fewest["chain"][0]
+    # planned under another strategy, as ranked under it
+    cheapest = client.get("/api/rank", params={**params, "strategy": "cheapest"}).json()
+    if cheapest["chain"]:
+        again = {**body, "recipe_id": cheapest["chain"][0]["recipe_id"], "strategy": "cheapest"}
+        again["chain_from"] = cheapest["results"][0]["recipe_id"]
+        assert client.post("/api/evaluate", json=again).json()["result"] == cheapest["chain"][0]
 
 
-def test_the_effort_setting_trades_copper_for_crafts(client: TestClient, priced: Connection) -> None:
+def test_the_cheapest_strategy_counts_copper_alone(client: TestClient, priced: Connection) -> None:
     tailoring_options(priced)
     params = {**SKILL_UP, "skill_crafters": ["Tailor"], "runs": True, "chain_length": 20}
 
-    def climb(effort: str) -> tuple[int, int, int]:
-        body = client.get("/api/rank", params={**params, "effort": effort}).json()
+    def climb(strategy: str) -> tuple[int, int, int]:
+        body = client.get("/api/rank", params={**params, "strategy": strategy}).json()
         runs = body["results"][:1] + body["chain"]
         return sum(r["crafts"] for r in runs), body["results"][0]["climb_cost"], runs[-1]["stop_skill"]
 
-    cheapest, balanced, fewest = climb("cheapest"), climb("balanced"), climb("fewest")
-    assert cheapest[2] == balanced[2] == fewest[2]  # as high either way
-    assert cheapest[0] >= balanced[0] >= fewest[0]  # fewer crafts the more each is worth
-    assert cheapest[1] < balanced[1] < fewest[1]  # what a craft is worth is counted in what chooses the climb
-    assert client.get("/api/rank", params={**params, "effort": "quickest"}).status_code == 422
+    cheapest, recommended = climb("cheapest"), climb("recommended")
+    assert cheapest[2] == recommended[2]  # as high either way
+    assert cheapest[0] >= recommended[0]  # however many crafts it takes
+    assert cheapest[1] < recommended[1]  # what a craft is worth is not counted in what chooses the climb
+    assert client.get("/api/rank", params={**params, "strategy": "quickest"}).status_code == 422
 
 
 def test_a_climb_goes_on_past_the_climbers_rank_cap(client: TestClient, priced: Connection) -> None:
@@ -971,46 +972,66 @@ def tailoring_options(conn: Connection) -> tuple[int, int, int]:
     return robe["id"], robe["id"] + 1, robe["id"] + 2
 
 
-def test_each_option_side_by_side_never_comes_back_to_those_before_it(
-    client: TestClient, priced: Connection
-) -> None:
+def test_each_strategy_shows_its_climb_side_by_side(client: TestClient, priced: Connection) -> None:
     robe, cap, belt = tailoring_options(priced)
     params = {**SKILL_UP, "skill_crafters": ["Tailor"], "runs": True}
     body = client.get("/api/rank", params=params).json()
-    assert [r["recipe_id"] for r in body["results"]] == [belt, cap, robe]
-    first, second, third = body["options"]
-    # the best as ranked; the second never crafts the first, the third neither
-    assert first == body["results"][0] and first["climb_without"] == []
-    assert (second["recipe_id"], second["climb_without"]) == (cap, [belt])
-    assert (third["recipe_id"], third["climb_without"]) == (robe, sorted([belt, cap]))
-    # as ranked, the cap's run gives way to the belt; passed over, the belt never comes
-    assert body["results"][1]["overtaken_by"] == "Linen Belt"
-    assert second["overtaken_by"] != "Linen Belt" and second["stop_skill"] > body["results"][1]["stop_skill"]
-    assert all(r["recipe_id"] != belt for r in body["option_chains"][1])
-    # the robe's run without either goes on until it turns grey, and nothing follows it: a climb that ends
-    # lower than the others, though it costs less
-    assert (third["stop_reason"], third["stop_skill"]) == ("trivial", 60)
-    assert (first["climb_end"], second["climb_end"], third["climb_end"]) == (95, 90, 60)
-    assert third["climb_cost"] < first["climb_cost"] and third["climb_unknown"] == 0
-    assert body["option_chains"][2] == []
-    # picked, an option is the run and the chain its card shows
-    picked = client.get("/api/rank", params={**params, "chain_from": cap, "top": 1}).json()
-    assert picked["chain_start"] == second
-    assert picked["chain"][: len(body["option_chains"][1])] == body["option_chains"][1]
-    assert all(r["recipe_id"] != belt for r in picked["chain"])
-    # planned again with what it leaves out, as the card shows it; without, as ranked
-    evaluated = {"recipe_id": cap, "choices": {}, "include_trivial": False, "skill_crafters": ["Tailor"]}
-    evaluated |= {"exits": ["vendor", "keep"], "runs": True}
-    got = client.post("/api/evaluate", json={**evaluated, "climb_without": [belt]}).json()["result"]
-    assert (got["crafts"], got["stop_skill"], got["climb_without"]) == (
-        second["crafts"],
-        second["stop_skill"],
-        [belt],
+    assert [r["recipe_id"] for r in body["results"]] == [cap, belt, robe]
+    recommended, cheapest, no_patterns = body["strategies"]
+    assert [o["key"] for o in body["strategies"]] == ["recommended", "cheapest", "no_patterns"]
+    # the recommended one is the ranking's first, with its chain
+    assert recommended["run"] == body["results"][0] and recommended["chain"] == body["chain"]
+    # the tailor knows every recipe: without patterns the climb starts the same
+    assert no_patterns["run"]["recipe_id"] == recommended["run"]["recipe_id"]
+    # picked, a strategy ranks its climb first, with the chain its card shows
+    picked = client.get("/api/rank", params={**params, "strategy": "cheapest", "top": 1}).json()
+    (first,) = picked["results"]
+    assert (first["recipe_id"], first["crafts"], first["stop_skill"]) == (
+        cheapest["run"]["recipe_id"],
+        cheapest["run"]["crafts"],
+        cheapest["run"]["stop_skill"],
     )
-    plain = client.post("/api/evaluate", json=evaluated).json()["result"]
-    assert (plain["stop_skill"], plain["climb_without"]) == (body["results"][1]["stop_skill"], [])
-    # a banned recipe has no run to plan
-    assert client.post("/api/evaluate", json={**evaluated, "climb_without": [cap]}).status_code == 404
+    assert picked["chain"][: len(cheapest["chain"])] == cheapest["chain"]
+    assert picked["strategies"] == []  # the cards come with the recommended ranking alone
+    # planned again under its strategy, as the card shows it
+    evaluated = {"recipe_id": first["recipe_id"], "choices": {}, "include_trivial": False}
+    evaluated |= {"skill_crafters": ["Tailor"], "exits": ["vendor", "keep"], "runs": True}
+    got = client.post("/api/evaluate", json={**evaluated, "strategy": "cheapest"}).json()["result"]
+    assert (got["crafts"], got["stop_skill"], got["climb_cost"]) == (
+        first["crafts"],
+        first["stop_skill"],
+        first["climb_cost"],
+    )
+
+
+def test_a_climb_is_planned_with_the_talent_ranks_asked_for(client: TestClient, priced: Connection) -> None:
+    tailoring_options(priced)
+    params = {**SKILL_UP, "skill_crafters": ["Tailor"], "runs": True, "chain_length": 20}
+
+    def crafts(body: dict[str, Any]) -> int:
+        return sum(r["crafts"] for r in body["results"][:1] + body["chain"])
+
+    plain = client.get("/api/rank", params=params).json()
+    overtime = client.get("/api/rank", params={**params, "working_overtime": 5}).json()
+    assert overtime["results"][0]["skill_bonus"] == pytest.approx(0.2)
+    assert crafts(overtime) < crafts(plain)
+    # rank 0 is the tailor as uploaded: the same ranking
+    assert client.get("/api/rank", params={**params, "working_overtime": 0, "bartering": 0}).json() == plain
+    # planned again with them, as ranked
+    first = overtime["results"][0]
+    evaluated = {"recipe_id": first["recipe_id"], "choices": {}, "include_trivial": False}
+    evaluated |= {
+        "skill_crafters": ["Tailor"],
+        "exits": ["vendor", "keep"],
+        "runs": True,
+        "working_overtime": 5,
+    }
+    got = client.post("/api/evaluate", json=evaluated).json()["result"]
+    assert (got["crafts"], got["skill_bonus"]) == (first["crafts"], first["skill_bonus"])
+    # no rank past the talent's
+    assert client.get("/api/rank", params={**params, "working_overtime": 6}).status_code == 422
+    assert client.get("/api/rank", params={**params, "bartering": 3}).status_code == 422
+    assert client.get("/api/rank", params={**params, "master_chef": 6}).status_code == 422
 
 
 def test_a_climb_trains_only_the_ranks_the_climbers_level_allows(

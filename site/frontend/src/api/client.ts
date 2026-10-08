@@ -4,6 +4,7 @@ import type { components, paths } from './schema'
 
 export type Status = components['schemas']['Status']
 export type RankResult = components['schemas']['RankResult']
+export type StrategyOut = components['schemas']['StrategyOut']
 /** How far a result's AH sell price can be trusted, and the numbers behind it. */
 export type PriceConfidence = components['schemas']['ConfidenceOut']
 /** One recipe re-costed with the user's choices, and tooltip details for the items it now uses. */

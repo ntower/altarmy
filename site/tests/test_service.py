@@ -977,24 +977,17 @@ def overlapping(rank: int = 25) -> tuple[engine.Market, Character]:
     return engine.Market(items, recipes, {1: 20}, exits=frozenset({"vendor", engine.KEEP_EXIT})), who
 
 
-def options_of(
-    base: engine.Market, who: Character, first: engine.Result, count: int = 4
-) -> list[engine.Result]:
+def start_of(
+    base: engine.Market,
+    who: Character,
+    learning: engine.Learning | engine.Unlearned = "train",
+    run: engine.SkillRuns | None = None,
+) -> engine.Result | None:
     none: frozenset[int] = frozenset()
-    return service.climb_options(
-        base, [who], "none", frozenset({"vendor", engine.KEEP_EXIT}), none, False, None,
-        frozenset({who.name}), False, engine.SkillRuns(), first, count,
+    run = run or engine.SkillRuns()
+    return service.strategy_start(
+        base, [who], learning, ALL_EXITS, none, False, None, frozenset({who.name}), False, run, "Tailoring",
     )  # fmt: skip
-
-
-def best_without(base: engine.Market, who: Character, banned: set[int]) -> list[engine.Result]:
-    """Every run ranked as `search` ranks them, each the first of the cheapest climb never crafting
-    `banned`."""
-    run = engine.SkillRuns(banned=frozenset(banned))
-    skilled = frozenset({who.name})
-    return service.by_skill(
-        service.search(base, [who], "none", Filters(), ALL_EXITS, skill_crafters=skilled, skill_run=run)
-    )
 
 
 def climbed(r: engine.Result) -> list[str]:
@@ -1002,95 +995,45 @@ def climbed(r: engine.Result) -> list[str]:
     return [r.recipe.name, *(s.recipe.name for s in r.climb_after if s.recipe is not None)]
 
 
-def test_each_option_climbs_without_the_options_before_it() -> None:
+def test_a_strategy_starts_with_the_first_run_of_its_cheapest_climb() -> None:
     base, who = overlapping()
     ranked = ranked_runs(base, who)
-    assert [r.recipe.name for r in ranked] == ["Stone", "Maul", "Robe"]
-    # as ranked, the Maul's climb is a short run of it, then back to Stone
-    assert climbed(ranked[1])[:2] == ["Maul", "Stone"] and ranked[1].overtaken_by == "Stone"
-    # three options, though four are asked for: no climb without all three gives a point
-    first, second, third = options_of(base, who, ranked[0])
-    assert first is ranked[0]  # the best as it is
-    # passed over, Stone never comes back: the Maul goes on until something other than Stone takes over
-    assert second.climb_without == frozenset({101})
-    assert "Stone" not in climbed(second) and second.overtaken_by != "Stone"
-    assert second.crafts > ranked[1].crafts and second.stop_skill > ranked[1].stop_skill
-    # the third leaves out both before it: the Robe alone (in runs of at most a ceiling's crafts) up to grey
-    assert third.climb_without == frozenset({101, 102})
-    assert set(climbed(third)) == {"Robe"} and third.stop_reason == "ceiling"
-    assert (third.climb_after[-1].reason, third.climb_after[-1].stop_skill) == ("trivial", 80)
-    # what the bans cost: a climb that may not take Stone costs more than one that may
-    assert second.climb_cost is not None and ranked[1].climb_cost is not None
-    assert second.climb_cost > ranked[1].climb_cost
-    # each planned as `evaluate` plans a run with those bans
-    for opt in (second, third):
-        again = service.evaluate(
-            base, [who], "none", frozenset({"vendor", engine.KEEP_EXIT}), opt.recipe.id, {},
-            skill_crafters=frozenset({who.name}), skill_run=engine.SkillRuns(banned=opt.climb_without),
-        )  # fmt: skip
-        assert again is not None
-        assert (again.crafts, again.stop_skill, again.climb_cost) == (
-            opt.crafts,
-            opt.stop_skill,
-            opt.climb_cost,
-        )
-
-
-def test_an_option_chain_never_comes_back_to_the_options_before_it() -> None:
-    base, who = overlapping()
-    ranked = ranked_runs(base, who)
-    _, second, _ = options_of(base, who, ranked[0])
-    chain = chain_of(base, who, second, steps=8)
-    assert chain and all(r.recipe.name != "Stone" for r in chain)
-    assert [r.stop_skill for r in chain] == [s.stop_skill for s in second.climb_after][: len(chain)]
-
-
-def test_options_are_as_many_as_asked_for_or_give_a_point() -> None:
-    base, who = overlapping()
-    ranked = ranked_runs(base, who)
-    assert options_of(base, who, ranked[0], count=1) == [ranked[0]]
-    first, second = options_of(base, who, ranked[0], count=2)
-    assert first is ranked[0] and second.climb_without == frozenset({101})
-
-
-def stone_nub_robe() -> tuple[engine.Market, Character]:
-    """A tailor at 25 (cap 100) who knows three recipes: Stone (1 cloth; orange until 95), Nub (1 cloth;
-    grey at 27) and Robe (20 cloth; orange until 95). Without Stone, the Robe is the cheaper climb: Nub's two
-    green points take ~25 crafts, and then it dead-ends."""
-    items = {
-        1: engine.Item(1, "Cloth"),
-        **{10 + i: engine.Item(10 + i, n, sell_price=1) for i, n in ((1, "Stone"), (2, "Nub"), (3, "Robe"))},
-    }
-    recipes = [
-        engine.Recipe(
-            100 + i, n, 10 + i, 1, ((1, k),), "Tailoring", spell_id=900 + i, trivial_low=lo, trivial_high=hi
-        )
-        for i, (n, k, lo, hi) in enumerate(
-            (("Stone", 1, 95, 110), ("Nub", 1, 10, 27), ("Robe", 20, 95, 110)), start=1
-        )
-    ]
-    who = Character(
-        "R", "T", "Horde", "MAGE", 60, (Profession("Tailoring", 25, 100, frozenset({901, 902, 903})),)
+    got = start_of(base, who)
+    assert got is not None
+    assert (got.recipe, got.crafts, got.stop_skill, got.climb_cost) == (
+        ranked[0].recipe,
+        ranked[0].crafts,
+        ranked[0].stop_skill,
+        ranked[0].climb_cost,
     )
-    return engine.Market(items, recipes, {1: 20}, exits=frozenset({"vendor", engine.KEEP_EXIT})), who
+    # copper alone: a craft is worth nothing, so the climb is chosen by less
+    cheapest = start_of(base, who, run=engine.SkillRuns(craft_value=0.0))
+    assert cheapest is not None and cheapest.climb_cost is not None and got.climb_cost is not None
+    assert cheapest.climb_cost < got.climb_cost
 
 
-def test_each_option_is_the_cheapest_climb_without_those_before_it() -> None:
-    base, who = stone_nub_robe()
-    ranked = ranked_runs(base, who)
-    # as ranked, the Robe's point comes before Nub's two green ones, whose wasted crafts count
-    assert [r.recipe.name for r in ranked] == ["Stone", "Robe", "Nub"]
-    first, second, third = options_of(base, who, ranked[0])
-    assert [o.recipe.name for o in (first, second, third)] == ["Stone", "Robe", "Nub"]
-    # each is the best a ranking without those before it gives
-    assert second.recipe == best_without(base, who, {101})[0].recipe
-    assert third.recipe == best_without(base, who, {101, 103})[0].recipe
-    # cheapest first: without Stone the Robe's climb to the cap costs less than Nub's
-    nub = next(r for r in best_without(base, who, {101}) if r.recipe.name == "Nub")
-    assert second.climb_cost is not None and nub.climb_cost is not None and second.climb_cost < nub.climb_cost
-    assert second.stop_skill == 100 and climbed(second) == ["Robe"]
-    # the third may take neither: Nub alone, until it turns grey, where nothing else gives a point
-    assert (third.climb_without, third.stop_skill, third.climb_after) == (frozenset({101, 103}), 27, ())
+def test_a_strategy_without_patterns_learns_only_what_trainers_teach() -> None:
+    base, who = ladder()
+    base.recipes[1] = replace(base.recipes[1], source="recipe")  # B is taught by a pattern
+    both = start_of(base, who, engine.Learning("train", 0, frozenset({"trainer", "recipe"})))
+    trainer = start_of(base, who, engine.Learning("train", 0, frozenset({"trainer"})))
+    assert both is not None and "B" in climbed(both)
+    assert trainer is not None and "B" not in climbed(trainer)
+
+
+def test_a_climb_is_planned_with_a_talent_set_to_another_rank() -> None:
+    base, who = overlapping()
+    raised = service.with_talent([who, replace(who, name="Other")], "T", talents.WORKING_OVERTIME, 5)
+    assert raised[0].talents == ((talents.WORKING_OVERTIME, 5),) and raised[1].talents == ()
+    again = service.with_talent(raised, "T", talents.WORKING_OVERTIME, 2)
+    assert again[0].talents == ((talents.WORKING_OVERTIME, 2),)  # replaced, not added
+    assert service.with_talent(again, "T", talents.WORKING_OVERTIME, 0)[0].talents == ()  # none at 0
+    plain, overtime = start_of(base, who), start_of(base, raised[0])
+    assert plain is not None and overtime is not None
+    assert plain.climb is not None and overtime.climb is not None
+    end = min(plain.climb.runs[-1].stop_skill, overtime.climb.runs[-1].stop_skill)
+    crafts, fewer = plain.climb.crafts_by(end), overtime.climb.crafts_by(end)
+    assert crafts is not None and fewer is not None and fewer < crafts
 
 
 def test_runs_are_ranked_by_the_climb_they_start() -> None:

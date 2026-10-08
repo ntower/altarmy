@@ -7,7 +7,6 @@ import {
   Group,
   Loader,
   NumberInput,
-  SegmentedControl,
   SimpleGrid,
   Stack,
   Text,
@@ -19,7 +18,6 @@ import {
 import { z } from 'zod'
 import {
   ALL_SOURCES,
-  type Effort,
   type RankParams,
   type RankSort,
   type Source,
@@ -150,18 +148,6 @@ const SOURCES: { value: Source; label: string; description?: string }[] = [
 ]
 const sourceList = z.array(z.enum(['trainer', 'recipe', 'bop']))
 const DEFAULT_SOURCES: Source[] = ['trainer', 'recipe']
-const effortSchema = z.enum(['cheapest', 'balanced', 'fewest'])
-const EFFORTS: { value: Effort; label: string }[] = [
-  { value: 'cheapest', label: 'Cheapest' },
-  { value: 'balanced', label: 'Balanced' },
-  { value: 'fewest', label: 'Fewest crafts' },
-]
-/** What each Plan for weighs (the API's `CRAFT_VALUES`). */
-const EFFORT_NOTES: Record<Effort, string> = {
-  cheapest: 'The least gold, however many crafts the last points before grey take.',
-  balanced: 'Counts each craft as worth 50 copper: no point takes dozens of crafts unless nothing else gives it.',
-  fewest: 'Counts each craft as worth 2 silver: fewer crafts for a little more gold.',
-}
 const SECTIONS = ['advanced'] as const
 const NONE_OPEN: string[] = []
 
@@ -385,7 +371,6 @@ export function SkillOptions({ salvagerDefault }: { salvagerDefault: boolean }) 
   const id = useId()
   const [sources, setSources] = useFilter<Source[]>('skill', 'sources', sourceList, DEFAULT_SOURCES)
   const [reach, setReach] = useFilter('skill', 'reachTarget', z.number(), DEFAULT_REACH_TARGET)
-  const [effort, setEffort] = useFilter<Effort>('skill', 'effort', effortSchema, 'balanced')
   const [salvagerPick, setSalvagerPick] = useFilter<boolean | null>(
     'skill',
     'arcaneSalvager',
@@ -423,20 +408,6 @@ export function SkillOptions({ salvagerDefault }: { salvagerDefault: boolean }) 
                 )}
               </Stack>
             </Checkbox.Group>
-            <Stack gap={4}>
-              <Text size="sm" fw={500} id={`${id}-effort`}>
-                Plan for
-              </Text>
-              <SegmentedControl
-                aria-labelledby={`${id}-effort`}
-                value={effort}
-                onChange={(v) => setEffort(effortSchema.parse(v))}
-                data={EFFORTS}
-              />
-              <Text size="xs" c="dimmed">
-                {EFFORT_NOTES[effort]}
-              </Text>
-            </Stack>
             <ReachTarget value={reach} onChange={setReach} />
             {SHOW_ARCANE_SALVAGER && (
               <Checkbox
@@ -501,7 +472,6 @@ export function AimSearch({
   const skill = aim === 'skill'
   // Skilling up's options are set in `SkillOptions` (on the skill page's top row), kept under the same keys.
   const [sources] = useFilter<Source[]>(aim, 'sources', sourceList, DEFAULT_SOURCES)
-  const [effort] = useFilter<Effort>(aim, 'effort', effortSchema, 'balanced')
   // Stored as strings: sections that no longer exist (the old Characters and Time assumptions ones) are dropped,
   // not an error.
   const [stored, setOpen] = useFilter(aim, 'open', z.array(z.string()), NONE_OPEN)
@@ -563,7 +533,6 @@ export function AimSearch({
             skillCrafters: skilled ? skilled.split(',') : [],
             sort,
             runs: true,
-            effort,
             ...(climberSkill !== undefined ? { climberSkill } : {}),
           }
         : {
@@ -605,7 +574,6 @@ export function AimSearch({
       profession,
       skilled,
       climberSkill,
-      effort,
     ],
   )
   const debouncedFilters = useSettled(filters, 300, flush)

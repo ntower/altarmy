@@ -604,6 +604,19 @@
             "title": "Arcane Salvager",
             "type": "boolean"
           },
+          "bartering": {
+            "anyOf": [
+              {
+                "maximum": 2.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bartering"
+          },
           "chain_at": {
             "anyOf": [
               {
@@ -646,14 +659,6 @@
             ],
             "title": "City"
           },
-          "climb_without": {
-            "default": [],
-            "items": {
-              "type": "integer"
-            },
-            "title": "Climb Without",
-            "type": "array"
-          },
           "climber_skill": {
             "anyOf": [
               {
@@ -689,16 +694,6 @@
               }
             ],
             "title": "Crafter"
-          },
-          "effort": {
-            "default": "balanced",
-            "enum": [
-              "cheapest",
-              "balanced",
-              "fewest"
-            ],
-            "title": "Effort",
-            "type": "string"
           },
           "exits": {
             "default": [
@@ -738,6 +733,19 @@
             "minimum": 0.0,
             "title": "Look Ahead",
             "type": "integer"
+          },
+          "master_chef": {
+            "anyOf": [
+              {
+                "maximum": 5.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Master Chef"
           },
           "price_version": {
             "anyOf": [
@@ -783,6 +791,16 @@
             "title": "Sources",
             "type": "array"
           },
+          "strategy": {
+            "default": "recommended",
+            "enum": [
+              "recommended",
+              "cheapest",
+              "no_patterns"
+            ],
+            "title": "Strategy",
+            "type": "string"
+          },
           "unlearned": {
             "default": "none",
             "enum": [
@@ -792,6 +810,19 @@
             ],
             "title": "Unlearned",
             "type": "string"
+          },
+          "working_overtime": {
+            "anyOf": [
+              {
+                "maximum": 5.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Working Overtime"
           }
         },
         "required": [
@@ -1826,10 +1857,15 @@
         "type": "object"
       },
       "MilestoneOut": {
-        "description": "What a climb is expected to come to by the time it reaches `skill`: its crafts (spent less what\nselling what they make brings back, so negative when they earn) and its patterns, `unknown` of which have\nno known price (not counted).",
+        "description": "What a climb is expected to come to by the time it reaches `skill`: its crafts (spent less what\nselling what they make brings back, so negative when they earn) and its patterns, `unknown` of which have\nno known price (not counted), and the crafts it is expected to take to get there.",
         "properties": {
           "cost": {
             "title": "Cost",
+            "type": "integer"
+          },
+          "crafts": {
+            "default": 0,
+            "title": "Crafts",
             "type": "integer"
           },
           "skill": {
@@ -2176,16 +2212,6 @@
             "title": "Chain",
             "type": "array"
           },
-          "chain_start": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RankResult"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "classes": {
             "additionalProperties": {
               "type": "string"
@@ -2208,30 +2234,19 @@
             "title": "Learn",
             "type": "object"
           },
-          "option_chains": {
-            "default": [],
-            "items": {
-              "items": {
-                "$ref": "#/components/schemas/RankResult"
-              },
-              "type": "array"
-            },
-            "title": "Option Chains",
-            "type": "array"
-          },
-          "options": {
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/RankResult"
-            },
-            "title": "Options",
-            "type": "array"
-          },
           "results": {
             "items": {
               "$ref": "#/components/schemas/RankResult"
             },
             "title": "Results",
+            "type": "array"
+          },
+          "strategies": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/StrategyOut"
+            },
+            "title": "Strategies",
             "type": "array"
           },
           "total": {
@@ -2332,14 +2347,6 @@
             "default": 0,
             "title": "Climb Unknown",
             "type": "integer"
-          },
-          "climb_without": {
-            "default": [],
-            "items": {
-              "type": "integer"
-            },
-            "title": "Climb Without",
-            "type": "array"
           },
           "confidence": {
             "anyOf": [
@@ -3000,6 +3007,37 @@
           "paths"
         ],
         "title": "StepOut",
+        "type": "object"
+      },
+      "StrategyOut": {
+        "description": "One strategy's climb (`STRATEGIES`): its first run and the runs after it (`SKILL_CHAIN` at most).",
+        "properties": {
+          "chain": {
+            "items": {
+              "$ref": "#/components/schemas/RankResult"
+            },
+            "title": "Chain",
+            "type": "array"
+          },
+          "key": {
+            "enum": [
+              "recommended",
+              "cheapest",
+              "no_patterns"
+            ],
+            "title": "Key",
+            "type": "string"
+          },
+          "run": {
+            "$ref": "#/components/schemas/RankResult"
+          }
+        },
+        "required": [
+          "key",
+          "run",
+          "chain"
+        ],
+        "title": "StrategyOut",
         "type": "object"
       },
       "TalentOut": {
@@ -4727,20 +4765,80 @@
             }
           },
           {
-            "description": "with runs: how a climb weighs crafts against copper (`CRAFT_VALUES`): cheapest counts copper alone, fewest crafts values each at 2s",
+            "description": "with runs: how a climb is planned (`STRATEGIES`): as recommended, cheapest (copper alone, whatever the crafts), or no patterns (only recipes trainers teach)",
             "in": "query",
-            "name": "effort",
+            "name": "strategy",
             "required": false,
             "schema": {
-              "default": "balanced",
-              "description": "with runs: how a climb weighs crafts against copper (`CRAFT_VALUES`): cheapest counts copper alone, fewest crafts values each at 2s",
+              "default": "recommended",
+              "description": "with runs: how a climb is planned (`STRATEGIES`): as recommended, cheapest (copper alone, whatever the crafts), or no patterns (only recipes trainers teach)",
               "enum": [
+                "recommended",
                 "cheapest",
-                "balanced",
-                "fewest"
+                "no_patterns"
               ],
-              "title": "Effort",
+              "title": "Strategy",
               "type": "string"
+            }
+          },
+          {
+            "description": "with one character skilled up: plan as if they had Working Overtime at this rank",
+            "in": "query",
+            "name": "working_overtime",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 5,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "with one character skilled up: plan as if they had Working Overtime at this rank",
+              "title": "Working Overtime"
+            }
+          },
+          {
+            "description": "with one character skilled up: plan as if they had Bartering at this rank",
+            "in": "query",
+            "name": "bartering",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 2,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "with one character skilled up: plan as if they had Bartering at this rank",
+              "title": "Bartering"
+            }
+          },
+          {
+            "description": "with one character skilled up: plan as if they had Master Chef at this rank",
+            "in": "query",
+            "name": "master_chef",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 5,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "with one character skilled up: plan as if they had Master Chef at this rank",
+              "title": "Master Chef"
             }
           },
           {
@@ -4770,24 +4868,6 @@
               ],
               "description": "the auction house's price version the front end knows of",
               "title": "Price Version"
-            }
-          },
-          {
-            "description": "with sort=skill and runs: the recipe whose run the chain follows (default the first)",
-            "in": "query",
-            "name": "chain_from",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "with sort=skill and runs: the recipe whose run the chain follows (default the first)",
-              "title": "Chain From"
             }
           },
           {

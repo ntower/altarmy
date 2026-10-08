@@ -682,6 +682,8 @@ export interface components {
              * @default false
              */
             arcane_salvager: boolean;
+            /** Bartering */
+            bartering?: number | null;
             /** Chain At */
             chain_at?: number | null;
             /** Chain From */
@@ -692,23 +694,12 @@ export interface components {
             };
             /** City */
             city?: string | null;
-            /**
-             * Climb Without
-             * @default []
-             */
-            climb_without: number[];
             /** Climber Skill */
             climber_skill?: number | null;
             /** Copies */
             copies?: number | null;
             /** Crafter */
             crafter?: string | null;
-            /**
-             * Effort
-             * @default balanced
-             * @enum {string}
-             */
-            effort: "cheapest" | "balanced" | "fewest";
             /**
              * Exits
              * @default [
@@ -733,6 +724,8 @@ export interface components {
              * @default 0
              */
             look_ahead: number;
+            /** Master Chef */
+            master_chef?: number | null;
             /** Price Version */
             price_version?: number | null;
             /** Recipe Id */
@@ -756,11 +749,19 @@ export interface components {
              */
             sources: ("trainer" | "recipe" | "bop")[];
             /**
+             * Strategy
+             * @default recommended
+             * @enum {string}
+             */
+            strategy: "recommended" | "cheapest" | "no_patterns";
+            /**
              * Unlearned
              * @default none
              * @enum {string}
              */
             unlearned: "none" | "train" | "all";
+            /** Working Overtime */
+            working_overtime?: number | null;
         };
         /** EvaluateResponse */
         EvaluateResponse: {
@@ -1121,11 +1122,16 @@ export interface components {
          * MilestoneOut
          * @description What a climb is expected to come to by the time it reaches `skill`: its crafts (spent less what
          *     selling what they make brings back, so negative when they earn) and its patterns, `unknown` of which have
-         *     no known price (not counted).
+         *     no known price (not counted), and the crafts it is expected to take to get there.
          */
         MilestoneOut: {
             /** Cost */
             cost: number;
+            /**
+             * Crafts
+             * @default 0
+             */
+            crafts: number;
             /** Skill */
             skill: number;
             /**
@@ -1315,7 +1321,6 @@ export interface components {
              * @default []
              */
             chain: components["schemas"]["RankResult"][];
-            chain_start?: components["schemas"]["RankResult"] | null;
             /** Classes */
             classes: {
                 [key: string]: string;
@@ -1331,18 +1336,13 @@ export interface components {
             learn: {
                 [key: string]: components["schemas"]["LearnOut"];
             };
-            /**
-             * Option Chains
-             * @default []
-             */
-            option_chains: components["schemas"]["RankResult"][][];
-            /**
-             * Options
-             * @default []
-             */
-            options: components["schemas"]["RankResult"][];
             /** Results */
             results: components["schemas"]["RankResult"][];
+            /**
+             * Strategies
+             * @default []
+             */
+            strategies: components["schemas"]["StrategyOut"][];
             /** Total */
             total: number;
             /**
@@ -1396,11 +1396,6 @@ export interface components {
              * @default 0
              */
             climb_unknown: number;
-            /**
-             * Climb Without
-             * @default []
-             */
-            climb_without: number[];
             confidence?: components["schemas"]["ConfidenceOut"] | null;
             /** Cost */
             cost: number;
@@ -1700,6 +1695,20 @@ export interface components {
             via: string;
             /** Who */
             who: string;
+        };
+        /**
+         * StrategyOut
+         * @description One strategy's climb (`STRATEGIES`): its first run and the runs after it (`SKILL_CHAIN` at most).
+         */
+        StrategyOut: {
+            /** Chain */
+            chain: components["schemas"]["RankResult"][];
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "recommended" | "cheapest" | "no_patterns";
+            run: components["schemas"]["RankResult"];
         };
         /**
          * TalentOut
@@ -2479,13 +2488,17 @@ export interface operations {
                 gathered?: number[] | null;
                 /** @description with skill_crafters: rank each recipe as a run, the crafts until another recipe would give the one skilled up a cheaper skill point, not as the user's batch */
                 runs?: boolean;
-                /** @description with runs: how a climb weighs crafts against copper (`CRAFT_VALUES`): cheapest counts copper alone, fewest crafts values each at 2s */
-                effort?: "cheapest" | "balanced" | "fewest";
+                /** @description with runs: how a climb is planned (`STRATEGIES`): as recommended, cheapest (copper alone, whatever the crafts), or no patterns (only recipes trainers teach) */
+                strategy?: "recommended" | "cheapest" | "no_patterns";
+                /** @description with one character skilled up: plan as if they had Working Overtime at this rank */
+                working_overtime?: number | null;
+                /** @description with one character skilled up: plan as if they had Bartering at this rank */
+                bartering?: number | null;
+                /** @description with one character skilled up: plan as if they had Master Chef at this rank */
+                master_chef?: number | null;
                 top?: number;
                 /** @description the auction house's price version the front end knows of */
                 price_version?: number | null;
-                /** @description with sort=skill and runs: the recipe whose run the chain follows (default the first) */
-                chain_from?: number | null;
                 /** @description with sort=skill and runs: the runs the chain may hold */
                 chain_length?: number;
                 /** @description rank for a character nobody uploaded instead of the selection's: the one name in skill_crafters, with the one profession in professions at this skill, knowing what comes with it and what its trainers teach up to there */
