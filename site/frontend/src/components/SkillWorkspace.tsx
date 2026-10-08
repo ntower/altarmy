@@ -594,6 +594,7 @@ export function SkillWorkspace({
     arcaneSalvager: filters.arcaneSalvager,
     runs: filters.runs,
     version,
+    ...(filters.effort !== undefined ? { effort: filters.effort } : {}),
     ...(filters.climberSkill !== undefined ? { climberSkill: filters.climberSkill } : {}),
   }
   const evaluate: EvaluateParams =

@@ -72,6 +72,9 @@ SKILL_CHAIN = 2
 MAX_SKILL_CHAIN = 40
 # The options to craft now `/api/rank` offers side by side (`RankResponse.options`)
 SKILL_OPTIONS = 4
+# The skill Options' effort setting: what a craft is worth to the climber, in copper (`SkillRuns.craft_value`)
+Effort = Literal["cheapest", "balanced", "fewest"]
+CRAFT_VALUES: dict[str, float] = {"cheapest": 0.0, "balanced": engine.CRAFT_VALUE, "fewest": 200.0}
 
 # "skill": an enchant cast for the skill point alone (`engine.SKILL_EXIT`); only when asked for
 ExitKind = Literal["vendor", "ah", "disenchant", "skill", "keep"]
@@ -543,6 +546,7 @@ class EvaluateRequest(BaseModel):
     copies: int | None = Field(default=None, ge=1, le=1000)
     runs: bool = False  # as /api/rank's: plan the run, unless `copies` is given
     climb_without: list[int] = []  # with `runs`: recipes the climb never crafts (`RankResult.climb_without`)
+    effort: Effort = "balanced"  # as /api/rank's
     # with `runs`: the recipe whose run the chain follows (as /api/rank's `chain_from`) and `recipe_id`'s
     # place in that chain (1: the run after it), planned at the skill it starts from as the chain has it
     # (`climb_without` then is the first run's, and applies whatever the `copies`)
@@ -1146,6 +1150,13 @@ def get_rank(
             "would give the one skilled up a cheaper skill point, not as the user's batch"
         ),
     ] = False,
+    effort: Annotated[
+        Effort,
+        Query(
+            description="with runs: how a climb weighs crafts against copper (`CRAFT_VALUES`): cheapest "
+            "counts copper alone, fewest crafts values each at 2s"
+        ),
+    ] = "balanced",
     top: Annotated[int, Query(ge=1)] = 50,
     price_version: Annotated[
         int | None, Query(description="the auction house's price version the front end knows of")
@@ -1189,7 +1200,7 @@ def get_rank(
     # it by rate or skill.
     whose = user.uid if chars and climber_skill is None else ""
     learning = engine.Learning(unlearned, look_ahead, frozenset(sources)).normalized()
-    run = engine.SkillRuns() if runs and skilled else None
+    run = engine.SkillRuns(craft_value=CRAFT_VALUES[effort]) if runs and skilled else None
     chars = _trained_up(state, chars, skilled, skill_name, runs)
     gather = service.gather_values(base, gathered) if gathered else None
     key = (
@@ -1404,7 +1415,8 @@ def evaluate(state: State, user: CurrentUser, body: EvaluateRequest) -> Evaluate
     with _http_errors():
         time = service.session_model(s.time, s.cities, body.city)
     banned = frozenset(body.climb_without)
-    run = engine.SkillRuns(banned=banned) if body.runs and body.copies is None else None
+    value = CRAFT_VALUES[body.effort]
+    run = engine.SkillRuns(banned=banned, craft_value=value) if body.runs and body.copies is None else None
     recipe_skill = next((r.skill_name for r in s.base.recipes if r.id == body.recipe_id), None)
     skilled = frozenset(body.skill_crafters)
     if body.climber_skill is not None:
@@ -1434,7 +1446,7 @@ def evaluate(state: State, user: CurrentUser, body: EvaluateRequest) -> Evaluate
             skilled,
             "",
             body.arcane_salvager,
-            skill_run=engine.SkillRuns(banned=banned),
+            skill_run=engine.SkillRuns(banned=banned, craft_value=value),
             gathered=gathered,
             learn_costs=_climb_learn_costs(state, s, recipe_skill, skilled),
         )
@@ -1450,7 +1462,7 @@ def evaluate(state: State, user: CurrentUser, body: EvaluateRequest) -> Evaluate
         chars = service.at_skill(chars, first.crafter, found.recipe.skill_name, found.start_skill)
         taken = frozenset({first.recipe.id, *(b.recipe.id for b in before if b.recipe is not None)})
         if body.copies is None:
-            stretch, run = found, engine.SkillRuns()
+            stretch, run = found, engine.SkillRuns(craft_value=value)
     r = service.evaluate(
         s.base,
         chars,

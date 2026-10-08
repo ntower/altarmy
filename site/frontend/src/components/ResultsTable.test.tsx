@@ -734,6 +734,7 @@ describe('ResultsTable', () => {
         gathered: [],
         choices: { 'r.1': 'ah' },
         climb_without: [],
+        effort: 'balanced',
       })
       expect(line('1 50')).toBeInTheDocument() // the row's profit follows the changed plan
       expect(screen.getByLabelText('Changed plan')).toBeInTheDocument()

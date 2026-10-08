@@ -864,6 +864,28 @@ def test_a_run_of_the_chain_is_planned_again_as_the_chain_has_it(
     assert client.post("/api/evaluate", json={**body, "recipe_id": 999999}).status_code == 404
     # a chain needs the run it follows
     assert client.post("/api/evaluate", json={**body, "chain_from": None}).status_code == 400
+    # planned under another effort setting, as ranked under it
+    fewest = client.get("/api/rank", params={**params, "effort": "fewest"}).json()
+    if fewest["chain"]:
+        again = {**body, "recipe_id": fewest["chain"][0]["recipe_id"], "effort": "fewest"}
+        again["chain_from"] = fewest["results"][0]["recipe_id"]
+        assert client.post("/api/evaluate", json=again).json()["result"] == fewest["chain"][0]
+
+
+def test_the_effort_setting_trades_copper_for_crafts(client: TestClient, priced: Connection) -> None:
+    tailoring_options(priced)
+    params = {**SKILL_UP, "skill_crafters": ["Tailor"], "runs": True, "chain_length": 20}
+
+    def climb(effort: str) -> tuple[int, int, int]:
+        body = client.get("/api/rank", params={**params, "effort": effort}).json()
+        runs = body["results"][:1] + body["chain"]
+        return sum(r["crafts"] for r in runs), body["results"][0]["climb_cost"], runs[-1]["stop_skill"]
+
+    cheapest, balanced, fewest = climb("cheapest"), climb("balanced"), climb("fewest")
+    assert cheapest[2] == balanced[2] == fewest[2]  # as high either way
+    assert cheapest[0] >= balanced[0] >= fewest[0]  # fewer crafts the more each is worth
+    assert cheapest[1] < balanced[1] < fewest[1]  # what a craft is worth is counted in what chooses the climb
+    assert client.get("/api/rank", params={**params, "effort": "quickest"}).status_code == 422
 
 
 def test_a_climb_goes_on_past_the_climbers_rank_cap(client: TestClient, priced: Connection) -> None:

@@ -489,6 +489,16 @@ describe('SkillWorkspace', () => {
     await waitFor(async () => expect((await bodies(fetch, '/api/evaluate'))[0]).toMatchObject({ copies: 17 }))
   })
 
+  it('plans a run as the Options say to weigh crafts against gold', async () => {
+    const fetch = api()
+    renderWithProviders(
+      <SkillWorkspace filters={{ ...FILTERS, effort: 'fewest' }} climber={CLIMBER} profession="Tailoring" />,
+    )
+    await choose('Green Robe')
+    expect(urls(fetch, '/api/rank')[0]?.searchParams.get('effort')).toBe('fewest')
+    await waitFor(async () => expect((await bodies(fetch, '/api/evaluate'))[0]).toMatchObject({ effort: 'fewest' }))
+  })
+
   it('says how many of the skill points counted on come from Working Overtime, after the odds', async () => {
     // the ranked run's 12 crafts expect 0.5 points from the talent; the plan for the 14 bought for, 0.6
     api({

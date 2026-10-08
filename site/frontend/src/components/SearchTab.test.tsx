@@ -1082,6 +1082,26 @@ describe('SearchTab', () => {
     expect(screen.queryByRole('slider')).not.toBeInTheDocument() // only what can be trained now
   })
 
+  it('asks what to plan for: the least gold, a balance, or fewer crafts', async () => {
+    at(TAILOR)
+    const fetch = mockApi({
+      '/api/status': status(),
+      '/api/characters': characters,
+      '/api/rank': noResults,
+    })
+    renderWithProviders(<SearchTab />)
+    await openOptions()
+    const plan = await screen.findByRole('radiogroup', { name: 'Plan for' })
+    expect(within(plan).getByRole('radio', { name: 'Balanced' })).toBeChecked()
+    expect(screen.getByText(/Counts each craft as worth 50 copper/)).toBeInTheDocument()
+    await waitFor(() => expect(urls(fetch, '/api/rank')).toHaveLength(1))
+    expect(urls(fetch, '/api/rank')[0]?.searchParams.get('effort')).toBe('balanced')
+    await userEvent.click(within(plan).getByRole('radio', { name: 'Fewest crafts' }))
+    expect(localStorage.getItem('altarmy.search.skill.effort')).toBe('"fewest"')
+    expect(screen.getByText(/Counts each craft as worth 2 silver/)).toBeInTheDocument()
+    await waitFor(() => expect(urls(fetch, '/api/rank').at(-1)?.searchParams.get('effort')).toBe('fewest'))
+  })
+
   it('asks how sure the materials bought for a run should be to reach its target, saying what that means', async () => {
     at(TAILOR)
     const fetch = mockApi({

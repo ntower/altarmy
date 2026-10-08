@@ -704,6 +704,12 @@ export interface components {
             /** Crafter */
             crafter?: string | null;
             /**
+             * Effort
+             * @default balanced
+             * @enum {string}
+             */
+            effort: "cheapest" | "balanced" | "fewest";
+            /**
              * Exits
              * @default [
              *       "vendor",
@@ -2468,6 +2474,8 @@ export interface operations {
                 gathered?: number[] | null;
                 /** @description with skill_crafters: rank each recipe as a run, the crafts until another recipe would give the one skilled up a cheaper skill point, not as the user's batch */
                 runs?: boolean;
+                /** @description with runs: how a climb weighs crafts against copper (`CRAFT_VALUES`): cheapest counts copper alone, fewest crafts values each at 2s */
+                effort?: "cheapest" | "balanced" | "fewest";
                 top?: number;
                 /** @description the auction house's price version the front end knows of */
                 price_version?: number | null;

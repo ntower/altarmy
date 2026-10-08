@@ -131,8 +131,13 @@ export type RankParams = {
   /** skilling up a character nobody uploaded: the one name in `skillCrafters` is them, with the one profession in
    * `professions` at this skill (knowing what comes with it and what its trainers teach up to there) */
   climberSkill?: number
+  /** skilling up: how a climb weighs crafts against copper (the API's `CRAFT_VALUES`); unset: balanced */
+  effort?: Effort
   top: number
 }
+
+/** The skill Options' Plan for: the least gold, a balance, or fewer crafts for a little more gold. */
+export type Effort = 'cheapest' | 'balanced' | 'fewest'
 
 export type RankSort =
   | 'profit'
@@ -200,6 +205,7 @@ export function useRank(
               chain_from: params.chainFrom,
               chain_length: params.chainLength,
               climber_skill: params.climberSkill,
+              effort: params.effort,
               top: params.top,
               price_version: priceVersion,
             },
@@ -215,7 +221,15 @@ export function useRank(
  * came from (so a sync re-costs the user's changed plans too). */
 export type EvaluateParams = Pick<
   RankParams,
-  'unlearned' | 'lookAhead' | 'sources' | 'includeTrivial' | 'skillCrafters' | 'exits' | 'arcaneSalvager' | 'climberSkill'
+  | 'unlearned'
+  | 'lookAhead'
+  | 'sources'
+  | 'includeTrivial'
+  | 'skillCrafters'
+  | 'exits'
+  | 'arcaneSalvager'
+  | 'climberSkill'
+  | 'effort'
 > & {
   runs?: boolean
   gathered?: number[]
@@ -233,13 +247,13 @@ export type EvaluationState = { data?: Evaluation; isFetching: boolean; error: E
  * previous evaluation stays in `data`. */
 export function useEvaluations(
   choices: Readonly<Record<number, Choices>>,
-  { unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, runs, gathered, version, climberSkill }: EvaluateParams,
+  { unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, runs, gathered, version, climberSkill, effort }: EvaluateParams,
 ): Readonly<Record<number, EvaluationState>> {
   const ids = Object.keys(choices).map(Number)
   const priceVersion = usePriceVersion()
   return useQueries({
     queries: ids.map((id) => ({
-      queryKey: ['evaluate', GAME_VERSION, version, id, unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, runs, gathered, choices[id], climberSkill ?? null],
+      queryKey: ['evaluate', GAME_VERSION, version, id, unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, runs, gathered, choices[id], climberSkill ?? null, effort ?? null],
       queryFn: () =>
         call(
           client.POST('/api/evaluate', {
@@ -259,6 +273,7 @@ export function useEvaluations(
               climb_without: [], // the results table's rows: none left out
               price_version: priceVersion,
               climber_skill: climberSkill,
+              effort: effort ?? 'balanced',
             },
           }),
         ),
@@ -279,7 +294,7 @@ export function useEvaluations(
  * until they move: never stale. */
 function sessionPlanQuery(
   recipeId: number,
-  { unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, runs, gathered, version, climbWithout, chain, climberSkill }: EvaluateParams,
+  { unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, runs, gathered, version, climbWithout, chain, climberSkill, effort }: EvaluateParams,
   choices: Choices | undefined,
   copies: number | null,
   city: string | null,
@@ -291,7 +306,7 @@ function sessionPlanQuery(
   const without = runs && (copies === null || chain) ? (climbWithout ?? []) : []
   return {
     // under 'evaluate', so whatever re-costs plans (time settings, AH blocks) re-plans sessions too
-    queryKey: ['evaluate', GAME_VERSION, version, recipeId, unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, runs, gathered, choices ?? {}, 'session', copies, city, crafter, without, chain ?? null, climberSkill ?? null],
+    queryKey: ['evaluate', GAME_VERSION, version, recipeId, unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, runs, gathered, choices ?? {}, 'session', copies, city, crafter, without, chain ?? null, climberSkill ?? null, effort ?? null],
     queryFn: () =>
       call(
         client.POST('/api/evaluate', {
@@ -316,6 +331,7 @@ function sessionPlanQuery(
             crafter: crafter ?? undefined,
             price_version: priceVersion,
             climber_skill: climberSkill,
+            effort: effort ?? 'balanced',
           },
         }),
       ),

@@ -690,6 +690,16 @@
             ],
             "title": "Crafter"
           },
+          "effort": {
+            "default": "balanced",
+            "enum": [
+              "cheapest",
+              "balanced",
+              "fewest"
+            ],
+            "title": "Effort",
+            "type": "string"
+          },
           "exits": {
             "default": [
               "vendor",
@@ -4709,6 +4719,23 @@
               "description": "with skill_crafters: rank each recipe as a run, the crafts until another recipe would give the one skilled up a cheaper skill point, not as the user's batch",
               "title": "Runs",
               "type": "boolean"
+            }
+          },
+          {
+            "description": "with runs: how a climb weighs crafts against copper (`CRAFT_VALUES`): cheapest counts copper alone, fewest crafts values each at 2s",
+            "in": "query",
+            "name": "effort",
+            "required": false,
+            "schema": {
+              "default": "balanced",
+              "description": "with runs: how a climb weighs crafts against copper (`CRAFT_VALUES`): cheapest counts copper alone, fewest crafts values each at 2s",
+              "enum": [
+                "cheapest",
+                "balanced",
+                "fewest"
+              ],
+              "title": "Effort",
+              "type": "string"
             }
           },
           {
