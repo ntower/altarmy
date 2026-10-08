@@ -215,7 +215,7 @@ export const an = (word: string): string => (/^[aeiou]/i.test(word) ? 'an' : 'a'
 export const AT_WHICH_POINT = ', at which point '
 
 /** The whole run as plain text: "Craft until 85 skill (~17 times)", "…, at which point this recipe turns grey";
- * just the lead when the ceiling cut it short or another recipe takes over. */
+ * just the lead when another recipe takes over. */
 export function runText(r: Run): string {
   const lead = runLead(r)
   if (r.stop_reason === 'rival') return lead

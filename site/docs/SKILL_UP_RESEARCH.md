@@ -94,8 +94,8 @@ is: not on this data; the return worth modelling is ladder depletion (C13), and 
   `later_recipes` adds recipes learnable on the way, priced at the skill they unlock.
 - **Chance.** `(grey − s)/(grey − yellow)`, orange 1, plus Working Overtime. Expected crafts, variance, p80 and
   `reach_chances` are exact for that chance model.
-- **Output.** Each leg is cut into runs of at most `RUN_CEILING` (100) expected crafts. Options are further climbs
-  that never craft the earlier options' recipes; the chain re-plans each later run at the skill it starts from.
+- **Output.** Each leg is one run, however many crafts (the 100-craft `RUN_CEILING` split was dropped 2026-10-08).
+  Options are further climbs that never craft the earlier options' recipes; the chain re-plans each later run at the skill it starts from.
 - **Speed.** O(candidates × levels²): 29–113 ms per solve in CPython on the dev data. Candidate pricing dominates.
 
 **Pros**: plans globally and is exactly optimal for its objective; knows the character (known recipes, talents,

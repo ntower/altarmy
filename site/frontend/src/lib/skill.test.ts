@@ -55,7 +55,6 @@ describe('runText', () => {
     expect(runText({ ...run, stop_reason: 'cap' })).toBe(
       'Craft until 85 skill (~17 times), at which point you reach your skill cap',
     )
-    expect(runText({ ...run, crafts: 100, stop_reason: 'ceiling' })).toBe('Craft until 85 skill (~100 times)')
     expect(runLead({ crafts: 1, stop_skill: 85 })).toBe('Craft until 85 skill (once)')
     expect(runLead({ crafts: 3, stop_skill: 0 })).toBe('Craft ~3 times')
   })

@@ -619,10 +619,10 @@ describe('SkillWorkspace', () => {
     api({ '/api/rank': { ...ranked, strategies, learn } })
     show()
     await userEvent.click(await screen.findByRole('button', { name: 'Compare strategies' }))
-    // the cards warn of a pattern nobody can price, and say one whose cost is counted must be trained
+    // the cards warn of a pattern nobody can price, and say nothing of one whose cost is counted
     expect(screen.getByText('You must find the pattern (price unknown)')).toBeInTheDocument()
     const card = screen.getByRole('button', { name: 'Choose Cheapest: Linen Cap' })
-    expect(within(card).getByText('You will need to buy the pattern (included in the cost)')).toBeInTheDocument()
+    expect(within(card).queryByText(/included in the cost/)).not.toBeInTheDocument()
     const run = await choose('Linen Cap', 'Cheapest')
     // the run names what the pattern costs
     expect(within(run).getByText(/You must buy the pattern/)).toHaveTextContent(/^You must buy the pattern \(12 0\)/)

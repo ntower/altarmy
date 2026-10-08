@@ -1019,12 +1019,10 @@ def _recipe(i: int, low: int, high: int) -> Recipe:
 def _climb(
     crafter: Crafter,
     *candidates: engine.Candidate,
-    ceiling: int = 1000,
     craft_value: float = engine.CRAFT_VALUE,
     min_chance: float = engine.MIN_CHANCE,
 ) -> engine.Climb:
-    """Near grey a point takes many crafts: a high ceiling keeps the runs whole."""
-    return engine.plan_climb(crafter, "Blacksmithing", candidates, ceiling, craft_value, min_chance)
+    return engine.plan_climb(crafter, "Blacksmithing", candidates, craft_value, min_chance)
 
 
 def _route(plan: engine.ClimbPlan | None) -> list[tuple[str, int, int]]:
@@ -1126,7 +1124,7 @@ def test_a_climb_is_the_cheapest_way_up(craft_value: float, min_chance: float) -
     c = engine.Candidate(_recipe(3, 42, 60), 160.0, from_skill=36, learn=200)
     d = engine.Candidate(_recipe(4, 35, 44), -300.0)
     smith = _smith(32, cap=41)
-    best = _climb(smith, a, b, c, d, ceiling=1000, craft_value=craft_value, min_chance=min_chance).best
+    best = _climb(smith, a, b, c, d, craft_value=craft_value, min_chance=min_chance).best
     assert best is not None
     assert _route(best)[0][1] == 32 and _route(best)[-1][2] == 41
     assert best.cost == pytest.approx(_brute_cost(smith, (a, b, c, d), 32, 41, craft_value, min_chance))
@@ -1259,13 +1257,12 @@ def test_a_run_that_ends_at_grey_says_so_though_another_recipe_follows() -> None
     assert (then.recipe, then.reason) == (b.recipe, "cap")
 
 
-def test_a_run_longer_than_the_ceiling_goes_on_as_another() -> None:
+def test_a_long_run_stays_one_run() -> None:
     unknown = replace(GREY_AT_60, trivial_low=0, trivial_high=0)  # a point every craft, for ever
-    plan = _climb(_smith(30, cap=60), engine.Candidate(unknown, 100.0), ceiling=12).best
+    plan = _climb(_smith(0, cap=300), engine.Candidate(unknown, 100.0)).best
     assert plan is not None
-    assert all(r.crafts <= 12 for r in plan.runs)
-    assert {r.reason for r in plan.runs[:-1]} == {"ceiling"}
-    assert plan.runs[-1].reason == "cap" and plan.runs[-1].stop_skill == 60
+    (run,) = plan.runs
+    assert (run.crafts, run.reason, run.stop_skill) == (300, "cap", 300)
 
 
 def test_a_craft_that_pays_counts_at_its_real_cost_but_the_cutoff_ends_its_grind() -> None:
@@ -1279,7 +1276,7 @@ def test_a_craft_that_pays_counts_at_its_real_cost_but_the_cutoff_ends_its_grind
         Recipe(2, "Cod", 102, 1, (), "Cooking", trivial_low=190, trivial_high=230), 8.0, from_skill=175
     )
     cook = Crafter("Cook", (("Cooking", 110, 200),), frozenset())
-    plan = engine.plan_climb(cook, "Cooking", (venison, cod), 1000).best
+    plan = engine.plan_climb(cook, "Cooking", (venison, cod)).best
     assert plan is not None
     (_, _, switch), *_ = _route(plan)
     assert _route(plan)[0][0] == "Venison" and switch < 187
@@ -1289,7 +1286,7 @@ def test_a_craft_that_pays_counts_at_its_real_cost_but_the_cutoff_ends_its_grind
     spent = plan.spent_by(switch)
     assert spent is not None and spent[0] < 0
     # cheapest, at any chance: every craft of it earns, so it is ground out to grey
-    cheapest = engine.plan_climb(cook, "Cooking", (venison, cod), 1000, 0.0, 0.0).best
+    cheapest = engine.plan_climb(cook, "Cooking", (venison, cod), 0.0, 0.0).best
     assert _route(cheapest)[0] == ("Venison", 110, 190)
 
 
@@ -1345,16 +1342,15 @@ def test_each_recipe_first_plans_the_rest_of_the_climb() -> None:
     assert _climb(_smith(30), maul, engine.Candidate(_recipe(5, 50, 70), 1.0, from_skill=40)).first(5) is None
 
 
-def test_a_run_split_at_the_ceiling_buys_its_pattern_once() -> None:
+def test_a_long_run_buys_its_pattern_once() -> None:
     # A: a craft a point all the way (orange to the cap), 1 a craft and a 400 pattern; B: 5 a craft. A all the
-    # way (150 + 400) beats A then B; split into runs of at most 100 crafts, its pattern still counts once.
+    # way (150 + 400) beats A then B, as one run of 150 crafts.
     a = engine.Candidate(_recipe(1, 200, 300), 1.0, learn=400)
     b = engine.Candidate(_recipe(2, 200, 300), 5.0)
-    plan = _climb(_smith(0, cap=150), a, b, ceiling=100).best
+    plan = _climb(_smith(0, cap=150), a, b).best
     assert plan is not None
     assert [(r.recipe and r.recipe.name, r.start_skill, r.stop_skill, r.reason) for r in plan.runs] == [
-        ("R1", 0, 100, "ceiling"),
-        ("R1", 100, 150, "cap"),
+        ("R1", 0, 150, "cap"),
     ]
     assert plan.cost == pytest.approx(150 * (1 + engine.CRAFT_VALUE) + 400)  # orange: no effort, no spares
 
@@ -1363,7 +1359,9 @@ def test_useful_crafts_are_those_for_every_point_a_recipe_can_give() -> None:
     # orange to 40 (10 crafts from 30), then (60 - s) / 20: 20/20 + 20/19 + ... + 20/1
     expected = 10 + sum(20 / (60 - s) for s in range(40, 60))
     assert engine.useful_crafts(GREY_AT_60, _smith(30)) == round(expected) == 82
-    assert engine.useful_crafts(GREY_AT_60, _smith(30), most=50) == 50  # at most a ceiling's
+    assert (
+        engine.useful_crafts(GREY_AT_60, _smith(30), most=50) == 50
+    )  # at most what a candidate is priced at
     assert engine.useful_crafts(GREY_AT_60, _smith(55), from_skill=58) == round(20 / 2 + 20 / 1)
     assert engine.useful_crafts(GREY_AT_60, _smith(60)) == 1  # grey: none, but at least one
 
@@ -1449,7 +1447,7 @@ def test_crafts_quantile_buys_for_unlucky_runs() -> None:
     assert crafts_quantile(GREY_AT_60, smith, 10, q=0.8) == 10  # orange: every craft a point
     yellow = Crafter("Smith", (("Blacksmithing", 40, 375),), frozenset())
     assert crafts_quantile(GREY_AT_60, yellow, 10, q=0.8) > 14  # the expected crafts from 40 to 50
-    assert crafts_quantile(GREY_AT_60, yellow, 10, q=0.8, ceiling=12) == 12
+    assert crafts_quantile(GREY_AT_60, yellow, 10, q=0.8, most=12) == 12
     assert crafts_quantile(GREY_AT_60, yellow, 0) == 1
 
 
@@ -2722,9 +2720,7 @@ def test_the_climbs_inner_loop_costs_runs_as_a_run_costs_them() -> None:
             candidates.append(engine.Candidate(recipe, cost, from_skill, learn))
         value = rng.choice((0.0, engine.CRAFT_VALUE, 200.0, 7.5))
         cutoff = rng.choice((0.0, engine.MIN_CHANCE, 0.4))
-        climb = engine.plan_climb(
-            smith, "Blacksmithing", candidates, rng.choice((5, 20, 1000)), value, cutoff
-        )
+        climb = engine.plan_climb(smith, "Blacksmithing", candidates, value, cutoff)
         for u in climb._usable:
             for start in range(u.lo, min(u.hi, climb.end)):  # the levels the climb finishes from
                 got, want = climb._cheapest_from(u, start), reference(climb, u, start)

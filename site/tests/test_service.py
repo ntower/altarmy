@@ -526,26 +526,16 @@ def test_a_skill_run_ranks_each_recipe_as_the_first_run_of_its_climb(
         base, [novice], "none", Filters(), skill_crafters=skilled, skill_run=engine.SkillRuns()
     )
     # the robe, the only recipe, up to grey at 60: orange to 30, then the falling chance takes ~130 crafts
-    # in all, so the climb is one run up to the 100-craft ceiling, then another of the robe
-    assert (run.stop_reason, run.overtaken_by) == ("ceiling", "")
-    assert 50 < run.crafts <= 100 and 30 < run.stop_skill < 60
+    # in all, so the climb is one run of the robe, however long
+    assert (run.stop_reason, run.overtaken_by, run.stop_skill) == ("trivial", "", 60)
+    assert run.crafts > 100 and run.climb_after == ()
     assert run.cost == run.crafts * one.cost
-    after = [(r.recipe and r.recipe.id, r.start_skill) for r in run.climb_after]
-    assert after == [(100, run.stop_skill)]
-    assert run.climb_after[-1].reason == "trivial" and run.climb_after[-1].stop_skill == 60
     assert run.climb_cost is not None
     got = service.evaluate(
-        base,
-        [novice],
-        "none",
-        ALL_EXITS,
-        100,
-        {},
-        skill_crafters=skilled,
-        skill_run=engine.SkillRuns(ceiling=10),
+        base, [novice], "none", ALL_EXITS, 100, {}, skill_crafters=skilled, skill_run=engine.SkillRuns()
     )
     assert got is not None
-    assert (got.crafts, got.stop_skill, got.stop_reason) == (10, 30, "ceiling")
+    assert (got.crafts, got.stop_skill, got.stop_reason) == (run.crafts, 60, "trivial")
 
 
 def test_search_ranks_one_profession_when_asked() -> None:
@@ -927,9 +917,9 @@ def test_the_skill_chain_is_the_rest_of_the_climb() -> None:
     base, who = ladder()
     first = ranked_runs(base, who)[0]
     assert first.recipe.name == "A"
-    # B from 25, then C from 50 (two runs of it: past the 100-craft ceiling near grey)
+    # B from 25, then C from 50 to grey in one run
     chain = chain_of(base, who, first, steps=8)
-    assert [r.recipe.name for r in chain] == ["B", "C", "C"]
+    assert [r.recipe.name for r in chain] == ["B", "C"]
     assert [r.recipe.name for r in chain_of(base, who, first, steps=1)] == ["B"]
     # each run planned from where the one before stops, for its own crafts
     assert chain[0].skill_chance == pytest.approx(
@@ -939,7 +929,7 @@ def test_the_skill_chain_is_the_rest_of_the_climb() -> None:
     )
     assert [r.crafts for r in chain] == [s.crafts for s in first.climb_after]
     assert [r.stop_skill for r in chain] == [s.stop_skill for s in first.climb_after]
-    assert [r.stop_reason for r in chain] == ["rival", "ceiling", "trivial"] and chain[-1].stop_skill == 80
+    assert [r.stop_reason for r in chain] == ["rival", "trivial"] and chain[-1].stop_skill == 80
     assert chain[0].overtaken_by == "C" and chain[1].overtaken_by == ""
     # a run with nothing after it has no chain
     assert chain_of(base, who, replace(first, climb_after=())) == []
@@ -1043,7 +1033,7 @@ def test_runs_are_ranked_by_the_climb_they_start() -> None:
     assert [r.recipe.name for r in ranked] == ["A"]
     (a,) = ranked
     assert a.climb_cost is not None and a.climb_unknown == 0
-    assert [(s.recipe and s.recipe.name) for s in a.climb_after] == ["B", "C", "C"]
+    assert [(s.recipe and s.recipe.name) for s in a.climb_after] == ["B", "C"]
     assert a.overtaken_by == "B" and a.stop_reason == "rival"
     # at 26 A and B both give a point: each ranked as the cheapest climb starting with it
     at26 = replace(who, professions=(Profession("Tailoring", 26, 300, frozenset({901, 902})),))
@@ -1395,7 +1385,7 @@ def test_skill_markets_plan_one_profession_as_the_whole_game_does() -> None:
     assert runs(scoped) == runs(whole)
     # A starts the climb (the others ask for more skill), which goes on with B and its smelted bars
     (only,) = scoped.rank(min_profit=-(10**9), skill_name="Tailoring", skill_run=engine.SkillRuns())
-    assert [s.recipe.name for s in only.climb_after if s.recipe] == ["B", "C", "C"]
+    assert [s.recipe.name for s in only.climb_after if s.recipe] == ["B", "C"]
     # as the workspace asks: the ranking and its chain plan the same runs
     (first,) = service.search(
         base,
@@ -1407,7 +1397,7 @@ def test_skill_markets_plan_one_profession_as_the_whole_game_does() -> None:
         skill_run=engine.SkillRuns(),
     )
     assert first.recipe.name == "A"
-    assert [r.recipe.name for r in chain_of(base, who, first, steps=8)] == ["B", "C", "C"]
+    assert [r.recipe.name for r in chain_of(base, who, first, steps=8)] == ["B", "C"]
 
 
 def test_no_runs_when_nothing_gives_the_climber_a_first_point() -> None:

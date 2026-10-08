@@ -16,24 +16,39 @@
   stroke-linejoin: round;
 }
 
+/* light-dark() is lowered by the production build into variables nothing defines: the scheme is Mantine's attribute */
+.frame {
+  --orange: #c9540a;
+  --yellow: #a08400;
+  --green: #1a7f37;
+  --grey: #6b6b6b;
+}
+
+:global([data-mantine-color-scheme='dark']) .frame {
+  --orange: #ff8040;
+  --yellow: #ffe14d;
+  --green: #40c040;
+  --grey: #9a9a9a;
+}
+
 .orange {
-  stroke: light-dark(#c9540a, #ff8040);
-  fill: light-dark(#c9540a, #ff8040);
+  stroke: var(--orange);
+  fill: var(--orange);
 }
 
 .yellow {
-  stroke: light-dark(#a08400, #ffe14d);
-  fill: light-dark(#a08400, #ffe14d);
+  stroke: var(--yellow);
+  fill: var(--yellow);
 }
 
 .green {
-  stroke: light-dark(#1a7f37, #40c040);
-  fill: light-dark(#1a7f37, #40c040);
+  stroke: var(--green);
+  fill: var(--green);
 }
 
 .grey {
-  stroke: light-dark(#6b6b6b, #9a9a9a);
-  fill: light-dark(#6b6b6b, #9a9a9a);
+  stroke: var(--grey);
+  fill: var(--grey);
 }
 
 /* the ticks are text: they keep the colour as fill only; the lines, as stroke only */

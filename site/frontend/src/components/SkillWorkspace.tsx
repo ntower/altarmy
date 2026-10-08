@@ -302,13 +302,6 @@ function learnNote(r: RankResult, learn: Learn | undefined): ReactNode {
   )
 }
 
-/** An option card's last row when the climber lacks the recipe and what learning it costs is counted. */
-function includedNote(learn: Learn | undefined): string {
-  if (learn?.source === 'trainer') return 'You will need to train this recipe (included in the cost)'
-  if (learn) return 'You will need to buy the pattern (included in the cost)'
-  return 'You will need to learn this recipe (included in the cost)'
-}
-
 /** One option in the overview: the recipe, what its run comes to per skill point, how far it goes, how it is
  * learned. Without `onChoose`, a summary of a run to come (in the chain), with nothing to click; `fade`: it fades
  * in as the other options open out; `lit`: lit on hover, which says it opens (anywhere on it, as ever); `grow`: it
@@ -352,10 +345,10 @@ function OptionCard({
             <Text size="xs" c="dimmed">
               {runLead(r)}
             </Text>
-            {/* a recipe the climber lacks: its pattern is counted in the cost, unless nobody can price it */}
-            {mustLearn(r) && (
-              <Text size="xs" c={r.learn_cost === null ? 'orange' : 'dimmed'}>
-                {r.learn_cost === null ? learnNote(r, learn) : includedNote(learn)}
+            {/* a recipe the climber lacks whose pattern nobody can price */}
+            {mustLearn(r) && r.learn_cost === null && (
+              <Text size="xs" c="orange">
+                {learnNote(r, learn)}
               </Text>
             )}
             <RunSpread result={r} />

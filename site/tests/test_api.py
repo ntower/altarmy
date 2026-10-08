@@ -805,13 +805,10 @@ def test_skill_up_ranks_each_recipe_as_the_first_run_of_its_climb(
     params = {**SKILL_UP, "skill_crafters": ["Novice"], "runs": True}
     ranked = client.get("/api/rank", params=params).json()
     (r,) = ranked["results"]
-    # from 20 the robe takes ~130 crafts to grey: more than a run asks for (100), so another run of it follows
-    assert r["stop_reason"] == "ceiling" and r["crafts"] <= 100 and r["overtaken_by"] == ""
-    (then,) = ranked["chain"]
-    assert ranked["strategies"][0]["chain"] == ranked["chain"]  # the recommended strategy's chain
-    assert (then["recipe_id"], then["stop_skill"], then["stop_reason"]) == (r["recipe_id"], 60, "trivial")
-    assert then["climb_cost"] is None  # a later run of the climb
-    assert then["skill_chance"] < 1  # planned from where the first run stops: yellow by then
+    # from 20 the robe takes ~130 crafts to grey: one run however long, with nothing after it
+    assert (r["stop_skill"], r["stop_reason"], r["overtaken_by"]) == (60, "trivial", "")
+    assert r["crafts"] > 100
+    assert ranked["chain"] == [] and ranked["strategies"][0]["chain"] == []
     body = {
         "recipe_id": r["recipe_id"],
         "choices": {},
@@ -830,20 +827,19 @@ def test_skill_up_ranks_each_recipe_as_the_first_run_of_its_climb(
 def test_a_run_of_the_chain_is_planned_again_as_the_chain_has_it(
     client: TestClient, priced: Connection
 ) -> None:
-    novice = Character(
-        "Realm", "Novice", "Horde", "MAGE", 5, (Profession("Tailoring", 20, 75, frozenset({900})),)
-    )
-    service.replace_characters(priced, ME, FOREVER, [novice])
-    set_prices(priced, {1: 20, 2: 100}, realm="Realm")
-    params = {**SKILL_UP, "skill_crafters": ["Novice"], "exits": ["vendor", "keep"], "runs": True}
+    tailoring_options(priced)
+    params = {**SKILL_UP, "skill_crafters": ["Tailor"], "exits": ["vendor", "keep"], "runs": True}
     ranked = client.get("/api/rank", params=params).json()
-    (r,) = ranked["results"]
-    (then,) = ranked["chain"]  # the robe again, from where the first run stops
+    r = ranked["results"][0]
+    then = ranked["chain"][0]  # the next recipe, from where the first run stops
+    assert ranked["strategies"][0]["chain"] == ranked["chain"]  # the recommended strategy's chain
+    assert then["recipe_id"] != r["recipe_id"] and then["climb_cost"] is None  # a later run of the climb
+    assert then["skill_chance"] < 1  # planned from where the first run stops
     body = {
         "recipe_id": then["recipe_id"],
         "choices": {},
         "include_trivial": False,
-        "skill_crafters": ["Novice"],
+        "skill_crafters": ["Tailor"],
         "exits": ["vendor", "keep"],
         "runs": True,
         "chain_from": r["recipe_id"],
@@ -862,7 +858,9 @@ def test_a_run_of_the_chain_is_planned_again_as_the_chain_has_it(
     copies = client.post("/api/evaluate", json={**body, "copies": 5}).json()["result"]
     assert copies["crafts"] == 5 and copies["skill_chance"] == then["skill_chance"]
     # a place the chain doesn't have, or another recipe there, is no run
-    assert client.post("/api/evaluate", json={**body, "chain_at": 2}).status_code == 404
+    assert (
+        client.post("/api/evaluate", json={**body, "chain_at": len(ranked["chain"]) + 1}).status_code == 404
+    )
     assert client.post("/api/evaluate", json={**body, "recipe_id": 999999}).status_code == 404
     # a chain needs the run it follows
     assert client.post("/api/evaluate", json={**body, "chain_from": None}).status_code == 400

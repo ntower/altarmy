@@ -426,8 +426,7 @@ class RankResult(BaseModel):
     trivial_high: int = 0
     # with `runs` (`engine.Climb`): the skill the crafts take the crafter to, why they stop there (rival:
     # the climb goes on with `overtaken_by`, another recipe's output, cheaper from there; trivial: the recipe
-    # is about to turn grey; cap; ceiling: the most crafts a run asks for, the climb going on with the same
-    # recipe if it can), the crafts that get there four times in five; 0 / "" without a run.
+    # is about to turn grey; cap), the crafts that get there four times in five; 0 / "" without a run.
     # `overtaken_by_item`: that output's item id (in `items`; 0 for an enchant or without a rival)
     stop_skill: int = 0
     stop_reason: str = ""
