@@ -952,37 +952,37 @@ def test_each_option_side_by_side_never_comes_back_to_those_before_it(
     robe, cap, belt = tailoring_options(priced)
     params = {**SKILL_UP, "skill_crafters": ["Tailor"], "runs": True}
     body = client.get("/api/rank", params=params).json()
-    assert [r["recipe_id"] for r in body["results"]] == [cap, belt, robe]
+    assert [r["recipe_id"] for r in body["results"]] == [belt, cap, robe]
     first, second, third = body["options"]
     # the best as ranked; the second never crafts the first, the third neither
     assert first == body["results"][0] and first["climb_without"] == []
-    assert (second["recipe_id"], second["climb_without"]) == (belt, [cap])
-    assert (third["recipe_id"], third["climb_without"]) == (robe, sorted([cap, belt]))
-    # as ranked, the belt's run gives way to the cap; passed over, the cap never comes
-    assert body["results"][1]["overtaken_by"] == "Linen Cap"
-    assert second["overtaken_by"] != "Linen Cap" and second["stop_skill"] > body["results"][1]["stop_skill"]
-    assert all(r["recipe_id"] != cap for r in body["option_chains"][1])
+    assert (second["recipe_id"], second["climb_without"]) == (cap, [belt])
+    assert (third["recipe_id"], third["climb_without"]) == (robe, sorted([belt, cap]))
+    # as ranked, the cap's run gives way to the belt; passed over, the belt never comes
+    assert body["results"][1]["overtaken_by"] == "Linen Belt"
+    assert second["overtaken_by"] != "Linen Belt" and second["stop_skill"] > body["results"][1]["stop_skill"]
+    assert all(r["recipe_id"] != belt for r in body["option_chains"][1])
     # the robe's run without either goes on until it turns grey, and nothing follows it
     assert (third["stop_reason"], third["stop_skill"]) == ("trivial", 60)
     assert body["option_chains"][2] == []
     # picked, an option is the run and the chain its card shows
-    picked = client.get("/api/rank", params={**params, "chain_from": belt, "top": 1}).json()
+    picked = client.get("/api/rank", params={**params, "chain_from": cap, "top": 1}).json()
     assert picked["chain_start"] == second
     assert picked["chain"][: len(body["option_chains"][1])] == body["option_chains"][1]
-    assert all(r["recipe_id"] != cap for r in picked["chain"])
+    assert all(r["recipe_id"] != belt for r in picked["chain"])
     # planned again with what it leaves out, as the card shows it; without, as ranked
-    evaluated = {"recipe_id": belt, "choices": {}, "include_trivial": False, "skill_crafters": ["Tailor"]}
+    evaluated = {"recipe_id": cap, "choices": {}, "include_trivial": False, "skill_crafters": ["Tailor"]}
     evaluated |= {"exits": ["vendor", "keep"], "runs": True}
-    got = client.post("/api/evaluate", json={**evaluated, "climb_without": [cap]}).json()["result"]
+    got = client.post("/api/evaluate", json={**evaluated, "climb_without": [belt]}).json()["result"]
     assert (got["crafts"], got["stop_skill"], got["climb_without"]) == (
         second["crafts"],
         second["stop_skill"],
-        [cap],
+        [belt],
     )
     plain = client.post("/api/evaluate", json=evaluated).json()["result"]
     assert (plain["stop_skill"], plain["climb_without"]) == (body["results"][1]["stop_skill"], [])
     # a banned recipe has no run to plan
-    assert client.post("/api/evaluate", json={**evaluated, "climb_without": [belt]}).status_code == 404
+    assert client.post("/api/evaluate", json={**evaluated, "climb_without": [cap]}).status_code == 404
 
 
 def test_skill_up_keeps_what_no_vendor_buys(client: TestClient, priced: Connection) -> None:

@@ -1240,7 +1240,7 @@ def _later_recipes(
             n = useful_crafts(r, raised)
             one = market.evaluate(r, memo=memo, crafts=n)
             if one is not None and one.crafter == name:
-                out.append(Candidate(r, -one.profit / n, level))
+                out.append(Candidate(r, -one.profit / n, level, gross=one.cost / n))
     return out
 
 

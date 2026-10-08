@@ -327,28 +327,38 @@ def crafts_quantile(
 # How many standard deviations of a run's crafts the spare materials bought for it come to: buying for the
 # crafts that get there four times in five (`crafts_quantile`) buys about this many over the expected crafts
 SPARE_Z = 0.8416
-# What grinding out a point at a low chance costs the climber beyond what its crafts cost, in the smallest
-# skill points at that skill (`Climb.cheapest`, spent or earned): this times the square of the crafts the
-# point is expected to waste (1/p - 1, p the chance after their talents). Nothing while orange, a tenth of a
-# smallest point at 50%, 0.9 at 25%, 8.1 at 10%, ~84 at 1 in 30: the last points before grey are left to
-# another recipe unless every other costs far more. Measured in the points at hand, it weighs the same at
-# every level, and dearer alternatives don't make it dearer; crafts that earn grind too. Only plans are chosen
-# by it; no price includes it.
-GRIND = 0.1
+# In a climb a craft costs no less than this share of what goes into it (`Candidate.floored`): a craft that
+# sells for more than it costs earns the same whether or not it gives a point, so its profit mustn't pay for
+# grinding out a low-chance point (a money-maker would be crafted dozens of times a point until grey). The
+# real copper is what every price shows; only plans are chosen by it.
+CLIMB_FLOOR = 0.1
+# What a craft is worth to the climber, in copper (`SkillRuns.craft_value`: the skill Options' Balanced; 0 is
+# Cheapest). A climb charges it for every craft, and again for each point's wasted crafts squared (1/p - 1)^2,
+# p the chance after talents: nothing while orange, a quarter of it at 2/3, 9 times it at 1 in 4, 81 times at
+# 1 in 10: the last points before grey are left to another recipe unless every other costs far more in
+# copper. Only plans are chosen by it; no price includes it.
+CRAFT_VALUE = 50.0
 _EPSILON = 1e-6  # copper: plans this close cost the same (the longer run, the earlier recipe wins)
 
 
 @dataclass(frozen=True)
 class Candidate:
     """A recipe a skill-up climb may craft: what a craft of it comes to (`cost`: spent less what selling what
-    it makes brings back, per craft of a run as long as its `useful_crafts`), from what skill the climber can
-    craft it (0: they know it, or can learn it now) and what learning it costs them (`learn`: a pattern's
-    price, or a trainer's fee; 0 when known or free, None when nothing says)."""
+    it makes brings back, per craft of a run as long as its `useful_crafts`; `gross` the spending alone), from
+    what skill the climber can craft it (0: they know it, or can learn it now) and what learning it costs them
+    (`learn`: a pattern's price, or a trainer's fee; 0 when known or free, None when nothing says)."""
 
     recipe: Recipe
     cost: float
     from_skill: int = 0
     learn: float | None = 0
+    gross: float = 0.0  # what goes into a craft (materials, postage), before selling what it makes
+
+    @property
+    def floored(self) -> float:
+        """What a craft counts for in a climb: its `cost`, but never under `CLIMB_FLOOR` of what goes into
+        it, so a craft that pays doesn't pay for its own grind."""
+        return max(self.cost, CLIMB_FLOOR * self.gross)
 
 
 @dataclass(frozen=True)
@@ -356,10 +366,11 @@ class SkillRuns:
     """Rank each recipe as the first run of the cheapest climb that starts with it (`plan_climb`), no run
     asking for more than `ceiling` crafts: a longer one goes on as another of the same recipe. The climbs
     never craft the `banned` recipes (ids), which get no run: what the user passed over (the skill
-    workspace's other options)."""
+    workspace's other options). `craft_value`: what a craft is worth to the climber (`CRAFT_VALUE`)."""
 
     ceiling: int = RUN_CEILING
     banned: frozenset[int] = frozenset()
+    craft_value: float = CRAFT_VALUE
 
 
 @dataclass(frozen=True)
@@ -382,8 +393,9 @@ class SkillRun:
 
 @dataclass(frozen=True)
 class ClimbPlan:
-    """A whole climb, its runs in order: its expected cost (the crafts', the spare materials bought for each
-    run, and the patterns'; see `plan_climb`) and how many of the patterns it buys have no known price."""
+    """A whole climb, its runs in order: what it is chosen by (`cost`: the crafts at their floored cost and
+    craft value, the spare materials bought for each run, the effort of its low-chance points and the
+    patterns'; see `Climb`) and how many of the patterns it buys have no known price."""
 
     cost: float
     unknown: int
@@ -393,9 +405,9 @@ class ClimbPlan:
 
     def spent_by(self, skill: int) -> tuple[float, int] | None:
         """What the climb is expected to come to by the time it reaches `skill`: its crafts' copper (spent
-        less what selling what they make brings back) and its patterns', without the spares and the grind
-        that only choose the plan, and how many of those patterns have no known price; None when the climb
-        never gets there."""
+        less what selling what they make brings back) and its patterns', without the floor, craft value,
+        spares and effort that only choose the plan, and how many of those patterns have no known price;
+        None when the climb never gets there."""
         if not self.legs or skill > self.legs[-1][2]:
             return None
         copper, unknown = 0.0, 0
@@ -419,27 +431,31 @@ def _cheaper(a: _Cost, b: _Cost) -> bool:
 @dataclass(frozen=True)
 class _Usable:
     """A candidate over the levels it gives a point at, `lo` to `hi` (exclusive), with the running sums of the
-    expected crafts per point (1/p), their variance ((1-p)/p^2) and the grind's copper (`GRIND`) from `lo`."""
+    expected crafts per point (1/p), their variance ((1-p)/p^2) and the effort of their wasted crafts
+    (craft value x (1/p - 1)^2) from `lo`; `rate` what a craft counts for (its floored cost and the craft
+    value), `spare` what spare materials cost per standard deviation of crafts."""
 
     candidate: Candidate
     lo: int
     crafts: tuple[float, ...]
     variance: tuple[float, ...]
-    grind: tuple[float, ...]
+    effort: tuple[float, ...]
+    rate: float
+    spare: float
 
     @property
     def hi(self) -> int:
         return self.lo + len(self.crafts) - 1
 
     def cost(self, start: int, stop: int) -> _Cost:
-        """A run of it from `start` to `stop`: its crafts, the spares bought for it (none when a craft pays),
-        the grind of its low-chance points (`GRIND`), its pattern."""
+        """A run of it from `start` to `stop`: its crafts, the spares bought for it, the effort of its
+        low-chance points, its pattern."""
         c = self.candidate
         a, b = start - self.lo, stop - self.lo
         crafts = self.crafts[b] - self.crafts[a]
-        spares = max(c.cost, 0.0) * SPARE_Z * math.sqrt(max(0.0, self.variance[b] - self.variance[a]))
-        grind = self.grind[b] - self.grind[a]
-        return (1 if c.learn is None else 0), c.cost * crafts + spares + grind + (c.learn or 0)
+        spares = self.spare * math.sqrt(max(0.0, self.variance[b] - self.variance[a]))
+        effort = self.effort[b] - self.effort[a]
+        return (1 if c.learn is None else 0), self.rate * crafts + spares + effort + (c.learn or 0)
 
     def expected_crafts(self, start: int, stop: int) -> float:
         return self.crafts[stop - self.lo] - self.crafts[start - self.lo]
@@ -474,12 +490,14 @@ def _at_skill(crafter: Crafter, profession: str, level: int) -> Crafter:
 
 class Climb:
     """The cheapest ways up `profession` for `crafter` crafting `candidates`, from their skill until their cap
-    or a skill nothing gives a point at. A run of a recipe costs its expected crafts at a craft's cost (a
-    point at skill s costs 1/p(s) crafts, p as `skill_up_chance`, talents included, so the expectation is
-    exact), plus the spare materials bought for it (`SPARE_Z` standard deviations of its crafts, when a craft
-    costs anything: what buying for an unlucky run adds, which makes short detours pay for themselves), plus
-    the grind of its low-chance points (`GRIND`, in the `cheapest` point at each skill, so it weighs the same
-    at every level; a craft that pays grinds too: tedium is tedium), plus its pattern. A run longer than
+    or a skill nothing gives a point at. A run of a recipe costs its expected crafts (a point at skill s
+    costs 1/p(s) crafts, p as `skill_up_chance`, talents included, so the expectation is exact) at what a
+    craft counts for (`Candidate.floored`: a craft that pays counts as costing a tenth of what goes into it,
+    `CLIMB_FLOOR`) plus what a craft is worth to the climber (`craft_value`), plus the spare materials bought
+    for it (`SPARE_Z` standard deviations of its crafts at the floored cost: what buying for an unlucky run
+    adds, which makes short detours pay for themselves), plus the effort of its low-chance points
+    (`craft_value` x (1/p - 1)^2 a point: one exchange rate between copper and crafts at every level), plus
+    its pattern. A run longer than
     `ceiling` crafts is one run to the plan (its pattern bought once) and goes on as several (`SkillRuns`); a
     climb that comes back to a recipe after another counts its pattern again (an approximation: the levels
     alone don't say what was learned). `best` is the cheapest climb, `first(recipe id)` the cheapest that
@@ -487,7 +505,12 @@ class Climb:
     level."""
 
     def __init__(
-        self, crafter: Crafter, profession: str, candidates: Sequence[Candidate], ceiling: int = RUN_CEILING
+        self,
+        crafter: Crafter,
+        profession: str,
+        candidates: Sequence[Candidate],
+        ceiling: int = RUN_CEILING,
+        craft_value: float = CRAFT_VALUE,
     ) -> None:
         skill = crafter.skill(profession)
         self.crafter, self.profession, self.ceiling = crafter, profession, ceiling
@@ -504,19 +527,16 @@ class Climb:
                 chances.append(p)
             if chances:
                 spans.append((c, lo, chances))
-        # the smallest skill point at each level, spent or earned: what the points at hand there come to
-        self.cheapest: dict[int, float] = {}
-        for c, lo, ps in spans:
-            for i, p in enumerate(ps):
-                self.cheapest[lo + i] = min(self.cheapest.get(lo + i, math.inf), abs(c.cost / p))
         usable = []
         for c, lo, chances in spans:
-            crafts, variance, grind = [0.0], [0.0], [0.0]
-            for i, p in enumerate(chances):
+            crafts, variance, effort = [0.0], [0.0], [0.0]
+            for p in chances:
                 crafts.append(crafts[-1] + 1 / p)
                 variance.append(variance[-1] + (1 - p) / p**2)
-                grind.append(grind[-1] + GRIND * self.cheapest[lo + i] * (1 / p - 1) ** 2)
-            usable.append(_Usable(c, lo, tuple(crafts), tuple(variance), tuple(grind)))
+                effort.append(effort[-1] + craft_value * (1 / p - 1) ** 2)
+            floored = c.floored
+            rate, spare = floored + craft_value, max(floored, 0.0) * SPARE_Z
+            usable.append(_Usable(c, lo, tuple(crafts), tuple(variance), tuple(effort), rate, spare))
         self._usable = usable
         end = self.rank
         while any(u.lo <= end < u.hi for u in usable):
@@ -543,10 +563,10 @@ class Climb:
         """The cheapest climb from `start` that begins with a run of `u` (the longest of equals)."""
         c = u.candidate
         unknown = 1 if c.learn is None else 0
-        cost, learn, spare = c.cost, c.learn or 0, max(c.cost, 0.0) * SPARE_Z
-        crafts, variance, grind = u.crafts, u.variance, u.grind
+        rate, learn, spare = u.rate, c.learn or 0, u.spare
+        crafts, variance, effort = u.crafts, u.variance, u.effort
         a = start - u.lo
-        crafts_a, variance_a, grind_a = crafts[a], variance[a], grind[a]
+        crafts_a, variance_a, effort_a = crafts[a], variance[a], effort[a]
         finish_unknown, finish_copper = self._finish_unknown, self._finish_copper
         best_unknown, best_copper, best_stop = 0, 0.0, -1
         for stop in range(u.hi, start, -1):
@@ -554,7 +574,7 @@ class Climb:
             # as `_Usable.cost` (the same sums in the same order), the finish from `stop` added, and
             # `_cheaper`, inlined: the climb's inner loop
             spares = spare * math.sqrt(max(0.0, variance[b] - variance_a))
-            copper = cost * (crafts[b] - crafts_a) + spares + (grind[b] - grind_a) + learn
+            copper = rate * (crafts[b] - crafts_a) + spares + (effort[b] - effort_a) + learn
             total_unknown = unknown + finish_unknown[stop]
             total_copper = copper + finish_copper[stop]
             if best_stop < 0 or (
@@ -628,9 +648,9 @@ class Climb:
         return run
 
 
-# What a climb is worked out from (`Market._climb`): the climber, the profession (lower case), the ceiling and
-# the candidates, in order
-ClimbKey = tuple["Crafter", str, int, tuple[Candidate, ...]]
+# What a climb is worked out from (`Market._climb`): the climber, the profession (lower case), the ceiling,
+# the craft value and the candidates, in order
+ClimbKey = tuple["Crafter", str, int, float, tuple[Candidate, ...]]
 
 
 class ClimbStore:
@@ -659,10 +679,14 @@ class ClimbStore:
 
 
 def plan_climb(
-    crafter: Crafter, profession: str, candidates: Sequence[Candidate], ceiling: int = RUN_CEILING
+    crafter: Crafter,
+    profession: str,
+    candidates: Sequence[Candidate],
+    ceiling: int = RUN_CEILING,
+    craft_value: float = CRAFT_VALUE,
 ) -> Climb:
     """`crafter`'s cheapest ways up `profession` crafting `candidates` (see `Climb`)."""
-    return Climb(crafter, profession, candidates, ceiling)
+    return Climb(crafter, profession, candidates, ceiling, craft_value)
 
 
 def can_start_climb(recipes: Iterable[Recipe], crafter: Crafter, profession: str) -> bool:
@@ -1516,7 +1540,7 @@ class Market:
         self.later_recipes = tuple(later_recipes)
         self.learn_costs: Mapping[int, float | None] = dict(learn_costs or {})
         self._candidate_cache: dict[tuple[str, str], list[Candidate]] = {}
-        self._climb_cache: dict[tuple[str, str, int, frozenset[int]], Climb] = {}
+        self._climb_cache: dict[tuple[str, str, int, float, frozenset[int]], Climb] = {}
         self.recipes = recipes
         self.prices = prices
         self.books = books or {}
@@ -2171,17 +2195,17 @@ class Market:
     def _climb(self, skill_name: str, crafter: Crafter, runs: SkillRuns, memo: Memo) -> Climb:
         """`crafter`'s climbs up `skill_name` (`plan_climb`) over `_candidates` but `runs.banned`; worked out
         once a market for each set of banned recipes."""
-        key = (skill_name.lower(), crafter.name, runs.ceiling, runs.banned)
+        key = (skill_name.lower(), crafter.name, runs.ceiling, runs.craft_value, runs.banned)
         found = self._climb_cache.get(key)
         if found is None:
             candidates = tuple(
                 c for c in self._candidates(skill_name, crafter, memo) if c.recipe.id not in runs.banned
             )
             # a climb depends on nothing else: markets of the same prices (`climbs`) share it
-            shared: ClimbKey = (crafter, skill_name.lower(), runs.ceiling, candidates)
+            shared: ClimbKey = (crafter, skill_name.lower(), runs.ceiling, runs.craft_value, candidates)
             found = self.climbs.get(shared)
             if found is None:
-                found = plan_climb(crafter, skill_name, candidates, runs.ceiling)
+                found = plan_climb(crafter, skill_name, candidates, runs.ceiling, runs.craft_value)
                 self.climbs.put(shared, found)
             self._climb_cache[key] = found
         return found
@@ -2205,7 +2229,7 @@ class Market:
                 one = self.evaluate(r, memo=memo, crafts=n)
                 if one is not None and one.crafter == crafter.name:
                     learn = self.learn_costs.get(r.id, 0)
-                    found.append(Candidate(r, -one.profit / n, from_skill, learn))
+                    found.append(Candidate(r, -one.profit / n, from_skill, learn, one.cost / n))
             have = {c.recipe.id for c in found}
             found += [
                 replace(c, learn=self.learn_costs.get(c.recipe.id, c.learn))

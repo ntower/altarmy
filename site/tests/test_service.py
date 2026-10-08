@@ -1055,8 +1055,8 @@ def test_options_are_as_many_as_asked_for_or_give_a_point() -> None:
 
 def stone_nub_robe() -> tuple[engine.Market, Character]:
     """A tailor at 25 (cap 100) who knows three recipes: Stone (1 cloth; orange until 95), Nub (1 cloth;
-    grey at 27) and Robe (20 cloth; orange until 95). Nub ranks second only because two points of it hand
-    straight back to Stone; without Stone, the Robe is the cheaper climb."""
+    grey at 27) and Robe (20 cloth; orange until 95). Without Stone, the Robe is the cheaper climb: Nub's two
+    green points take ~25 crafts, and then it dead-ends."""
     items = {
         1: engine.Item(1, "Cloth"),
         **{10 + i: engine.Item(10 + i, n, sell_price=1) for i, n in ((1, "Stone"), (2, "Nub"), (3, "Robe"))},
@@ -1078,7 +1078,8 @@ def stone_nub_robe() -> tuple[engine.Market, Character]:
 def test_each_option_is_the_cheapest_climb_without_those_before_it() -> None:
     base, who = stone_nub_robe()
     ranked = ranked_runs(base, who)
-    assert [r.recipe.name for r in ranked] == ["Stone", "Nub", "Robe"]  # as ranked, Nub's climb takes Stone
+    # as ranked, the Robe's point comes before Nub's two green ones, whose wasted crafts count
+    assert [r.recipe.name for r in ranked] == ["Stone", "Robe", "Nub"]
     first, second, third = options_of(base, who, ranked[0])
     assert [o.recipe.name for o in (first, second, third)] == ["Stone", "Robe", "Nub"]
     # each is the best a ranking without those before it gives
