@@ -34,8 +34,32 @@ describe("TopTabs", function()
     function f:SetTabSelectedCallback(cb) self.cb = cb end
     function f:AddTab(text, icon)
       local btn = stubFrame("Button", self.tabTemplate)
-      btn.tabText, btn.tabIcon = text, icon
+      btn.tabText, btn.tabIcon, btn.initIcon = text, icon, icon
       function btn:SetTooltipText(t) self.tooltipText = t end
+      -- What Blizzard's Init(tabID, text, icon) would do with an icon: SetSquareMode, which writes a
+      -- variable shared by every tab system (tainting it when an addon calls it).
+      function btn:SetSquareMode()
+        error("SetSquareMode taints Blizzard's shared tab spacing; TopTabs must draw the square look itself")
+      end
+      if icon then btn:SetSquareMode(true) end
+      local function texture()
+        local t = { shown = true }
+        function t:Hide() self.shown = false end
+        function t:Show() self.shown = true end
+        function t:SetTexture(x) self.texture = x end
+        function t:SetAtlas(a, useSize) self.atlas, self.useAtlasSize = a, useSize end
+        function t:GetWidth() return 30 end
+        return t
+      end
+      btn.Icon, btn.IconMask = texture(), texture()
+      btn.Icon.shown, btn.IconMask.shown = false, false
+      btn.SquareBackground, btn.SquareBackgroundActive, btn.SquareBackgroundActiveGlow = texture(), texture(), texture()
+      for _, key in ipairs({ "Left", "Middle", "Right", "LeftActive", "MiddleActive", "RightActive",
+        "LeftHighlight", "MiddleHighlight", "RightHighlight" }) do
+        btn[key] = texture()
+      end
+      function btn:SetTabSelected(on) self.isSelected = on end
+      function btn:SetTabWidth(w) self.tabWidth = w end
       btn.scripts.OnEnter = function(self) -- TabSystemTopButtonTemplate's own tooltip
         GameTooltip:SetOwner(self)
         GameTooltip:SetText(self.tooltipText)
@@ -97,6 +121,23 @@ describe("TopTabs", function()
     assert.is_nil(sys.tabs[1].tabText)
     assert.are.equal("Interface\\Icons\\Trade_Alchemy", sys.tabs[1].tabIcon)
     assert.are.equal("Dungeons", sys.tabs[2].tooltipText)
+  end)
+
+  it("draws the square icon look itself, never through Blizzard's SetSquareMode (shared state, taint)", function()
+    local tabs = TopTabs.Create({}, defs, { caps = { topTabs = true, iconTabs = true } })
+    local btn = tabs.frame.tabs[1]
+    assert.is_nil(btn.initIcon) -- Blizzard's Init saw no icon, so it never called SetSquareMode
+    assert.are.equal("Interface\\Icons\\Trade_Alchemy", btn.Icon.texture)
+    assert.is_true(btn.Icon.shown)
+    assert.is_true(btn.IconMask.shown)
+    assert.is_true(btn.squareMode)
+    assert.are.equal(TopTabs.SQUARE.atlas, btn.SquareBackground.atlas)
+    assert.are.equal(TopTabs.SQUARE.activeAtlas, btn.SquareBackgroundActive.atlas)
+    assert.are.equal(TopTabs.SQUARE.glowAtlas, btn.SquareBackgroundActiveGlow.atlas)
+    assert.is_false(btn.Left.shown)
+    assert.is_false(btn.RightHighlight.shown)
+    assert.is_false(btn.isSelected)
+    assert.are.equal(30 + TopTabs.SQUARE.sideSpacing, btn.tabWidth)
   end)
 
   it("uses text top tabs when the client has no icon tab art (TBC)", function()

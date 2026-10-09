@@ -11,7 +11,7 @@ describe("OwnRecipeRead", function()
         "C_TradeSkillUI", "GetNumTradeSkills", "GetTradeSkillLine", "InCombatLockdown", "GetUIPanel",
         "ProfessionsFrame", "ChatEdit_GetActiveWindow", "CreateFrame", "UIParent",
         "AltArmyTBC_Options", "AltArmyTBC_Data", "time", "GetTime",
-        "GetFramesRegisteredForEvent", "ShowUIPanel", "GetMouseFoci", "GetMouseFocus", "WorldFrame",
+        "GetFramesRegisteredForEvent", "GetMouseFoci", "GetMouseFocus", "WorldFrame",
     }
     local savedSearchSettings
 
@@ -148,7 +148,7 @@ describe("OwnRecipeRead", function()
             end,
         }
         -- Silencing is off unless a test gives the client GetFramesRegisteredForEvent.
-        _G.GetFramesRegisteredForEvent, _G.ShowUIPanel, _G.GetMouseFoci, _G.GetMouseFocus = nil, nil, nil, nil
+        _G.GetFramesRegisteredForEvent, _G.GetMouseFoci, _G.GetMouseFocus = nil, nil, nil
         _G.WorldFrame = { name = "WorldFrame" }
         _G.InCombatLockdown = function() return combat end
         _G.GetUIPanel = function() return panel end
@@ -739,7 +739,11 @@ describe("OwnRecipeRead", function()
                 end
                 return unpack(found)
             end
-            _G.ShowUIPanel = function(f) f:Show() end
+            _G.ShowUIPanel = function() error("the addon must never show Blizzard's window: it taints the cast bar") end
+        end)
+
+        after_each(function()
+            _G.ShowUIPanel = nil
         end)
 
         it("takes TRADE_SKILL_SHOW from the window's openers while a read waits, so it never opens", function()
@@ -832,19 +836,21 @@ describe("OwnRecipeRead", function()
             assert.is_false(listening(router))
         end)
 
-        it("shows the window the player opens mid-read, which the silenced openers missed", function()
+        it("closes the trade skill the player opens mid-read, never showing the window itself", function()
+            -- The silenced openers never heard of it; the addon showing it would taint the cast bar, so it
+            -- is closed and the player's next click opens it with the openers listening again.
             R.Enqueue(guildJob())
             linkedTo(nil) -- the player's own profession: not linked
             fireShow()
             assert.is_false(R.IsReadingGuild())
             assert.is_true(listening(router))
-            assert.is_false(frame.shown)
+            assert.are.equal(1, closes)
             advance(0)
-            assert.is_true(frame.shown)
+            assert.is_false(frame.shown)
             assert.are.equal(1, frame.alpha)
-            assert.are.equal(0, closes)
             advance(R.RETRY)
-            assert.are.same({ "trade:Player-1-DEF:3908:197" }, links) -- waits while the window is open
+            -- Reads again once the window is gone.
+            assert.are.same({ "trade:Player-1-DEF:3908:197", "trade:Player-1-DEF:3908:197" }, links)
         end)
 
         it("steps aside when the player opens another profession during an own read", function()
@@ -852,8 +858,10 @@ describe("OwnRecipeRead", function()
             _G.C_TradeSkillUI.GetBaseProfessionInfo = function() return { professionName = "Alchemy" } end
             fireShow()
             assert.is_false(R.IsReading())
+            assert.is_true(listening(router))
+            assert.are.equal(1, closes)
             advance(0)
-            assert.is_true(frame.shown)
+            assert.is_false(frame.shown)
         end)
 
         it("takes the asked-for profession's window during an own read as its answer", function()

@@ -23,6 +23,42 @@ local function hookTooltip(btn, def)
     AltArmy.TabTooltip.Hook(btn, def.label, def.command, "ANCHOR_TOP")
 end
 
+-- The square icon look (what Blizzard's TabSystemButtonMixin:SetSquareMode draws), applied here by hand.
+-- SetSquareMode also writes TabSideExtraSpacing, a variable in TabSystemTemplates.lua shared by every tab
+-- system in the client. Written from an addon, that value is tainted, and the next Blizzard frame to build its
+-- tabs (the talents frame, the first time it opens) reads it, runs tainted from there on, and its cast bar
+-- hand-off ends in ADDON_ACTION_BLOCKED on PlayerCastingBarFrame:Show() for every cast afterwards. So a tab
+-- is added without an icon (Init then never calls SetSquareMode) and dressed up here, touching only itself.
+TopTabs.SQUARE = {
+    atlas = "spellbook-Tab-Frame-C60",
+    activeAtlas = "spellbook-Tab-Frame-Glow-C60",
+    glowAtlas = "spellbook-Tab-Frame-glow-gradient-C60",
+    sideSpacing = 8, -- TabSideExtraSpacingSquare: the icon plus this is the tab's width
+}
+local TAB_ART = { "Left", "Middle", "Right", "LeftActive", "MiddleActive", "RightActive",
+    "LeftHighlight", "MiddleHighlight", "RightHighlight" }
+
+local function makeSquareIconTab(btn, icon)
+    local S = TopTabs.SQUARE
+    btn.tabIcon = icon
+    btn.squareMode = true
+    if btn.Icon then
+        btn.Icon:SetTexture(icon)
+        btn.Icon:Show()
+    end
+    if btn.IconMask then btn.IconMask:Show() end
+    for _, key in ipairs(TAB_ART) do
+        local tex = btn[key]
+        if tex then tex:Hide() end
+    end
+    if btn.SquareBackground then btn.SquareBackground:SetAtlas(S.atlas, true) end
+    if btn.SquareBackgroundActive then btn.SquareBackgroundActive:SetAtlas(S.activeAtlas, true) end
+    if btn.SquareBackgroundActiveGlow then btn.SquareBackgroundActiveGlow:SetAtlas(S.glowAtlas, true) end
+    if btn.SetTabSelected then btn:SetTabSelected(false) end -- shows the square art for the unselected state
+    local iconWidth = btn.Icon and btn.Icon.GetWidth and btn.Icon:GetWidth() or 0
+    if btn.SetTabWidth then btn:SetTabWidth(iconWidth + S.sideSpacing) end
+end
+
 local function createTabSystem(parent, defs, obj, onSelect, useIcons)
     local sys = CreateFrame("Frame", nil, parent, "TabSystemTemplate")
     -- TabSystemMixin:OnLoad pooled the default (bottom) template; rebuild for top tabs.
@@ -38,11 +74,14 @@ local function createTabSystem(parent, defs, obj, onSelect, useIcons)
     for _, def in ipairs(defs) do
         local id
         if useIcons then
-            id = sys:AddTab(nil, def.icon)
+            id = sys:AddTab(nil) -- no icon here: see makeSquareIconTab
         else
             id = sys:AddTab(def.label)
         end
         local btn = sys:GetTabButton(id)
+        if btn and useIcons then
+            makeSquareIconTab(btn, def.icon)
+        end
         if btn and btn.SetTooltipText then
             btn:SetTooltipText(def.label)
         end

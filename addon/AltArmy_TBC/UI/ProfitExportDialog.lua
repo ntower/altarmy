@@ -28,8 +28,9 @@ dialog:EnableMouse(true)
 dialog:SetMovable(true)
 dialog:SetClampedToScreen(true)
 
-UISpecialFrames = UISpecialFrames or {}
-tinsert(UISpecialFrames, "AltArmyTBC_ProfitExportDialog")
+if UISpecialFrames then
+    tinsert(UISpecialFrames, "AltArmyTBC_ProfitExportDialog") -- never assign the global: that taints it
+end
 
 local header = CreateFrame("Frame", nil, dialog, "BackdropTemplate")
 header:SetPoint("TOPLEFT", dialog, "TOPLEFT", UI.INSET, -UI.INSET)
@@ -137,6 +138,8 @@ end
 function AltArmy.ProfitExportDialog.Show()
     local PE = AltArmy.ProfitExport
     local export = PE and PE.Build and PE.Build()
+    title:SetText("Export")
+    intro:SetText("Copy this string into the alt army website to upload your data")
     box.export = export
     if export then
         box:SetText(export)
@@ -147,6 +150,24 @@ function AltArmy.ProfitExportDialog.Show()
     end
     dialog:Show()
     showMissing()
+    box:SetFocus()
+    box:HighlightText()
+end
+
+--- Show any one-line text in the same copy box (a dev report, say), selected for Ctrl+C.
+function AltArmy.ProfitExportDialog.ShowText(titleText, introText, text)
+    title:SetText(titleText or "Export")
+    intro:SetText(introText or "")
+    box.export = text
+    box:SetText(text or "")
+    status:SetText("")
+    missing:SetText("")
+    missing:Hide()
+    box:ClearAllPoints()
+    box:SetPoint("TOPLEFT", intro, "BOTTOMLEFT", 6, -UI.GAP)
+    box:SetPoint("RIGHT", inner, "RIGHT", -6, 0)
+    dialog:SetHeight(UI.HEIGHT)
+    dialog:Show()
     box:SetFocus()
     box:HighlightText()
 end

@@ -261,8 +261,9 @@ local function buildDialog()
     dialog:EnableMouse(true)
     dialog:SetMovable(true)
     dialog:SetClampedToScreen(true)
-    UISpecialFrames = UISpecialFrames or {}
-    tinsert(UISpecialFrames, "AltArmyTBC_GuildShareOnboarding")
+    if UISpecialFrames then
+        tinsert(UISpecialFrames, "AltArmyTBC_GuildShareOnboarding") -- never assign the global: that taints it
+    end
 
     local headerPanel = CreateFrame("Frame", nil, dialog, "BackdropTemplate")
     headerPanel:SetPoint("TOPLEFT", dialog, "TOPLEFT", CONTENT_INSET, -CONTENT_INSET)

@@ -1,6 +1,6 @@
 -- AltArmy TBC — read recipes through profession links without anyone opening a window (WoW Forever).
 -- luacheck: globals ProfessionsFrame ProfessionsFrame_LoadUI GetUIPanel C_SpellBook
--- luacheck: globals ChatEdit_GetActiveWindow ChatFrameUtil GetFramesRegisteredForEvent ShowUIPanel
+-- luacheck: globals ChatEdit_GetActiveWindow ChatFrameUtil GetFramesRegisteredForEvent
 -- luacheck: globals GetMouseFoci WorldFrame SetItemRef
 --
 -- C_TradeSkillUI.OpenTradeSkill needs a click, but a hidden tooltip's SetHyperlink on a profession link,
@@ -24,6 +24,13 @@
 -- should it open all the same (silencing given up, or unavailable), it is concealed (alpha 0, tiny, no
 -- mouse) and closed when the read ends. Only on clients with C_TradeSkillUI and no legacy trade skill API
 -- (Forever); TBC's Enchanting has no trade skill window at all.
+--
+-- Nothing here ever shows Blizzard's window itself. Lua run from an addon is tainted, and the window's
+-- OnShow (or the ShowUIPanel that triggers it) would write tainted state into ProfessionsFrame; its
+-- crafting page later hands that taint to PlayerCastingBarFrame (SetOverrideCastBarActive, which writes
+-- showCastbar), and every player cast then fails with ADDON_ACTION_BLOCKED on PlayerCastingBarFrame:Show().
+-- The window is only ever opened by Blizzard's own TRADE_SKILL_SHOW handling. SetAlpha, SetScale,
+-- EnableMouse and C_TradeSkillUI.CloseTradeSkill touch no Lua state and are safe.
 
 if not AltArmy or not AltArmy.DataStore then return end
 
@@ -120,7 +127,6 @@ local seq = 0 -- each job's place in line within its priority
 local eventFrame -- this file's event frame (made at the bottom), which keeps TRADE_SKILL_SHOW while silenced
 local silenced -- the frames TRADE_SKILL_SHOW was taken from for the read being waited for
 local quietOff, quietTries, quietWorks = false, 0, 0
-local tradeOpen = false -- between TRADE_SKILL_SHOW and TRADE_SKILL_CLOSE
 local unansweredAt = -math.huge -- when a read last ended (or stepped aside) without its answer
 local userLinkAt = -math.huge -- when the player last clicked a profession link
 local lateCatch = false -- a late reply's window is to be concealed when it shows
@@ -800,19 +806,15 @@ local function abort(why)
     if stepAside(why) then closeWindow() end
 end
 
---- The player opened a profession window while a read waited: the read steps aside, and the window the
---- silenced openers never heard of is shown.
+--- The player opened a profession window while a read waited: the read steps aside. When the read was
+--- silenced, Blizzard's openers never heard of the window, and the addon must not show it in their place
+--- (see the top of this file: that taints the cast bar), so the trade skill is closed and the player's
+--- next click opens it as usual, the openers listening again.
 local function playerTookWindow()
     local wasSilenced = silenced ~= nil
     stepAside("stepped aside for the player's window")
     reveal()
-    if not wasSilenced then return end
-    C_Timer.After(0, function()
-        local frame = ProfessionsFrame
-        if tradeOpen and not pending and frame and frame.IsShown and not frame:IsShown() and ShowUIPanel then
-            pcall(ShowUIPanel, frame)
-        end
-    end)
+    if wasSilenced then closeWindow() end
 end
 
 --- A read's answer came after it ended: keep its window out of sight and close it.
@@ -849,7 +851,6 @@ function R.OnEvent(event, ...)
     elseif event == "TRADE_SKILL_DATA_SOURCE_CHANGED" or event == "TRADE_SKILL_LIST_UPDATE" then
         tryScanLinked()
     elseif event == "TRADE_SKILL_SHOW" then
-        tradeOpen = true
         if pending and playerOpened(pending) then
             playerTookWindow()
         elseif pending then
@@ -857,8 +858,6 @@ function R.OnEvent(event, ...)
         elseif lateReply() then
             catchLateReply()
         end
-    elseif event == "TRADE_SKILL_CLOSE" then
-        tradeOpen = false
     end
 end
 
@@ -867,7 +866,7 @@ function R._ResetForTests()
     queue, pending, pumpScheduled, workedSpell = {}, nil, false, {}
     frameHooked, concealed, savedLook = false, false, nil
     tooltip, readLog, attempts, unreadableNames, seq = nil, {}, 0, {}, 0
-    quietOff, quietTries, quietWorks, tradeOpen, lateCatch = false, 0, 0, false, false
+    quietOff, quietTries, quietWorks, lateCatch = false, 0, 0, false
     unansweredAt, userLinkAt = -math.huge, -math.huge
 end
 
@@ -879,7 +878,7 @@ end
 eventFrame = CreateFrame and CreateFrame("Frame")
 if eventFrame then
     for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_DISABLED", "PLAYER_LOGOUT", "ADDON_LOADED",
-        "GLOBAL_MOUSE_DOWN", "TRADE_SKILL_SHOW", "TRADE_SKILL_CLOSE", "TRADE_SKILL_DATA_SOURCE_CHANGED",
+        "GLOBAL_MOUSE_DOWN", "TRADE_SKILL_SHOW", "TRADE_SKILL_DATA_SOURCE_CHANGED",
         "TRADE_SKILL_LIST_UPDATE" }) do
         pcall(eventFrame.RegisterEvent, eventFrame, event)
     end

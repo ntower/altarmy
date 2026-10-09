@@ -1844,6 +1844,7 @@ local stockpileAttachSeq = {
     lastLogAt = 0,
     successTargetDisplayName = nil,
     successTargetClassFile = nil,
+    recipient = nil, -- "Name" or "Name-Realm", what SendMail is given
 }
 
 --- /alta sendall N queue (one table to avoid Lua 5.1 local limit).
@@ -1884,6 +1885,7 @@ local function ResetAttachSeqState()
     stockpileAttachSeq.lastLogAt = 0
     stockpileAttachSeq.successTargetDisplayName = nil
     stockpileAttachSeq.successTargetClassFile = nil
+    stockpileAttachSeq.recipient = nil
 end
 
 sendAllSeq.Finish = function(msg)
@@ -1961,43 +1963,46 @@ local function AbortAttachSeq(msg, opts)
     end
 end
 
---- Classic mail UI leaves Send disabled until stationery, recipient, and subject are set (SendMailFrame_CanSend).
-local function EnsureStockpileMailComposeReady()
-    local spf = _G.StationeryPopupFrame
-    if spf and spf.selectedIndex == nil and _G.StationeryPopupButton_OnClick then
-        _G.StationeryPopupButton_OnClick(nil, 1)
-    end
+--- The subject Blizzard's Send button would give the mail: what the player typed, else the first
+--- attachment's name, else a dot (the UI's gate wants one).
+local function StockpileMailSubject()
     local subj = _G.SendMailSubjectEditBox
-    if subj and subj.GetText and subj.SetText then
-        local t = subj:GetText() or ""
-        if t == "" then
-            subj:SetText(".")
+    local text = subj and subj.GetText and subj:GetText() or ""
+    if text ~= "" then
+        return text
+    end
+    local getSendMailItem = _G.GetSendMailItem
+    if getSendMailItem then
+        local name = getSendMailItem(1)
+        if name and name ~= "" then
+            return name
         end
     end
-    if _G.SendMailFrame_Update then
-        _G.SendMailFrame_Update()
-    end
-    if _G.SendMailFrame_CanSend then
-        _G.SendMailFrame_CanSend()
-    end
+    return "."
 end
 
-local function FireStockpileMailSend()
-    EnsureStockpileMailComposeReady()
-    -- Same path as clicking SendMailMailButton (populates SendMail from edit boxes).
-    if type(_G.SendMailFrame_SendMail) == "function" then
-        _G.SendMailFrame_SendMail()
-        return
+--- Send the attached stockpile through the client's SendMail API, never Blizzard's mail UI functions
+--- (SendMailFrame_Update, SendMailFrame_CanSend, SendMailFrame_SendMail, StationeryPopupButton_OnClick or
+--- a Click on SendMailMailButton): Lua run from an addon is tainted, and those would leave tainted state in
+--- Blizzard's mail frame. The recipient is the one this send set; the edit box is only read as a fallback.
+local function FireStockpileMailSend(recipient)
+    local sendMail = _G.SendMail
+    if type(sendMail) ~= "function" then
+        ChatInfo("Cannot send: this client has no SendMail API.")
+        return false
     end
-    local btn = _G.SendMailMailButton
-    if btn then
-        if btn.Enable then
-            btn:Enable()
-        end
-        if btn.Click then
-            btn:Click()
-        end
+    if not recipient or recipient == "" then
+        local eb = _G.SendMailNameEditBox
+        recipient = eb and eb.GetText and eb:GetText() or ""
     end
+    if recipient == "" then
+        ChatInfo("Cannot send: no recipient.")
+        return false
+    end
+    local body = _G.SendMailBodyEditBox
+    local bodyText = body and body.GetText and body:GetText() or ""
+    sendMail(recipient, StockpileMailSubject(), bodyText)
+    return true
 end
 
 local function CompleteAttachSeqAndSendMail()
@@ -2008,12 +2013,13 @@ local function CompleteAttachSeqAndSendMail()
             classFile = stockpileAttachSeq.successTargetClassFile,
         }
     end
+    local recipient = stockpileAttachSeq.recipient
     ResetAttachSeqState()
     ClearCursor()
     stockpileMailPendingAnnounce = pending
 
     local function runSend()
-        FireStockpileMailSend()
+        FireStockpileMailSend(recipient)
     end
     local ctimer = _G.C_Timer
     if ctimer and ctimer.After then
@@ -2419,6 +2425,7 @@ RunSendStockpile = function(ctx)
     ChatInfo("Attaching items...")
     stockpileAttachSeq.successTargetDisplayName = ctx.targetDisplayName or ctx.targetName
     stockpileAttachSeq.successTargetClassFile = ctx.targetClassFile
+    stockpileAttachSeq.recipient = recipient
     StartAttachSeq(steps)
     TryAdvanceAttachSeq()
     return true

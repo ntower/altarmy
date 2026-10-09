@@ -43,3 +43,5 @@ If you need to capture state from more than one place at once (e.g. comparing wh
 ## Relationship to other dump tools
 
 This is the **general-purpose** one. If you're specifically debugging the Gear tab's compare panel, use the purpose-built [`comparePanelDumps`](COMPARE_PANEL_DEBUG_DUMP.md) instead (has its own **Dump** button in the UI and a richer fixed schema). Reach for `AltArmy.Debug.Dump` for everything else.
+
+`/altarmy taint` (`AltArmy.Debug.DumpTaint`, no debug mode needed) is the one for `ADDON_ACTION_BLOCKED` errors: it lists what is tainted on the player cast bar's path and by which addon, every global and foreign table field AltArmy tainted, and anything in AltArmy's SavedVariables the client cannot write (a function or secret value stops the whole file from being saved). The report opens in a copyable box (the export dialog) and is also stored as dump `taint`.

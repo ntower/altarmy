@@ -2336,6 +2336,16 @@ SlashCmdList.ALTARMY = function(msg)
         end
         return
     end
+    if lower == "taint" then
+        local report = AltArmy.Debug and AltArmy.Debug.DumpTaint and AltArmy.Debug.DumpTaint()
+        local dlg = AltArmy.ProfitExportDialog
+        if report and dlg and dlg.ShowText then
+            dlg.ShowText("Taint report", "Ctrl+C copies this report; paste it to whoever is debugging.", report)
+        elseif not report and AltArmy.Debug and AltArmy.Debug.NotifyChat then
+            AltArmy.Debug.NotifyChat("|cff00ccff[Alt Army]|r This client cannot report taint.")
+        end
+        return
+    end
     if lower == "debug on" then
         if AltArmy.Debug and AltArmy.Debug.SetEnabled then
             AltArmy.Debug.SetEnabled(true)

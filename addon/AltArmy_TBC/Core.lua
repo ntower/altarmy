@@ -77,8 +77,9 @@ main:Hide()
 AltArmy.MainFrame = main
 
 -- Dismiss UI when Escape is pressed (WoW closes topmost frame in UISpecialFrames)
-UISpecialFrames = UISpecialFrames or {}
-tinsert(UISpecialFrames, "AltArmyTBC_MainFrame")
+if UISpecialFrames then
+    tinsert(UISpecialFrames, "AltArmyTBC_MainFrame") -- never assign the global: that taints it
+end
 
 -- Drag by the title bar (template TitleContainer, or a top strip on the fallback shell).
 local dragRegion = main.TitleContainer

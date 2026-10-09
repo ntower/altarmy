@@ -248,6 +248,159 @@ function D.Dump(label, payload)
     D.ShowCenterAlert("Alt Army dev dump: " .. label)
 end
 
+local SAVED_VARIABLES = {
+    "AltArmyTBC_Options", "AltArmyTBC_Data", "AltArmyTBC_GearSettings", "AltArmyTBC_ReputationSettings",
+    "AltArmyTBC_SummarySettings", "AltArmyTBC_SearchSettings", "AltArmyTBC_GraphSettings", "AltArmyTBC_GuildData",
+    "AltArmyTBC_SharingSettings", "AltArmyTBC_AuctionScans", "AltArmyTBC_AuctionBook",
+}
+local SERIALIZABLE = { string = true, number = true, boolean = true, table = true }
+local MAX_LISTED = 60
+
+--- Walk one SavedVariables table; append "path=type" for every key or value the client cannot write.
+local function unserializableIn(root, name, hits, seen)
+    local issecret = _G.issecretvalue
+    local stack = { { t = root, path = name } }
+    while #stack > 0 and #hits < MAX_LISTED do
+        local cur = table.remove(stack)
+        local t = cur.t
+        if not seen[t] then
+            seen[t] = true
+            for k, v in pairs(t) do
+                local kt, vt = type(k), type(v)
+                local path = cur.path .. "." .. tostring(k)
+                if kt ~= "string" and kt ~= "number" then
+                    hits[#hits + 1] = path .. "=key:" .. kt
+                elseif not SERIALIZABLE[vt] then
+                    hits[#hits + 1] = path .. "=" .. vt
+                elseif issecret and vt ~= "table" and issecret(v) then
+                    hits[#hits + 1] = path .. "=secret:" .. vt
+                elseif vt == "table" then
+                    stack[#stack + 1] = { t = v, path = path }
+                end
+                if #hits >= MAX_LISTED then
+                    break
+                end
+            end
+        end
+    end
+end
+
+--- Debug: report what is tainted on the player cast bar's code path and by whom, for ADDON_ACTION_BLOCKED on
+--- PlayerCastingBarFrame:Show(): every field of the tables that path reads whose value is insecure, with the
+--- addon the client blames; every global this addon tainted that is not its own, and every field it tainted in a
+--- table it does not own (a Blizzard frame or mixin it wrote into); and anything in the addon's
+--- SavedVariables the client cannot serialize (a function, userdata or secret value stops the whole file from
+--- being written). Returns the report as one line of text (also written as dev dump "taint"); nil when the
+--- client has no issecurevariable. Runs whether or not debug is on (/altarmy taint), since it only reads.
+function D.DumpTaint()
+    local issecure = _G.issecurevariable
+    if type(issecure) ~= "function" then
+        return nil
+    end
+    local out = { when = _G.date and _G.date() or nil, fields = {}, globals = {}, taintedGlobalsByAddon = {} }
+    local lines = {}
+    local function fieldsOf(t, name)
+        if type(t) ~= "table" then
+            return
+        end
+        local found, n = {}, 0
+        for k in pairs(t) do
+            local ok, src = true, nil
+            if type(k) == "string" then
+                ok, src = issecure(t, k)
+            end
+            if not ok then
+                found[tostring(k)] = tostring(src or "?")
+                n = n + 1
+                lines[#lines + 1] = name .. "." .. tostring(k) .. "<" .. tostring(src or "?")
+            end
+        end
+        if n > 0 then
+            out.fields[name] = found
+        end
+    end
+    local names = {
+        "PlayerCastingBarFrame", "OverlayPlayerCastingBarFrame", "CastingBarMixin", "PlayerCastingBarMixin",
+        "PlayerCastingBarFrameMixin", "EditModeSystemMixin", "EditModeManagerFrame", "GameRulesUtil", "InputUtil",
+        "C_GameRules", "Enum", "PlayerFrame", "UIParent", "ProfessionsFrame", "PlayerSpellsFrame", "SOUNDKIT",
+        "ManagedFrameMixin",
+    }
+    for _, name in ipairs(names) do
+        local ok, src = issecure(name)
+        out.globals[name] = ok and "secure" or ("tainted by " .. tostring(src))
+        if not ok then
+            lines[#lines + 1] = "global " .. name .. "<" .. tostring(src)
+        end
+        fieldsOf(_G[name], name)
+    end
+    if type(_G.Enum) == "table" then
+        fieldsOf(_G.Enum.GameRule, "Enum.GameRule")
+    end
+    local mine, counts, mineList = {}, {}, {}
+    for k, v in pairs(_G) do
+        if type(k) == "string" then
+            local ok, src = issecure(k)
+            if not ok then
+                src = tostring(src)
+                counts[src] = (counts[src] or 0) + 1
+                if src == "AltArmy_TBC" and not k:match("^AltArmy") and not k:match("^SLASH_ALTARMY") then
+                    mine[k] = type(v)
+                    if #mineList < MAX_LISTED then
+                        mineList[#mineList + 1] = k .. ":" .. type(v)
+                    end
+                end
+            end
+        end
+    end
+    out.taintedGlobalsByAddon = counts
+    out.globalsTaintedByAltArmy = mine
+    -- Fields this addon tainted inside tables it does not own (a Blizzard frame or mixin it wrote into).
+    local foreign = {}
+    for k, v in pairs(_G) do
+        if type(k) == "string" and type(v) == "table" and k ~= "_G" and not k:match("^AltArmy") and issecure(k) then
+            for fk in pairs(v) do
+                local ok, src = true, nil
+                if type(fk) == "string" then
+                    ok, src = issecure(v, fk)
+                end
+                if not ok and tostring(src) == "AltArmy_TBC" and #foreign < MAX_LISTED then
+                    foreign[#foreign + 1] = k .. "." .. tostring(fk)
+                end
+            end
+        end
+    end
+    table.sort(foreign)
+    out.fieldsTaintedByAltArmy = foreign
+    local countList = {}
+    for src, n in pairs(counts) do
+        countList[#countList + 1] = src .. "=" .. n
+    end
+    table.sort(countList)
+    table.sort(mineList)
+    local bad, seen = {}, {}
+    for _, name in ipairs(SAVED_VARIABLES) do
+        if type(_G[name]) == "table" then
+            unserializableIn(_G[name], name, bad, seen)
+        end
+    end
+    out.unserializable = bad
+    local report = "TAINT " .. tostring(out.when) .. " | path: " .. (#lines > 0 and table.concat(lines, ", ") or "none")
+        .. " | tainted globals per addon: " .. (#countList > 0 and table.concat(countList, ", ") or "none")
+        .. " | globals tainted by AltArmy_TBC: " .. (#mineList > 0 and table.concat(mineList, ", ") or "none")
+        .. " | fields tainted by AltArmy_TBC in other tables: "
+        .. (#foreign > 0 and table.concat(foreign, ", ") or "none")
+        .. " | unserializable in SavedVariables: " .. (#bad > 0 and table.concat(bad, ", ") or "none")
+    out.report = report
+    D.Ensure()
+    local d = AltArmyTBC_Options.debug
+    if type(d.devDumps) ~= "table" then
+        d.devDumps = {}
+    end
+    d.devDumps.taint = out
+    D.ShowCenterAlert("Alt Army dev dump: taint")
+    return report
+end
+
 D.MAX_COMPARE_PANEL_DUMPS = 1
 D.MAX_GUILD_SHARE_UNDECODABLE_DUMPS = 1
 

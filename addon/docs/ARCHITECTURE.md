@@ -87,6 +87,15 @@ Declared in `AltArmy_TBC.toc`:
 | `AltArmyTBC_AuctionScans` | Log of Auctionator's price updates and their faction, for the website |
 | `AltArmyTBC_AuctionBook` | The auction house's order book from full scans, for the website (`scans`), plus the newest summary scan per realm and faction (`summaries`, in-game only) |
 
+## Blizzard's code and taint
+
+Lua run from an addon is tainted, and so is every value it writes. When Blizzard's secure code reads such a value, its own execution becomes tainted and its next protected call fails with `ADDON_ACTION_BLOCKED`, often far from the write: the player's cast bar stopped showing (`PlayerCastingBarFrame:Show()`) because the talents frame, built from a tab-spacing variable the addon had tainted, handed the taint on. Rules that follow:
+
+- Never assign a Blizzard global (`UISpecialFrames = UISpecialFrames or {}` taints the whole table; insert into it when it exists).
+- Never call a Blizzard UI function that writes into a Blizzard frame on the player's behalf: no `ShowUIPanel` on Blizzard windows (`OwnRecipeRead` closes the trade skill with `C_TradeSkillUI.CloseTradeSkill` instead), no `SendMailFrame_*` (the Cooldowns stockpile send calls `SendMail`). Prefer the `C_*` and plain client APIs, `hooksecurefunc` and `HookScript`, which leave Blizzard's state alone.
+- A Blizzard mixin method that writes shared state is off limits even on the addon's own frames: `TabSystemButtonMixin:SetSquareMode` rewrites a variable every tab system in the client reads, so `UI/TopTabs.lua` draws its square icon tabs itself.
+- `/altarmy taint` shows which values on the cast bar's path are tainted and by which addon, every global and foreign table field this addon tainted, and anything in its SavedVariables the client cannot write (see [DEV_DUMPS.md](DEV_DUMPS.md)).
+
 ## Document map
 
 - [FEATURES.md](FEATURES.md) — shipped features
