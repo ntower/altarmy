@@ -553,6 +553,22 @@ describe('SkillWorkspace', () => {
     await waitFor(async () => expect((await bodies(fetch, '/api/evaluate'))[0]).toMatchObject({ copies: 17 }))
   })
 
+  it('buys for the target again once a talent slider moves, forgetting a typed count', async () => {
+    const fetch = api()
+    show()
+    const run = await choose('Green Robe')
+    const input = within(run).getByRole('textbox', { name: 'Crafts to buy for' })
+    await userEvent.clear(input)
+    await userEvent.type(input, '20')
+    expect(input).toHaveValue('20')
+    const [wo] = within(screen.getByRole('group', { name: 'Legacy talents' })).getAllByRole('slider')
+    wo!.focus()
+    await userEvent.keyboard('{ArrowRight}')
+    await waitFor(() => expect(urls(fetch, '/api/rank').at(-1)?.searchParams.get('working_overtime')).toBe('1'))
+    // the run's chances changed: the count is the one reaching the target again
+    await waitFor(() => expect(within(run).getByRole('textbox', { name: 'Crafts to buy for' })).toHaveValue('14'))
+  })
+
   it("plans a picked strategy's run under it", async () => {
     const fetch = api()
     show()

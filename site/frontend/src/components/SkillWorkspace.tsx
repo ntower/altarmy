@@ -731,6 +731,12 @@ export function SkillWorkspace({
   // The crafts the checklist buys for: what the user typed, else enough to reach the run's target with the chance
   // the Options ask for; planned again (debounced) when that isn't the ranked run's own count.
   const [typed, setTyped] = useState<number | null>(null)
+  // Other talent ranks change the run's chances: the count follows the target again.
+  const [typedAt, setTypedAt] = useState(ranks)
+  if (typedAt !== ranks) {
+    setTypedAt(ranks)
+    setTyped(null)
+  }
   const buyCount = open ? (typed ?? craftsToReach(open, reachTarget)) : 0
   const [settledCount] = useDebouncedValue(buyCount, 400)
   // Each strategy's plan for the crafts it opens with, fetched ahead: opening one finds it ready.
