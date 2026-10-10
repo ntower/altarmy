@@ -1,7 +1,7 @@
 ## Interface: 20506, 16001
 ## Title: AltArmy
 ## Notes: Alt management: character summary, gear and reputation grids, per-character containers, cross-character item search. TBC Classic.
-## Version: 2.2.10
+## Version: 2.2.11
 ## Author: Nick Tower
 ## X-Wago-ID: aNDMjY6o
 ## SavedVariables: AltArmyTBC_Options, AltArmyTBC_Data, AltArmyTBC_GearSettings, AltArmyTBC_ReputationSettings, AltArmyTBC_SummarySettings, AltArmyTBC_SearchSettings, AltArmyTBC_GraphSettings, AltArmyTBC_GuildData, AltArmyTBC_SharingSettings, AltArmyTBC_AuctionScans, AltArmyTBC_AuctionBook
