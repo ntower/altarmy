@@ -11,7 +11,7 @@ if not AltArmy then return end
 AltArmy.Writs = AltArmy.Writs or {}
 local W = AltArmy.Writs
 
-W.BUILD = "1.60.1.70291"
+W.BUILD = "1.60.1.70338"
 W.TIERS = { "Journeyman", "Expert", "Artisan" }
 W.REP = { Journeyman = 75, Expert = 125, Artisan = 200 }
 W.LIST = {

@@ -2,7 +2,7 @@
 -- Forever client recipes, false = unknown:
 --   [spellID] = { profession, resultItemID, reqSkill, yellow, gray, source, recipeItemID }
 -- Loads only on its own client; AltArmy.RecipeInfo reads it (see AltArmy_TBC/Data/DESIGN.md).
-local BUILD = "1.60.1.70291"
+local BUILD = "1.60.1.70338"
 local interface = GetBuildInfo and select(4, GetBuildInfo())
 if interface ~= 16001 then return end
 
