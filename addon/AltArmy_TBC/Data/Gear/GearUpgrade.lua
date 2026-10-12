@@ -1700,6 +1700,7 @@ function GU.ClassifyFocusSlot(entry, charData, itemLink, invSlot, opts, _upgrade
                 category = category,
                 badge = FOCUS_CATEGORY_BADGE[category],
                 delta = rawDelta,
+                percent = GU.GetWeightedChangePercent(rawDelta, oldScore),
                 dimmed = FOCUS_CATEGORY_DIMMED[category] == true,
             }
         end
@@ -2288,13 +2289,10 @@ function GU.EvaluateForAllAlts(itemLink, opts)
     return matches
 end
 
---- Evaluate upgrade for a single character (level-up scan, focus mode).
---- opts.level — evaluate as if the character were this level (level-up notifications).
-function GU.EvaluateForCharacter(char, itemLink, opts)
-    opts = opts or {}
-    if not char or not itemLink then return false end
+--- Focus entry and upgradeMaxDelta for evaluating one character; nil when the item has no slots.
+local function singleCharacterFocus(char, itemLink, opts)
     local slots = GU.GetFocusInventorySlots(itemLink)
-    if #slots == 0 then return false end
+    if #slots == 0 then return nil end
     local level = opts.level
     if level == nil then
         level = (DS and DS.GetCharacterLevel and DS:GetCharacterLevel(char))
@@ -2316,7 +2314,38 @@ function GU.EvaluateForCharacter(char, itemLink, opts)
         charData = char,
     } }
     local upgradeMaxDelta = GU.ComputeUpgradeMaxDeltaForEntries(entries, itemLink, opts)
+    return entry, upgradeMaxDelta, slots
+end
+
+--- Evaluate upgrade for a single character (level-up scan, focus mode).
+--- opts.level — evaluate as if the character were this level (level-up notifications).
+function GU.EvaluateForCharacter(char, itemLink, opts)
+    opts = opts or {}
+    if not char or not itemLink then return false end
+    local entry, upgradeMaxDelta = singleCharacterFocus(char, itemLink, opts)
+    if not entry then return false end
     return GU.HasFocusUpgradeInRange(entry, char, itemLink, opts, upgradeMaxDelta)
+end
+
+--- Upgrade size for a single character: the best weighted percent change vs equipped over the
+--- item's slots that EvaluateForCharacter counts as an upgrade; nil when it is not an upgrade.
+--- Comparable across characters (e.g. to pick who should roll on an item). Same opts.
+function GU.GetUpgradePercentForCharacter(char, itemLink, opts)
+    opts = opts or {}
+    if not char or not itemLink then return nil end
+    local entry, upgradeMaxDelta, slots = singleCharacterFocus(char, itemLink, opts)
+    if not entry then return nil end
+    local best
+    for i = 1, #slots do
+        local info = GU.ClassifyFocusSlot(entry, char, itemLink, slots[i], opts, upgradeMaxDelta)
+        if info and info.category == GU.FOCUS_CATEGORY.UPGRADE_IN_RANGE then
+            local percent = tonumber(info.percent) or 0
+            if not best or percent > best then
+                best = percent
+            end
+        end
+    end
+    return best
 end
 
 --- Raw upgrade magnitude for one character (technique-specific score delta).

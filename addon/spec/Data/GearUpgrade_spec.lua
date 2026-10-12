@@ -742,6 +742,16 @@ describe("GearUpgrade", function()
         assert.is_true(GU.EvaluateForCharacter(char, link, opts))
     end)
 
+    it("GetUpgradePercentForCharacter returns the weighted change vs equipped, nil when not an upgrade", function()
+        local char = DS:GetCharacter("MageAlt", "TestRealm")
+        local link = "|Hitem:11:0|h[New Helm]|h"
+        -- ilvl 35 over an equipped ilvl 20: +75%.
+        assert.are.equal(75, GU.GetUpgradePercentForCharacter(char, link, { technique = "ilvl", levelsAhead = 0 }))
+        assert.is_nil(GU.GetUpgradePercentForCharacter(char, link, { technique = "ilvl", levelsAhead = 0, level = 28 }))
+        assert.is_nil(GU.GetUpgradePercentForCharacter(char, "|Hitem:10:0|h[Old Helm]|h",
+            { technique = "ilvl", levelsAhead = 0 }))
+    end)
+
     it("EnsureGearUpgradeOptions applies defaults", function()
         _G.AltArmyTBC_Options = {}
         local opts = GU.EnsureGearUpgradeOptions()
