@@ -69,3 +69,38 @@ def test_green_armor_expected_value() -> None:
     robe = Item(id=1, name="Green Robe", quality=2, item_level=20, class_id=4)
     market = Market({1: robe}, [], {10940: 100, 10939: 1000, 10978: 2000}, load_table(), ah_cut=0.0)
     assert market.disenchant_value(robe) == int(0.75 * 2.5 * 100 + 0.20 * 1.5 * 1000 + 0.05 * 2000)
+
+
+def results(class_id: int, quality: int, item_level: int) -> dict[int, tuple[float, int, int]]:
+    """Material -> (chance, min count, max count) for one item."""
+    item = Item(id=1, name="x", quality=quality, item_level=item_level, class_id=class_id)
+    market = Market({1: item}, [], {}, load_table())
+    return {m.item_id: (m.chance, m.min_count, m.max_count) for m in market.disenchant_materials(item)}
+
+
+@pytest.mark.parametrize("item_level", [81, 88, 92])
+@pytest.mark.parametrize("class_id", [2, 4])
+def test_naxxramas_epics_give_nexus_crystals(class_id: int, item_level: int) -> None:
+    assert set(results(class_id, 4, item_level)) == {20725}
+
+
+@pytest.mark.parametrize(("item_level", "shard"), [(1, 10978), (10, 10978), (66, 14344), (80, 14344)])
+def test_rares_cover_low_and_high_item_levels(item_level: int, shard: int) -> None:
+    assert results(4, 3, item_level)[shard][0] >= 0.995
+
+
+@pytest.mark.parametrize("item_level", [21, 25, 26, 30])
+def test_forever_green_weapons_of_21_to_30_give_greater_magic_essence(item_level: int) -> None:
+    # Forever's own drops (Wowhead's Forever data, as Disenchantry has them): armor keeps the astral essences
+    assert results(2, 2, item_level)[10939] == (0.75, 1, 2)
+    assert 10939 not in results(4, 2, item_level)
+
+
+@pytest.mark.parametrize("item_level", [51, 60, 65])
+def test_green_weapons_of_51_to_65_split_22_75_3(item_level: int) -> None:
+    chances = sorted(c for c, _, _ in results(2, 2, item_level).values())
+    assert chances == [0.03, 0.22, 0.75]
+
+
+def test_green_weapons_start_at_item_level_5() -> None:
+    assert results(2, 2, 5)
