@@ -211,116 +211,84 @@ panel.refresh = function()
 end
 
 -- ---------------------------------------------------------------------------
--- Header
+-- Pages: `panel` is the AltArmy entry in Options -> AddOns; General, Characters, Gear, Cooldowns and
+-- Debug are its sub-pages, nested under it in the list (Settings.RegisterCanvasLayoutSubcategory, as
+-- Auctionator and AceConfigDialog's AddToBlizOptions do; `parent` on clients without Settings).
 -- ---------------------------------------------------------------------------
+
+local LEFT_INSET = 16
+local COL_GAP    = 20
+local PAGE_CONTENT_TOP = -44
 
 local header = panel:CreateFontString(nil, "ARTWORK", Theme.FONTS.pageTitle)
 header:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -12)
 header:SetText("Alt Army")
 Theme.SetTitleColor(header)
 
-local LEFT_INSET = 16
-local COL_GAP    = 20
+local rootIntro = panel:CreateFontString(nil, "ARTWORK", Theme.FONTS.body)
+rootIntro:SetPoint("TOPLEFT", panel, "TOPLEFT", LEFT_INSET, PAGE_CONTENT_TOP)
+rootIntro:SetWidth(520)
+rootIntro:SetJustifyH("LEFT")
+rootIntro:SetText("Version " .. tostring(AltArmy.Version or "?") .. "\n\n"
+    .. "Choose a page under Alt Army on the left: General, Characters, Gear or Cooldowns.\n\n"
+    .. "Type /altarmy to open the Alt Army window.")
 
--- ---------------------------------------------------------------------------
--- Tab strip (General / Characters / Gear / Cooldowns / Debug)
--- ---------------------------------------------------------------------------
-
-local TAB_BAR_Y = -42
-local TAB_CONTENT_TOP = -72
-local TAB_BTN_W = 96
-local TAB_BTN_H = 22
-
-local tabGeneral = CreateFrame("Frame", nil, panel)
-local tabCharacters = CreateFrame("Frame", nil, panel)
-local tabCooldowns = CreateFrame("Frame", nil, panel)
-local tabGearUpgrades = CreateFrame("Frame", nil, panel)
-local tabDebug = CreateFrame("Frame", nil, panel)
-tabGeneral:SetPoint("TOPLEFT", panel, "TOPLEFT", LEFT_INSET, TAB_CONTENT_TOP)
-tabGeneral:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -16, 12)
-tabCharacters:SetAllPoints(tabGeneral)
-tabCooldowns:SetAllPoints(tabGeneral)
-tabGearUpgrades:SetAllPoints(tabGeneral)
-tabDebug:SetAllPoints(tabGeneral)
-
-local tabButtons = {}
-local activeOptionsTab = "general"
-
-local RefreshDebugCheckboxes
-local RefreshDebugTabVisibility
-
-local function SetActiveOptionsTab(which)
-    activeOptionsTab = which
-    tabGeneral:SetShown(which == "general")
-    tabCharacters:SetShown(which == "characters")
-    tabCooldowns:SetShown(which == "cooldowns")
-    tabGearUpgrades:SetShown(which == "gearUpgrades")
-    tabDebug:SetShown(which == "debug")
-    for id, btn in pairs(tabButtons) do
-        if btn and btn.SetSelected then
-            btn:SetSelected(id == which)
-        elseif btn and btn.SetAlpha then
-            btn:SetAlpha(id == which and 1 or 0.55)
-        end
-    end
-    if which == "gearUpgrades" then
-        if AltArmy.BuildGearUpgradeOptionsUI then
-            AltArmy.BuildGearUpgradeOptionsUI(panel)
-        end
-        if panel.UpdateGearUpgradeScrollRange then
-            panel.UpdateGearUpgradeScrollRange()
-        end
-        if panel.RefreshGearUpgradeOptionsFromVars then
-            panel.RefreshGearUpgradeOptionsFromVars()
-        end
-    end
-    if which == "debug" and RefreshDebugCheckboxes then
-        RefreshDebugCheckboxes()
-    end
-    if which == "general" and panel.RefreshGuildSharingControls then
-        panel.RefreshGuildSharingControls()
-    end
-    if which == "characters" and panel.RefreshCharGuildShareDropdown then
-        panel.RefreshCharGuildShareDropdown()
-    end
-end
-
-local tabBar = CreateFrame("Frame", nil, panel)
-tabBar:SetPoint("TOPLEFT", panel, "TOPLEFT", LEFT_INSET, TAB_BAR_Y)
-tabBar:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -16, TAB_BAR_Y)
-tabBar:SetHeight(TAB_BTN_H)
-local tabIds = { "general", "characters", "gearUpgrades", "cooldowns" }
-local tabLabels = {
+--- id -> { page = canvas frame, label, category = Settings subcategory once registered }
+panel.pages = {}
+local PAGE_ORDER = { "general", "characters", "gearUpgrades", "cooldowns", "debug" }
+local PAGE_LABELS = {
     general = "General",
     characters = "Characters",
     gearUpgrades = "Gear",
     cooldowns = "Cooldowns",
     debug = "Debug",
 }
-for i, id in ipairs(tabIds) do
-    local b = CreateFrame("Button", nil, tabBar, "UIPanelButtonTemplate")
-    b:SetSize(TAB_BTN_W, TAB_BTN_H)
-    b:SetPoint("TOPLEFT", tabBar, "TOPLEFT", (i - 1) * (TAB_BTN_W + 4), 0)
-    b:SetText(tabLabels[id] or id)
-    Theme.SkinButton(b, true)
-    b:SetScript("OnClick", function()
-        SetActiveOptionsTab(id)
-    end)
-    tabButtons[id] = b
+
+--- A sub-page's canvas frame with its title, and the frame its content goes in (below the title).
+local function CreateOptionsPage(id)
+    local page = CreateFrame("Frame")
+    page.name = PAGE_LABELS[id]
+    page.parent = panel.name
+    page.okay = function() panel.okay() end
+    page.cancel = function() panel.cancel() end
+    page.default = function() panel.default() end
+    page.refresh = function() panel.refresh() end
+    local title = page:CreateFontString(nil, "ARTWORK", Theme.FONTS.pageTitle)
+    title:SetPoint("TOPLEFT", page, "TOPLEFT", 16, -12)
+    title:SetText(PAGE_LABELS[id])
+    Theme.SetTitleColor(title)
+    local content = CreateFrame("Frame", nil, page)
+    content:SetPoint("TOPLEFT", page, "TOPLEFT", LEFT_INSET, PAGE_CONTENT_TOP)
+    content:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -16, 12)
+    panel.pages[id] = { page = page, label = PAGE_LABELS[id] }
+    return content, page
 end
 
-do
-    local b = CreateFrame("Button", nil, tabBar, "UIPanelButtonTemplate")
-    b:SetSize(TAB_BTN_W, TAB_BTN_H)
-    b:SetPoint("TOPLEFT", tabBar, "TOPLEFT", 4 * (TAB_BTN_W + 4), 0)
-    b:SetText("Debug")
-    Theme.SkinButton(b, true)
-    b:SetScript("OnClick", function()
-        SetActiveOptionsTab("debug")
-    end)
-    b:Hide()
-    tabButtons["debug"] = b
-end
+local tabGeneral, pageGeneral = CreateOptionsPage("general")
+local tabCharacters, pageCharacters = CreateOptionsPage("characters")
+local tabGearUpgrades, pageGearUpgrades = CreateOptionsPage("gearUpgrades")
+local tabCooldowns = CreateOptionsPage("cooldowns")
+local tabDebug, pageDebug = CreateOptionsPage("debug")
+
+local RefreshDebugCheckboxes
+local RefreshDebugTabVisibility
+
+pageGearUpgrades:HookScript("OnShow", function()
+    if AltArmy.BuildGearUpgradeOptionsUI then
+        AltArmy.BuildGearUpgradeOptionsUI(panel)
+    end
+    if panel.UpdateGearUpgradeScrollRange then
+        panel.UpdateGearUpgradeScrollRange()
+    end
+    if panel.RefreshGearUpgradeOptionsFromVars then
+        panel.RefreshGearUpgradeOptionsFromVars()
+    end
+end)
+pageDebug:HookScript("OnShow", function()
+    if RefreshDebugCheckboxes then
+        RefreshDebugCheckboxes()
+    end
+end)
 
 -- ---------------------------------------------------------------------------
 -- Debug tab (scrollable — content exceeds the Interface Options canvas)
@@ -330,9 +298,9 @@ local DEBUG_SCROLL_GUTTER = Theme.VerticalScrollBarGutter()
 local debugViewport = Theme.CreateVerticalScrollViewport({
     name = "AltArmyTBC_DebugOptionsScroll",
     parent = tabDebug,
-    gutterEdge = panel,
+    gutterEdge = pageDebug,
     anchorTop = { "TOPLEFT", tabDebug, "TOPLEFT", 0, -4 },
-    anchorBottom = { "BOTTOMRIGHT", panel, "BOTTOMRIGHT", -DEBUG_SCROLL_GUTTER, 4 },
+    anchorBottom = { "BOTTOMRIGHT", pageDebug, "BOTTOMRIGHT", -DEBUG_SCROLL_GUTTER, 4 },
     wheelStep = 40,
     valueStep = 20,
     enableMouseWheel = true,
@@ -693,17 +661,21 @@ function RefreshDebugCheckboxes()
 end
 panel.RefreshDebugCheckboxes = RefreshDebugCheckboxes
 
+-- The Debug page can't be taken out of the list once added, so after /altarmy debug off it says so.
+local debugOffNote = pageDebug:CreateFontString(nil, "ARTWORK", Theme.FONTS.body)
+debugOffNote:SetPoint("TOPLEFT", tabDebug, "TOPLEFT", 0, -4)
+debugOffNote:SetText("Debug options are off. Type /altarmy debug on to turn them back on.")
+debugOffNote:Hide()
+
+--- Debug is listed only while debug options are on (/altarmy debug on adds it to the list).
 function RefreshDebugTabVisibility()
     local D = AltArmy and AltArmy.Debug
-    local btn = tabButtons["debug"]
-    if not D or not D.IsEnabled or not btn then return end
-    if D.IsEnabled() then
-        btn:Show()
-    else
-        btn:Hide()
-        if activeOptionsTab == "debug" then
-            SetActiveOptionsTab("general")
-        end
+    if not D or not D.IsEnabled then return end
+    local on = D.IsEnabled()
+    tabDebug:SetShown(on)
+    debugOffNote:SetShown(not on)
+    if on and panel.RegisterOptionsSubpage then
+        panel.RegisterOptionsSubpage("debug")
     end
 end
 panel.RefreshDebugTabVisibility = RefreshDebugTabVisibility
@@ -719,9 +691,9 @@ local GENERAL_SCROLL_GUTTER = Theme.VerticalScrollBarGutter()
 local generalViewport = Theme.CreateVerticalScrollViewport({
     name = "AltArmyTBC_GeneralOptionsScroll",
     parent = tabGeneral,
-    gutterEdge = panel,
+    gutterEdge = pageGeneral,
     anchorTop = { "TOPLEFT", tabGeneral, "TOPLEFT", 0, 0 },
-    anchorBottom = { "BOTTOMRIGHT", panel, "BOTTOMRIGHT", -GENERAL_SCROLL_GUTTER, 4 },
+    anchorBottom = { "BOTTOMRIGHT", pageGeneral, "BOTTOMRIGHT", -GENERAL_SCROLL_GUTTER, 4 },
     wheelStep = 40,
     valueStep = 20,
     enableMouseWheel = true,
@@ -1031,7 +1003,7 @@ guildManageExceptionsBtn:SetText("Manage exceptions")
 Theme.SkinButton(guildManageExceptionsBtn)
 guildManageExceptionsBtn:SetScript("OnClick", function()
     if not guildManageExceptionsBtn:IsEnabled() then return end
-    SetActiveOptionsTab("characters")
+    AltArmy.OpenInterfaceOptions("characters")
 end)
 local guildManageExceptionsSharingOverlay = createSharingRequiredHoverOverlay(guildManageExceptionsBtn)
 
@@ -2135,47 +2107,28 @@ UpdateCharSettings = function()
     end
 end
 
-SetActiveOptionsTab("general")
-
 -- ---------------------------------------------------------------------------
 -- Panel show/hide hooks
 -- ---------------------------------------------------------------------------
 
--- Apply General / Characters / Cooldowns after Interface Options has actually shown our panel
--- (OpenToCategory often does not re-fire OnShow; IsShown() may be false until a later frame).
-local tabApplyFrame = CreateFrame("Frame", nil, panel)
+-- Apply a focus (character, flashed control) once the options window has actually shown its page
+-- (OpenToCategory often does not re-fire OnShow; IsShown() may be false until a later frame). Not a
+-- child of a page: a hidden parent would stop its OnUpdate.
+local tabApplyFrame = CreateFrame("Frame")
 tabApplyFrame:Hide()
 
 local pendingOptionsFocus = nil
 
-local function optionsHostIsOpen()
-    local iof = _G.InterfaceOptionsFrame
-    if not iof or not iof.IsShown then
-        return true
-    end
-    return iof:IsShown()
+local function focusPageIsShown(focus)
+    local entry = panel.pages[focus.tab or "general"]
+    return entry ~= nil and entry.page:IsShown()
 end
 
 local function applyOptionsFocus(focus)
     if not focus then return end
     local tabId = focus.tab or "general"
-    if tabId == "debug" and AltArmy.Debug and not AltArmy.Debug.IsEnabled() then
-        tabId = "general"
-    end
-    SetActiveOptionsTab(tabId)
     if tabId == "cooldowns" and panel.RefreshCooldownOptionsFromVars then
         panel.RefreshCooldownOptionsFromVars()
-    end
-    if tabId == "gearUpgrades" then
-        if AltArmy.BuildGearUpgradeOptionsUI then
-            AltArmy.BuildGearUpgradeOptionsUI(panel)
-        end
-        if panel.RefreshGearUpgradeOptionsFromVars then
-            panel.RefreshGearUpgradeOptionsFromVars()
-        end
-    end
-    if tabId == "debug" and panel.RefreshDebugCheckboxes then
-        panel.RefreshDebugCheckboxes()
     end
     if focus.name and focus.realm then
         SelectCharacterEntry(focus.name, focus.realm, focus.classFile)
@@ -2185,7 +2138,7 @@ local function applyOptionsFocus(focus)
     if focus.flash == "bankAlt" and Theme.FlashAttentionHighlight and bankAltRow then
         Theme.FlashAttentionHighlight(bankAltRow)
     elseif focus.flash then
-        -- General tab controls sit in collapsible sections: open the right one first.
+        -- General page controls sit in collapsible sections: open the right one first.
         FocusGeneralControl(focus.flash)
     end
 end
@@ -2199,7 +2152,7 @@ local function scheduleApplyOptionsFocus(focus)
     tabApplyFrame:Show()
     tabApplyFrame:SetScript("OnUpdate", function(self)
         self.attempts = self.attempts + 1
-        if panel:IsShown() and optionsHostIsOpen() then
+        if focusPageIsShown(pendingOptionsFocus) then
             local toApply = pendingOptionsFocus
             pendingOptionsFocus = nil
             applyOptionsFocus(toApply)
@@ -2215,18 +2168,21 @@ local function scheduleApplyOptionsFocus(focus)
     end)
 end
 
-panel:SetScript("OnHide", function()
+pageCharacters:SetScript("OnHide", function()
     selectedEntry        = nil
     deleteConfirmPending = false
-    pendingOptionsFocus  = nil
-    tabApplyFrame:SetScript("OnUpdate", nil)
-    tabApplyFrame:Hide()
     UpdateCharSettings()
 end)
 
-panel:HookScript("OnShow", function()
+pageCharacters:HookScript("OnShow", function()
     RefreshCharacterList()
     UpdateCharSettings()
+    if panel.RefreshCharGuildShareDropdown then
+        panel.RefreshCharGuildShareDropdown()
+    end
+end)
+
+pageGeneral:HookScript("OnShow", function()
     if panel.minimapCheckbox then
         panel.minimapCheckbox:SetChecked(minimapShown())
     end
@@ -2248,6 +2204,28 @@ end)
 -- Register with WoW's options system on login
 -- ---------------------------------------------------------------------------
 
+--- Add a sub-page under AltArmy in the list (once). False until the AltArmy entry is registered.
+function panel.RegisterOptionsSubpage(id)
+    local entry = panel.pages[id]
+    if not entry or entry.registered then
+        return entry ~= nil
+    end
+    if panel.altArmySettingsCategory then
+        if not Settings.RegisterCanvasLayoutSubcategory then return false end
+        entry.category = Settings.RegisterCanvasLayoutSubcategory(
+            panel.altArmySettingsCategory, entry.page, entry.label)
+    elseif panel.registeredLegacy and InterfaceOptions_AddCategory then
+        InterfaceOptions_AddCategory(entry.page) -- nested by entry.page.parent
+        if InterfaceAddOnsList_Update then
+            InterfaceAddOnsList_Update()
+        end
+    else
+        return false
+    end
+    entry.registered = true
+    return true
+end
+
 local function registerOptionsPanel()
     if Settings and Settings.RegisterCanvasLayoutCategory and Settings.RegisterAddOnCategory then
         local category = Settings.RegisterCanvasLayoutCategory(panel, "AltArmy")
@@ -2256,8 +2234,15 @@ local function registerOptionsPanel()
     end
     if InterfaceOptions_AddCategory then
         InterfaceOptions_AddCategory(panel)
+        panel.registeredLegacy = true
         if InterfaceAddOnsList_Update then
             InterfaceAddOnsList_Update()
+        end
+    end
+    local D = AltArmy.Debug
+    for _, id in ipairs(PAGE_ORDER) do
+        if id ~= "debug" or (D and D.IsEnabled and D.IsEnabled()) then
+            panel.RegisterOptionsSubpage(id)
         end
     end
 end
@@ -2638,7 +2623,8 @@ end
 
 AltArmy.OptionsPanel = panel
 
---- @param initialTab string|nil "general" (default), "characters", "cooldowns", or "debug"
+--- Opens Options -> AddOns -> AltArmy at a sub-page.
+--- @param initialTab string|nil "general" (default), "characters", "gearUpgrades", "cooldowns", or "debug"
 --- @param opts table|nil { name, realm, flash = "main"|"bankAlt"|"guildShare"|"autoDelete"|"autoScan"|"scanMode" }
 --- A flashed General tab control's section is opened first (Guild: main, guildShare, autoDelete;
 --- Auction House: autoScan, scanMode).
@@ -2654,12 +2640,16 @@ function AltArmy.OpenInterfaceOptions(initialTab, opts)
         realm = opts.realm,
         flash = opts.flash,
     }
-    if Settings and Settings.OpenToCategory and panel.altArmySettingsCategory then
-        Settings.OpenToCategory(panel.altArmySettingsCategory:GetID())
+    local entry = panel.pages[tab] or panel.pages.general
+    local category = entry.category or panel.altArmySettingsCategory
+    if Settings and Settings.OpenToCategory and category then
+        Settings.OpenToCategory(category:GetID())
     elseif InterfaceOptionsFrame_OpenToCategory then
-        InterfaceOptionsFrame_OpenToCategory(panel)
+        -- Twice: the legacy frame opens to the wrong page the first time when its list must scroll.
+        InterfaceOptionsFrame_OpenToCategory(entry.page)
+        InterfaceOptionsFrame_OpenToCategory(entry.page)
     end
-    if panel:IsShown() and optionsHostIsOpen() then
+    if focusPageIsShown(focus) then
         applyOptionsFocus(focus)
     else
         scheduleApplyOptionsFocus(focus)

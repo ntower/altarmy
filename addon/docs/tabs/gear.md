@@ -64,7 +64,7 @@ still on the drop prompt returns to Grid; a focused item stays in Upgrade Check.
 - Chat alerts (clickable) for loot, Need/Greed rolls, quest rewards, and level-up upgrades for the current character and/or alts.
 - Loot / roll alerts announce a given item at most once per 60 seconds (e.g. crafting a stack of the same item alerts once). The window is in-memory only and resets on reload/logout.
 - Quest reward overlays on turn-in and quest log (upgrade vs vendor).
-- Toggles live under Interface Options → AltArmy → **Gear**.
+- Toggles live under Options → AddOns → AltArmy → **Gear**.
 
 ## Data source
 

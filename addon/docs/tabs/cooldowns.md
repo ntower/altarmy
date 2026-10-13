@@ -20,9 +20,11 @@ Columns: recipe/category, character, mats availability, time remaining. Sortable
 
 Alchemy transmutes and enchanting spheres share one cooldown per group, so the list shows **one row per character** for each group. By default (**Auto**) that row uses the recipe they last crafted if they still know it, otherwise Primal Might then Arcanite (transmutes) or Void Sphere then Prismatic Sphere.
 
-Click the Recipe cell on a grouped row to pick **Auto** or a specific recipe that character knows (listed A–Z after Auto). The cell becomes a search field with Cancel (same pattern as adding a character to a guild group). Matching text in the dropdown is highlighted in green. A manual pick is saved per character and wins over last-cast until you choose Auto again. Single-recipe rows (Spellcloth, Shadowcloth, Primal Mooncloth, Brilliant Glass, Research) are not pickable.
+Click the Recipe cell on a grouped row to pick **Auto** or a specific recipe that character knows (listed A–Z after Auto). The cell becomes a search field with Cancel (same pattern as adding a character to a guild group). Matching text in the dropdown is highlighted in green. A manual pick is saved per character and wins over last-cast until you choose Auto again. Single-recipe rows (Spellcloth, Shadowcloth, Primal Mooncloth, Brilliant Glass, Research, Dedicated Study) are not pickable.
 
 **Research (WoW Forever):** the mage-only Comprehension profession's 1-hour cooldown (the "Research" spellbook entry, crafted as **Study**). A character gets a Research row once their Comprehension recipes have been scanned. The timer updates when you open Comprehension or cast Study. Mats, the tooltip and stockpile send use Study's reagent (1× Light Feather). That list is built into the addon, because Forever's recipe scan doesn't capture reagents.
+
+**Dedicated Study (WoW Forever):** the Legacy talent's 23-hour cooldown (spell 1225469: +1 skill in your lowest tradeskill). A character gets a row once their Legacy talents have been scanned with it learned (`char.legacyTalents.spells`). The timer is read at login and after each cast. It needs no materials, so its row shows a gray em dash in the Mats cell, a tooltip without reagents, and no Send checkbox.
 
 When no character has a tracked crafting cooldown, the table is replaced by a short centered description of the view.
 

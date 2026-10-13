@@ -1223,6 +1223,10 @@ ShowRecipeTooltip = function(owner, spellId, charTable, anchor)
         local title = DS.CompatGetSpellInfo(spellId)
         GameTooltip:AddLine(title or ("Spell " .. tostring(spellId)), 1, 1, 1)
     end
+    if CD.SpellNeedsNoReagents and CD.SpellNeedsNoReagents(spellId) then
+        GameTooltip:Show()
+        return
+    end
     GameTooltip:AddLine(" ", 1, 1, 1)
     local qty = nil
     if charTable and CD.GetMaxCraftableQuantity then
@@ -2809,7 +2813,8 @@ local function FillCooldownListRow(row, rd, now, compose, curName, curRealm, opt
     row.sendKey = key
     local isSelf = (rd.charKeyName == curName) and (rd.realm == curRealm)
     local sameRealm = (rd.realm == curRealm)
-    row.sendEligible = (not isSelf) and sameRealm
+    -- Cooldowns that need no materials (Dedicated Study) have nothing to send.
+    row.sendEligible = (not isSelf) and sameRealm and not rd.noReagents
     local fadingSend = (sendBar.headerOffset or 0) > 0.5 or (colWidths.Send or 0) > 0.5
     if compose or fadingSend then
         local checked
@@ -2843,7 +2848,12 @@ local function FillCooldownListRow(row, rd, now, compose, curName, curRealm, opt
 
     -- Default mats display; RecomputeSendAllocation may replace with preview.
     local craftQty = rd._sortCraftQty
-    if craftQty == nil then
+    if rd.noReagents then
+        row.matIcon:Hide()
+        row.matCountLabel:SetText("—") -- em dash: no materials needed
+        row.matCountLabel:SetTextColor(0.5, 0.5, 0.5, 1)
+        row.matCountLabel:Show()
+    elseif craftQty == nil then
         row.matCountLabel:Hide()
         row.matIcon:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-Waiting")
         row.matIcon:Show()
@@ -3068,7 +3078,12 @@ RecomputeSendAllocation = function()
         end
         local rd = row.rowData
         local craftQty = rd and rd._sortCraftQty
-        if craftQty == nil then
+        if rd and rd.noReagents then
+            row.matIcon:Hide()
+            row.matCountLabel:SetText("—") -- em dash: no materials needed
+            row.matCountLabel:SetTextColor(0.5, 0.5, 0.5, 1)
+            row.matCountLabel:Show()
+        elseif craftQty == nil then
             row.matCountLabel:Hide()
             row.matIcon:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-Waiting")
             row.matIcon:Show()

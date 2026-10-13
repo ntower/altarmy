@@ -225,6 +225,15 @@ if CreateFrame then
         if DS.ScanLegacyTalents then
             DS:ScanLegacyTalents()
         end
+        -- Dedicated Study's cooldown (Cooldowns tab): read it at login too, not only after a cast.
+        local CD = AltArmy.CooldownData
+        local cat = CD and CD.CATEGORIES and CD.CATEGORIES.dedicated_study
+        local char = GetCurrentCharTable and GetCurrentCharTable() or nil
+        if cat and DS.TryScanTrackedCooldownFromSpellApi
+            and CD.CharacterHasLegacyTalentSpell(char, cat.spellId)
+        then
+            DS:TryScanTrackedCooldownFromSpellApi(cat.spellId)
+        end
         -- A Well Rested rank changes the Summary's Rest XP; RefreshSummary does nothing while hidden.
         if AltArmy.RefreshSummary then
             AltArmy.RefreshSummary()

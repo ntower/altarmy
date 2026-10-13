@@ -1,4 +1,4 @@
--- AltArmy TBC — Cooldown options (Interface > AddOns > AltArmy > Cooldowns tab).
+-- AltArmy TBC — Cooldown options (Options > AddOns > AltArmy > Cooldowns page).
 -- Loaded after UI/Options.lua (see .toc); parents to AltArmy.OptionsPanel.tabCooldownsHost.
 
 if not AltArmy then return end
@@ -20,9 +20,9 @@ local SCROLL_GUTTER = Theme.VerticalScrollBarGutter()
 local cooldownViewport = Theme.CreateVerticalScrollViewport({
     name = "AltArmyTBC_CooldownOptionsScroll",
     parent = host,
-    gutterEdge = panel,
+    gutterEdge = host:GetParent(), -- the Cooldowns page
     anchorTop = { "TOPLEFT", host, "TOPLEFT", LEFT_INSET, -4 },
-    anchorBottom = { "BOTTOMRIGHT", panel, "BOTTOMRIGHT", -SCROLL_GUTTER, 4 },
+    anchorBottom = { "BOTTOMRIGHT", host:GetParent(), "BOTTOMRIGHT", -SCROLL_GUTTER, 4 },
     wheelStep = 40,
     valueStep = 20,
     wheelOnChild = false,
@@ -135,7 +135,7 @@ for _, key in ipairs(CD.GetOptionsCategoryOrder(isForever)) do
     local section = Theme.CreateCollapsibleSection(scrollChild, {
         text = title,
         contentHeight = SECTION_CONTENT_HEIGHT,
-        defaultExpanded = true,
+        defaultExpanded = false,
         onToggle = onSectionToggled,
     })
     sections[#sections + 1] = section

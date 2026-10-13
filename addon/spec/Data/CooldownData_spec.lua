@@ -1040,8 +1040,8 @@ describe("CooldownData", function()
             assert.are.same(CD.CATEGORY_ORDER, CD.GetOptionsCategoryOrder(false))
         end)
 
-        it("returns transmute and research on WoW Forever", function()
-            assert.are.same({ "transmute", "research" }, CD.GetOptionsCategoryOrder(true))
+        it("returns Dedicated Study, transmute and research on WoW Forever", function()
+            assert.are.same({ "dedicated_study", "transmute", "research" }, CD.GetOptionsCategoryOrder(true))
         end)
     end)
 
@@ -1116,6 +1116,54 @@ describe("CooldownData", function()
             local alerts = CD.EvaluateAlerts(ds, AltArmyTBC_Options.cooldowns, 1000 + 3600, state)
             assert.are.equal(1, #alerts)
             assert.are.equal("research", alerts[1].categoryKey)
+        end)
+    end)
+
+    describe("Dedicated Study (Legacy talent, WoW Forever)", function()
+        local DEDICATED_STUDY = 1225469
+
+        local function student(expiresAtUnix)
+            return {
+                name = "Bookish",
+                classFile = "PRIEST",
+                legacyTalents = { nodes = {}, spells = { [DEDICATED_STUDY] = 1 }, totalRanksSpent = 1 },
+                ProfCooldownExpiry = expiresAtUnix and { [DEDICATED_STUDY] = { expiresAtUnix = expiresAtUnix } } or {},
+            }
+        end
+
+        it("is a tracked category that needs no reagents", function()
+            assert.is_true(CD.IsTrackedSpellId(DEDICATED_STUDY))
+            assert.are.equal("Dedicated Study", CD.CATEGORIES.dedicated_study.title)
+            assert.is_true(CD.SpellNeedsNoReagents(DEDICATED_STUDY))
+            assert.is_false(CD.SpellNeedsNoReagents(1302508))
+            assert.is_nil(CD.GetReagentList(DEDICATED_STUDY))
+        end)
+
+        it("BuildRows adds a row only for characters with the Legacy talent", function()
+            local ds = mockDS({ TestRealm = {
+                Bookish = student(1000 + 23 * 3600),
+                Other = { name = "Other", legacyTalents = { spells = { [1225459] = 2 } } },
+                Unscanned = { name = "Unscanned" },
+            } })
+            local rows = CD.BuildRows(ds, AltArmyTBC_Options.cooldowns, 1000)
+            local found = {}
+            for _, r in ipairs(rows) do
+                if r.categoryKey == "dedicated_study" then found[#found + 1] = r end
+            end
+            assert.are.equal(1, #found)
+            assert.are.equal("Bookish", found[1].name)
+            assert.are.equal(DEDICATED_STUDY, found[1].spellId)
+            assert.are.equal("23h 0m", found[1].timeText)
+            assert.is_true(found[1].noReagents)
+        end)
+
+        it("EvaluateAlerts fires when the 23-hour cooldown is ready", function()
+            local ds = mockDS({ TestRealm = { Bookish = student(1000 + 23 * 3600) } })
+            local state = {}
+            assert.are.equal(0, #CD.EvaluateAlerts(ds, AltArmyTBC_Options.cooldowns, 1000, state))
+            local alerts = CD.EvaluateAlerts(ds, AltArmyTBC_Options.cooldowns, 1000 + 23 * 3600, state)
+            assert.are.equal(1, #alerts)
+            assert.are.equal("dedicated_study", alerts[1].categoryKey)
         end)
     end)
 end)

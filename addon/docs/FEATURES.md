@@ -10,7 +10,7 @@ AltArmy TBC is an account-wide alt management addon for TBC Classic that:
 - Presents cross-character information in tabbed dashboards.
 - Supports item and recipe search across characters, with recipe skill, difficulty and source filters from built-in recipe data (optional guildmate recipes).
 - Shows what each Waylaid Crate costs per point of Merchant's Favor, filled from the auction house or crafted by your characters, what each Craftsman's Writ's order costs to buy or to craft with your characters, and explains alt-army.com's crafting planner (WoW Forever).
-- Tracks profession cooldown readiness (including WoW Forever's Comprehension "Research"), stockpile mailing, and raid/heroic lockouts.
+- Tracks profession cooldown readiness (including WoW Forever's Comprehension "Research" and the Legacy talent Dedicated Study), stockpile mailing, and raid/heroic lockouts.
 - Graphs leveling progress over calendar and played time.
 - Optionally shares character cards and recipes with guildmates.
 - Provides configurable filters, sorting, pin/hide, bank-alt flags, and alerts.
@@ -28,7 +28,7 @@ AltArmy TBC is an account-wide alt management addon for TBC Classic that:
 - Open with `/altarmy` or `/alta`.
 - Minimap button (left-click toggle, drag to move).
 - The toolbar item/recipe search box is on the Summary tab. Typing in it switches into Search mode. Reputation and Guild use the same toolbar spot for their own filter; Inventory puts its character picker and layout dropdown there. Gear, Economy, Cooldowns and Graphs have no toolbar search. Clicking any side tab leaves Search mode.
-- One toolbar settings button opens the active tab's settings (Summary, Gear, Reputation, Search panels; Cooldowns opens Interface Options).
+- One toolbar settings button opens the active tab's settings (Summary, Gear, Reputation, Search panels; Cooldowns opens its Options page).
 - `/altarmy networth [all] [scale]` — vendor + Auctionator AH value across characters (Auctionator required).
 
 ## Tabs
@@ -44,7 +44,7 @@ AltArmy TBC is an account-wide alt management addon for TBC Classic that:
 | [Search](tabs/search.md) | Items and recipes (toolbar Search mode) |
 | [Graphs](tabs/graphs.md) | Level progress charts and history imports |
 | [Guild](tabs/guild.md) | Opt-in guild data sharing (conditional tab) |
-| [Options](tabs/options.md) | Interface Options + slash commands |
+| [Options](tabs/options.md) | Options pages (AddOns → AltArmy) + slash commands |
 
 ## Cross-cutting
 

@@ -1,20 +1,22 @@
 # Options and slash commands
 
-Interface Options panel (AddOns → AltArmy) and user-facing slash commands.
+The game's Options → AddOns entry and user-facing slash commands.
 
-## Options tabs
+## Options pages
 
-| Tab | Contents |
+**AltArmy** in the AddOns list expands into its pages (`UI/Options.lua`): General, Characters, Gear, Cooldowns and, while debug options are on, Debug. They are sub-pages of the AltArmy entry, as Auctionator's, Consumable Connoisseur's and RareScanner's are: `Settings.RegisterCanvasLayoutSubcategory` under the `Settings.RegisterCanvasLayoutCategory` entry, or `parent = "AltArmy"` with `InterfaceOptions_AddCategory` on clients without the Settings API. The AltArmy entry itself shows the version and points at its pages.
+
+| Page | Contents |
 |-----|----------|
 | **General** | Collapsible sections, drawn like the Keybindings page's (all but Advanced start open): **General** (minimap show/hide; global realm filter, current / all realms), **Guild** (guild data sharing: main, display name, data retention, chat; shown while guild sharing is available), **Auction House** (side by side, half the width each: the **Scan AH automatically** checkbox (scan when the auction house opens) and the scan mode dropdown (`AltArmyTBC_Options.auctionScanMode`): **Prefer full scans** (the default: a full scan when the game allows one, a summary scan otherwise), **Only full scans** (no scan during the 15-minute cooldown: the scan buttons are disabled and the automatic scan does nothing) or **Only summary scans**; a saved "Prefer full scans" checkbox turned off reads as Only summary scans. Its help icon explains that a full scan knows how many units sit at each price but is slower and allowed once every 15 minutes, while a summary scan is fast but less accurate. The Economy tab's summary-scan info tooltip opens the Options here with the dropdown flashed (`flash = "scanMode"`); WoW Forever only) and **Advanced**, last and closed at first (**Read recipes from profession links**, on by default: reads the character's missing or out-of-date recipes (and online guildmates') through profession links in the background, at login and after learning one, so no profession window has to be opened; its help icon says so, and that it only needs turning off if flashes or sounds of the UI opening annoy the player, or it causes bad interactions with other addons; with it off, the Summary warning names each profession window to open, even for alts; WoW Forever only). Scrolls when the open sections outgrow the panel |
 | **Characters** | Per-character bank-alt flags; delete character data (self-delete protected + confirmation) |
 | **Gear** | Gear upgrade notification toggles (current character / alts; loot, quest rewards, etc.) |
-| **Cooldowns** | One collapsible section per category (all start open), drawn like the General tab's: UI visibility, alerts, reminder intervals; specialization-related options. On WoW Forever, shows a "work in progress" banner and only the Transmute and Research (Comprehension) categories (the others are TBC-specific crafts), and hides the "Only if Master of Transmutation" toggles; a saved value for them is ignored there |
-| **Debug** | Hidden until `/altarmy debug on`; search timing, cooldown scan logging, item stats, guild share verbose, **Clear auction data** (deletes stored auction house scans; keeps the scan cooldown), **Window resize** (the main window's resize grip, not ready for every tab yet), etc. |
+| **Cooldowns** | One collapsible section per category (all start closed), drawn like the General page's: UI visibility, alerts, reminder intervals; specialization-related options. On WoW Forever, shows a "work in progress" banner and only the Dedicated Study (Legacy talent, first), Transmute and Research (Comprehension) categories (the others are TBC-specific crafts), and hides the "Only if Master of Transmutation" toggles; a saved value for them is ignored there |
+| **Debug** | Listed after `/altarmy debug on` (a page can't be taken out of the list, so after `debug off` it stays until reload and says debug options are off); search timing, cooldown scan logging, item stats, guild share verbose, **Clear auction data** (deletes stored auction house scans; keeps the scan cooldown), **Window resize** (the main window's resize grip, not ready for every tab yet), etc. |
 
 Shared theme with the main UI ([UI_DESIGN.md](../UI_DESIGN.md)).
 
-Options opened on a particular control (for example from the Alt Army scan button's settings icon, or from the guild-sharing prompts) switch to its tab, open only the section it is in (the others close), scroll it into view and flash it.
+Options opened on a particular control (for example from the Alt Army scan button's settings icon, or from the guild-sharing prompts) open its page, open only the section it is in (the others close), scroll it into view and flash it.
 
 ## Minimap
 
@@ -31,7 +33,7 @@ Options opened on a particular control (for example from the Alt Army scan butto
 | `/altarmy networth [all] [scale]` | Net worth (vendor + Auctionator); `all` = all realms; scale 0–1 (default 0.9) |
 | `/altarmy export` | Export for the Alt Army website (see below; there is no button for it) |
 | `/altarmy scan` | Scan the open auction house (same as the **Alt Army scan** button): the kind the scan mode allows now (Options → General → Auction House) |
-| `/altarmy debug on` / `off` | Show/hide Debug options tab and enable/suppress debug logging |
+| `/altarmy debug on` / `off` | Add the Debug options page / turn it off and enable/suppress debug logging |
 | `/altarmy debug resize on` / `off` | Show/hide the main window's resize grip (the Debug options' **Window resize**); while on, `/altarmy resetsize` restores the stock size |
 
 Additional `debug …` subcommands exist for developers (mail alerts, compare dump, guild share inject, etc.); they are not part of the product feature surface.

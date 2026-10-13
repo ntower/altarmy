@@ -1,4 +1,4 @@
--- AltArmy TBC — Gear upgrade options (Interface > AddOns > AltArmy > Gear Upgrades tab).
+-- AltArmy TBC — Gear upgrade options (Options > AddOns > AltArmy > Gear page).
 -- Loaded after UI/Options.lua.
 
 if not AltArmy then return end
@@ -53,9 +53,9 @@ function AltArmy.BuildGearUpgradeOptionsUI(panel)
     local viewport = Theme.CreateVerticalScrollViewport({
         name = "AltArmyTBC_GearUpgradeOptionsScroll",
         parent = host,
-        gutterEdge = panel,
+        gutterEdge = host:GetParent(), -- the Gear page
         anchorTop = { "TOPLEFT", host, "TOPLEFT", LEFT_INSET, -4 },
-        anchorBottom = { "BOTTOMRIGHT", panel, "BOTTOMRIGHT", -SCROLL_GUTTER, 4 },
+        anchorBottom = { "BOTTOMRIGHT", host:GetParent(), "BOTTOMRIGHT", -SCROLL_GUTTER, 4 },
         wheelStep = 40,
         valueStep = 20,
         wheelOnChild = false,

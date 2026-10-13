@@ -12,6 +12,8 @@ local CD = AltArmy.CooldownData
 ---@field mode "group"|"single" group = one row if any spell in spellIds matches; single = per spell row.
 ---@field spellIds number[]|nil For single-mode or group membership.
 ---@field spellId number|nil Primary spell for single mode (same as spellIds[1]).
+---@field legacyTalent boolean|nil Known via a Legacy talent (char.legacyTalents.spells), not a profession recipe.
+---@field noReagents boolean|nil Needs no materials: no mats count, tooltip reagents or stockpile send.
 
 --- Longest plausible tracked profession cooldown in TBC (~Shadowcloth 3d 20h).
 --- Saved values above this are shown as unscanned in the UI (see IsExpiryPlausible).
@@ -25,10 +27,11 @@ CD.CATEGORY_ORDER = {
     "brilliant_glass",
     "void_sphere",
     "research",
+    "dedicated_study",
 }
 
 --- Categories WoW Forever's Options → Cooldowns tab shows (the rest are TBC-specific crafts).
-CD.FOREVER_OPTIONS_CATEGORY_ORDER = { "transmute", "research" }
+CD.FOREVER_OPTIONS_CATEGORY_ORDER = { "dedicated_study", "transmute", "research" }
 
 --- Category keys the Options → Cooldowns tab builds rows for.
 ---@param isForever boolean
@@ -148,6 +151,16 @@ CD.CATEGORIES = {
         spellId = 1302508, -- Study
         spellIds = { 1302508 },
     },
+    -- WoW Forever: Legacy talent (Profession tree); 23h. +1 skill in the lowest tradeskill, no reagents.
+    dedicated_study = {
+        key = "dedicated_study",
+        title = "Dedicated Study",
+        mode = "single",
+        spellId = 1225469,
+        spellIds = { 1225469 },
+        legacyTalent = true,
+        noReagents = true,
+    },
 }
 
 -- Reagent lists for mats + tooltips come from AltArmyTBC_Data.RecipeReagents, filled when you
@@ -257,6 +270,25 @@ end
 
 function CD.IsTrackedSpellId(spellId)
     return spellId and TRACKED_SET[spellId] == true
+end
+
+--- True when the character's captured Legacy talents include spellId (see DataStoreLegacy).
+function CD.CharacterHasLegacyTalentSpell(char, spellId)
+    local legacy = char and char.legacyTalents
+    local spells = type(legacy) == "table" and legacy.spells
+    return type(spells) == "table" and (tonumber(spells[spellId]) or 0) > 0
+end
+
+--- True for spells whose category needs no materials (no mats, reagent tooltip or stockpile send).
+function CD.SpellNeedsNoReagents(spellId)
+    if not spellId then return false end
+    for _, key in ipairs(CD.CATEGORY_ORDER) do
+        local cat = CD.CATEGORIES[key]
+        if cat and cat.noReagents and cat.spellId == spellId then
+            return true
+        end
+    end
+    return false
 end
 
 --- @param char table
@@ -1055,6 +1087,8 @@ function CD.BuildRows(DS, options, now)
                             include = CD.ResolveTransmuteSpellForCharacter(char) ~= nil
                         elseif catKey == "void_sphere" then
                             include = CD.ResolveSphereSpellForCharacter(char) ~= nil
+                        elseif cat.legacyTalent then
+                            include = CD.CharacterHasLegacyTalentSpell(char, cat.spellId)
                         elseif cat.mode == "single" and cat.spellId then
                             include = select(1, CD.FindRecipeProfession(char, cat.spellId))
                         end
@@ -1089,6 +1123,7 @@ function CD.BuildRows(DS, options, now)
                                 spellId = spellId,
                                 expiresUnix = expires,
                                 timeText = CD.FormatTimeRemaining(expires, now),
+                                noReagents = cat.noReagents == true,
                             }
                         end
                 end)
