@@ -1,12 +1,12 @@
 {
   "forever": {
-    "build": "1.60.1.70338",
+    "build": "1.60.1.70374",
     "emulator": "vmangos",
     "release": "db-sqlite-4641790"
   },
   "tbc": {
     "build": "2.5.6.70006",
     "emulator": "cmangos",
-    "release": "2026-10-13"
+    "release": "2026-10-14"
   }
 }
