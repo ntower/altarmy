@@ -411,6 +411,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/vendorcheck": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Vendor Check
+         * @description What the selected realm's auction house lists now, with each item's cheapest listing and what a vendor
+         *     pays for it (the /profit/vendorcheck page), filtered, sorted and paged (`VENDOR_CHECK_PAGE` an answer;
+         *     a page past the last gives the last); nothing without a selection or prices.
+         */
+        get: operations["get_vendor_check_api_vendorcheck_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/vendorcheck/items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Vendor Check Item
+         * @description One item as the selected realm's auction house has it, every price level included: what a vendor check
+         *     row shows when opened. 404 for an item the game version hasn't.
+         */
+        get: operations["get_vendor_check_item_api_vendorcheck_items__item_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/versions": {
         parameters: {
             query?: never;
@@ -726,6 +769,8 @@ export interface components {
             look_ahead: number;
             /** Master Chef */
             master_chef?: number | null;
+            /** Min Chance */
+            min_chance?: number | null;
             /** Price Version */
             price_version?: number | null;
             /** Recipe Id */
@@ -753,7 +798,9 @@ export interface components {
              * @default recommended
              * @enum {string}
              */
-            strategy: "recommended" | "cheapest" | "no_patterns";
+            strategy: "recommended" | "cheapest" | "no_patterns" | "custom";
+            /** Time Value */
+            time_value?: number | null;
             /**
              * Unlearned
              * @default none
@@ -1122,7 +1169,8 @@ export interface components {
          * MilestoneOut
          * @description What a climb is expected to come to by the time it reaches `skill`: its crafts (spent less what
          *     selling what they make brings back, so negative when they earn) and its patterns, `unknown` of which have
-         *     no known price (not counted), and the crafts it is expected to take to get there.
+         *     no known price (not counted), and the crafts it is expected to take to get there. Not `reachable`: the
+         *     climb ends short of it (the rest is 0).
          */
         MilestoneOut: {
             /** Cost */
@@ -1132,6 +1180,11 @@ export interface components {
              * @default 0
              */
             crafts: number;
+            /**
+             * Reachable
+             * @default true
+             */
+            reachable: boolean;
             /** Skill */
             skill: number;
             /**
@@ -1707,7 +1760,7 @@ export interface components {
              * Key
              * @enum {string}
              */
-            key: "recommended" | "cheapest" | "no_patterns";
+            key: "recommended" | "cheapest" | "no_patterns" | "custom";
             run: components["schemas"]["RankResult"];
         };
         /**
@@ -1884,6 +1937,56 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /**
+         * VendorCheck
+         * @description The vendor check: one page of what the selected realm's auction house lists, with vendor prices.
+         */
+        VendorCheck: {
+            /** Classes */
+            classes: number[];
+            /** Faction */
+            faction: string;
+            /** Items */
+            items: components["schemas"]["VendorCheckItem"][];
+            /** Listed */
+            listed: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Qualities */
+            qualities: number[];
+            /** Realm */
+            realm: string;
+            /** Total */
+            total: number;
+        };
+        /**
+         * VendorCheckItem
+         * @description An item the selected auction house lists now, beside what a vendor pays for it.
+         */
+        VendorCheckItem: {
+            /** Ah Price */
+            ah_price: number;
+            /** Ah Quantity */
+            ah_quantity: number | null;
+            /** Class Id */
+            class_id: number;
+            /** Icon */
+            icon: string | null;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Quality */
+            quality: number;
+            /** Seen At */
+            seen_at: string | null;
+            /** Sell Price */
+            sell_price: number;
+            /** Subclass Name */
+            subclass_name: string | null;
         };
         /**
          * VendorDiscountOut
@@ -2488,8 +2591,12 @@ export interface operations {
                 gathered?: number[] | null;
                 /** @description with skill_crafters: rank each recipe as a run, the crafts until another recipe would give the one skilled up a cheaper skill point, not as the user's batch */
                 runs?: boolean;
-                /** @description with runs: how a climb is planned (`STRATEGIES`): as recommended, cheapest (copper alone, whatever the crafts), or no patterns (only recipes trainers teach) */
-                strategy?: "recommended" | "cheapest" | "no_patterns";
+                /** @description with runs: how a climb is planned (`STRATEGIES`): as recommended, cheapest (copper alone, whatever the crafts), no patterns (only recipes trainers teach), or custom (the sources, time_value and min_chance given) */
+                strategy?: "recommended" | "cheapest" | "no_patterns" | "custom";
+                /** @description with strategy=custom: what a minute of the climber's time is worth, in copper (default: the recommended strategy's): a craft is worth the time it takes */
+                time_value?: number | null;
+                /** @description with strategy=custom: the least chance of a skill point a run crafts at, unless nothing gives one that often (default: the recommended strategy's) */
+                min_chance?: number | null;
                 /** @description with one character skilled up: plan as if they had Working Overtime at this rank */
                 working_overtime?: number | null;
                 /** @description with one character skilled up: plan as if they had Bartering at this rank */
@@ -2499,7 +2606,7 @@ export interface operations {
                 top?: number;
                 /** @description the auction house's price version the front end knows of */
                 price_version?: number | null;
-                /** @description with sort=skill and runs: the runs the chain may hold */
+                /** @description with sort=skill and runs: the runs the chain may hold (all of it when it has fewer) */
                 chain_length?: number;
                 /** @description rank for a character nobody uploaded instead of the selection's: the one name in skill_crafters, with the one profession in professions at this skill, knowing what comes with it and what its trainers teach up to there */
                 climber_skill?: number | null;
@@ -2747,6 +2854,81 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UploadResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_vendor_check_api_vendorcheck_get: {
+        parameters: {
+            query: {
+                /** @description item classes left out */
+                hide_classes?: number[] | null;
+                /** @description qualities left out */
+                hide_qualities?: number[] | null;
+                /** @description the column: item name, type (class name), cheapest listing, what a vendor pays, the difference, or it as a percentage of the listing (no vendor buying it last either way) */
+                sort?: "item" | "type" | "ah_price" | "vendor" | "difference" | "percent";
+                order?: "desc" | "asc";
+                /** @description 1 for the first */
+                page?: number;
+                /** @description which game's data: tbc or forever */
+                game_version: "tbc" | "forever";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VendorCheck"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_vendor_check_item_api_vendorcheck_items__item_id__get: {
+        parameters: {
+            query: {
+                /** @description which game's data: tbc or forever */
+                game_version: "tbc" | "forever";
+            };
+            header?: never;
+            path: {
+                item_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemInfo"];
                 };
             };
             /** @description Validation Error */

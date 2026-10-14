@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { professionRanks, robeResult } from '../test/results'
-import { an, chanceAt, chanceBands, rangeText, tailText, craftsToReach, craftUntil, perPoint, ranksToTrain, runLead, runText, scaleRun, stepsText } from './skill'
+import type { Source } from '../api/queries'
+import { an, STRATEGY_LABELS, chanceAt, chanceBands, TIME_VALUE, customDetail, MIN_CHANCE, rangeText, sameSettings, strategySettings, tailText, craftsToReach, craftUntil, perPoint, ranksToTrain, runLead, runText, scaleRun, stepsText } from './skill'
 
 describe('craftsToReach', () => {
   const run = { crafts: 3, crafts_p80: 5, reach_chances: [0, 0.2, 0.5, 0.79, 0.8, 0.9, 0.95] }
@@ -223,5 +224,39 @@ describe('chanceBands', () => {
 
   it('draws nothing for a recipe without thresholds', () => {
     expect(chanceBands({ learn_skill: 0, trivial_low: 0, trivial_high: 0 }, 10)).toBeNull()
+  })
+})
+
+describe('strategy settings', () => {
+  it("gives each built-in strategy's settings, with the search's sources where it uses them", () => {
+    expect(strategySettings('recommended', ['trainer', 'recipe'])).toEqual({ sources: ['trainer', 'recipe'], timeValue: TIME_VALUE, minChance: MIN_CHANCE })
+    expect(strategySettings('cheapest', ['trainer'])).toEqual({ sources: ['trainer'], timeValue: 0, minChance: 0 })
+    expect(strategySettings('no_patterns', ['trainer', 'recipe', 'bop']).sources).toEqual(['trainer'])
+  })
+
+  it('compares settings whatever the order of their sources', () => {
+    const a = { sources: ['recipe', 'trainer'] as Source[], timeValue: 50, minChance: 0.1 }
+    expect(sameSettings(a, { ...a, sources: ['trainer', 'recipe'] })).toBe(true)
+    expect(sameSettings(a, { ...a, timeValue: 51 })).toBe(false)
+    expect(sameSettings(a, { ...a, sources: ['trainer'] })).toBe(false)
+  })
+
+  it('says what a strategy plans for', () => {
+    expect(STRATEGY_LABELS.recommended.detail).toEqual([
+      'Uses recipes from the trainer and patterns you can buy',
+      'Values your time at 5s 0c per minute',
+      'Avoid crafts with <10% chance of a skill point',
+    ])
+    expect(STRATEGY_LABELS.no_patterns.detail[0]).toBe('Uses recipes from the trainer')
+    expect(customDetail({ sources: ['bop', 'trainer'], timeValue: 0, minChance: 0 })).toEqual([
+      'Uses recipes from the trainer and bind on pickup patterns',
+      'Time taken does not matter, only gold',
+      'No cutoff for recipes with a low chance of a skill point',
+    ])
+    expect(customDetail({ sources: ['trainer', 'recipe', 'bop'], timeValue: 150, minChance: 0.2 })).toEqual([
+      'Uses recipes from all sources',
+      'Values your time at 1s 50c per minute',
+      'Avoid crafts with <20% chance of a skill point',
+    ])
   })
 })

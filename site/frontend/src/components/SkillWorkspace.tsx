@@ -1,12 +1,13 @@
-import { type CSSProperties, Fragment, type ReactNode, type Ref, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, Fragment, type ReactNode, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Accordion, Alert, Badge, Box, Button, Checkbox, Divider, Group, List, Loader, NumberInput, Paper, SimpleGrid, Slider, Stack, Text, Title, Tooltip, UnstyledButton } from '@mantine/core'
 import { LayoutGroup, animate, motion } from 'motion/react'
 import { useDebouncedValue } from '@mantine/hooks'
 import { z } from 'zod'
-import type { ItemMap, Learn, ProfessionRank, RankResult } from '../api/client'
+import type { ItemMap, Learn, RankResult } from '../api/client'
 import {
   type EvaluateParams,
   type RankParams,
+  type Source,
   type Strategy,
   useDataVersion,
   useProfessionRanks,
@@ -15,6 +16,7 @@ import {
   useSessionPlan,
   useStatus,
   useTrack,
+  WHOLE_CHAIN,
 } from '../api/queries'
 import { choose as chooseAt, type Choices, type PlanEditing } from '../lib/choices'
 import { MarketFocus, useMarket } from '../lib/marketFocus'
@@ -24,9 +26,12 @@ import type { Holder } from '../lib/setup'
 import {
   an,
   craftsToReach,
-  DEFAULT_REACH_TARGET,
+  REACH_TARGET,
+  customDetail,
+  MAX_TIME_VALUE,
+  mustLearn,
   rangeText,
-  ranksToTrain, runLead, runText, scaleRun, stepsText, STRATEGY_LABELS, tailText } from '../lib/skill'
+  ranksToTrain, runText, sameSettings, strategySettings, type StrategySettings, scaleRun, stepsText, STRATEGY_LABELS, tailText } from '../lib/skill'
 import {
   BARTERING,
   BARTERING_PERCENT,
@@ -41,6 +46,7 @@ import {
 import { CharacterClasses } from '../lib/characterClasses'
 import { IconChevron, IconSwap } from './icons'
 import { ItemLink } from './ItemTooltip'
+import { LadderTable, type Training } from './LadderTable'
 import { LearnStep, LearnTooltip } from './LearnTooltip'
 import { SkillChanceChart } from './SkillChanceChart'
 import { MarketSection, MarketSummary } from './MarketSection'
@@ -50,10 +56,6 @@ import { PlanViewSwitch, type PlanView } from './SessionDetails'
 import { StepList } from './StepList'
 import classes from './SkillWorkspace.module.css'
 
-/** The runs the chain holds at first (the API's `SKILL_CHAIN`). */
-const CHAIN = 2
-/** How many more runs each Show more asks for. */
-const CHAIN_MORE = 3
 const NO_RUNS: RankResult[] = []
 /** How a chosen option opens out into its run (as the Profit page's cards do). */
 const LAYOUT = { duration: 0.3, ease: [0.25, 0.8, 0.25, 1] as const }
@@ -169,57 +171,77 @@ function TalentSliders({
   )
 }
 
-/** Over a strategy's card: its name, with a button opening what it plans for, then what the climb its run starts
- * is expected to come to by each profession rank's cap it reaches (those reached already left out): spent in red,
- * earned in green, and the crafts it takes, patterns without a price named apart. It moves with its strategy's
- * card between the single column and the strategies side by side (by position: text isn't stretched); `fade`: it
- * fades in as the other strategies open out. */
+/** A strategy's summary: its name, with a button opening what it plans for, then what the climb its run starts is
+ * expected to come to by each profession rank's cap above the climber's (spent in red, earned in green, and the
+ * crafts it takes, patterns without a price named apart; a cap it never reaches said to be unreachable). Over the
+ * strategy's table, or a card (its name a plain title, what it plans for always shown under the table): with
+ * `onChoose`, among the strategies side by side, picking it on a click, with Customize under it (`onCustomize`);
+ * with `card`, as it stands, beside a strategy being customized. It moves between them (by position: text isn't
+ * stretched; `layoutKey` names it, by default its strategy); `fade`: it fades in as the other strategies open out.
+ * `name` and `detail` stand in for the strategy's own (a custom strategy's from its settings). */
 function Milestones({
   result,
   strategy,
   column,
   fade,
+  onChoose,
+  onCustomize,
+  customizeLabel = 'Customize',
+  card = false,
+  name: ownName,
+  detail: ownDetail,
+  layoutKey,
 }: {
   result: RankResult | undefined
   strategy: Strategy
   column?: number
   fade?: boolean
+  onChoose?: () => void
+  onCustomize?: () => void
+  /** the button's word: Customize, or Edit for the custom strategy */
+  customizeLabel?: string
+  card?: boolean
+  name?: string
+  detail?: string[]
+  layoutKey?: string
 }) {
   const [about, setAbout] = useState(false)
   const aboutId = useId()
   if (!result) return null
   const milestones = result.milestones
-  const { name, detail } = STRATEGY_LABELS[strategy]
-  return (
-    <motion.div
-      layout="position"
-      layoutId={`skill-milestones-${strategy}`}
-      transition={LAYOUT}
-      initial={fade ? { opacity: 0 } : false}
-      animate={{ opacity: 1 }}
+  const name = ownName ?? STRATEGY_LABELS[strategy].name
+  const detail = ownDetail ?? STRATEGY_LABELS[strategy].detail
+  const asCard = card || !!onChoose
+  const plans = (
+    <List id={aboutId} size="xs" c="dimmed" ta="left" className={classes.strategyAbout}>
+      {detail.map((line) => (
+        <List.Item key={line}>{line}</List.Item>
+      ))}
+    </List>
+  )
+  const summary = (
+    <div
       role="group"
-      className={classes.milestones}
-      style={column ? ({ '--column': column } as CSSProperties) : undefined}
+      className={classes.summary}
       aria-label={`Cost to reach each rank with ${result.output_name} first`}
     >
-      <UnstyledButton
-        className={classes.strategyName}
-        aria-expanded={about}
-        aria-controls={aboutId}
-        onClick={() => setAbout((open) => !open)}
-      >
+      {/* on a card, its name a plain title and what it plans for always shown, under the table */}
+      {asCard ? (
         <Text fw={600}>{name}</Text>
-        <span className={classes.chevron} data-open={about || undefined}>
-          <IconChevron size={16} />
-        </span>
-      </UnstyledButton>
-      {about && (
-        <List id={aboutId} size="xs" c="dimmed" ta="left" className={classes.strategyAbout}>
-          {detail.map((line) => (
-            <List.Item key={line}>{line}</List.Item>
-          ))}
-        </List>
+      ) : (
+        <UnstyledButton
+          className={classes.strategyName}
+          aria-expanded={about}
+          aria-controls={aboutId}
+          onClick={() => setAbout((open) => !open)}
+        >
+          <Text fw={600}>{name}</Text>
+          <span className={classes.chevron} data-open={about || undefined}>
+            <IconChevron size={16} />
+          </span>
+        </UnstyledButton>
       )}
+      {!asCard && about && plans}
       {/* skills on the left, amounts and crafts on the right; patterns without a price under their row */}
       {milestones.length > 0 && (
       <table className={classes.milestoneTable}>
@@ -233,13 +255,24 @@ function Milestones({
         <tbody>
           {milestones.map((m) => (
             <Fragment key={m.skill}>
-              <tr>
-                <th scope="row">{m.skill}</th>
-                <td>
-                  <Earned copper={-m.cost} minus />
-                </td>
-                <td>~{m.crafts}</td>
-              </tr>
+              {m.reachable === false ? (
+                // the climb ends short of it: the word laid over both columns, so it widens neither
+                <tr>
+                  <th scope="row">{m.skill}</th>
+                  <td colSpan={2} className={classes.unreachable}>
+                    {' '}
+                    <span>Unreachable</span>
+                  </td>
+                </tr>
+              ) : (
+                <tr>
+                  <th scope="row">{m.skill}</th>
+                  <td>
+                    <Earned copper={-m.cost} minus />
+                  </td>
+                  <td>~{m.crafts}</td>
+                </tr>
+              )}
               {m.unknown > 0 && (
                 <tr>
                   <td colSpan={3} className={classes.milestoneNote}>
@@ -252,7 +285,130 @@ function Milestones({
         </tbody>
       </table>
       )}
+      {asCard && plans}
+    </div>
+  )
+  return (
+    <motion.div
+      layout="position"
+      layoutId={`skill-milestones-${layoutKey ?? strategy}`}
+      transition={LAYOUT}
+      initial={fade ? { opacity: 0 } : false}
+      animate={{ opacity: 1 }}
+      className={classes.milestones}
+      style={column ? ({ '--column': column } as CSSProperties) : undefined}
+    >
+      {card && !onChoose ? (
+        <Paper withBorder radius="md" p="sm" className={classes.card} component="section" aria-label={name}>
+          {summary}
+        </Paper>
+      ) : onChoose ? (
+        <Paper
+          withBorder
+          radius="md"
+          p="sm"
+          className={classes.choice}
+          role="button"
+          tabIndex={0}
+          aria-label={`Choose ${name}: ${result.output_name}`}
+          onClick={onChoose}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return
+            e.preventDefault()
+            onChoose()
+          }}
+        >
+          {summary}
+        </Paper>
+      ) : (
+        summary
+      )}
+      {onCustomize && (
+        <Button
+          variant="subtle"
+          size="compact-sm"
+          className={classes.customize}
+          onClick={onCustomize}
+          aria-label={`${customizeLabel} ${name}`}
+        >
+          {customizeLabel}
+        </Button>
+      )}
     </motion.div>
+  )
+}
+
+/** The settings of a custom strategy, being made from another: the sources its recipes may be taught by, what a
+ * minute of the climber's time is worth (in silver, sent in copper), and the least chance of a point it crafts at;
+ * Use this strategy (unless no source is ticked) or Cancel. */
+function CustomizeForm({
+  settings,
+  onChange,
+  onDone,
+  onCancel,
+}: {
+  settings: StrategySettings
+  onChange: (settings: StrategySettings) => void
+  onDone: () => void
+  onCancel: () => void
+}) {
+  return (
+    <Stack gap="sm" className={classes.customizeForm} component="form" aria-label="Custom strategy" onSubmit={(e) => {
+      e.preventDefault()
+      if (settings.sources.length) onDone()
+    }}>
+      <Checkbox.Group
+        label="Recipes taught by"
+        value={settings.sources}
+        onChange={(sources) => onChange({ ...settings, sources: sources as Source[] })}
+        error={settings.sources.length ? undefined : 'Pick at least one'}
+      >
+        <Group gap="md" mt={4}>
+          <Checkbox value="trainer" label="Trainers" />
+          <Checkbox value="recipe" label="Patterns you can buy" />
+          <Checkbox value="bop" label="Bind on pickup patterns" />
+        </Group>
+      </Checkbox.Group>
+      <NumberInput
+        label="How much is your time worth to you?"
+        description="If an option takes 1 minute longer, it has to save you at least this much money."
+        min={0}
+        max={MAX_TIME_VALUE / 100}
+        // never past the most the server takes, even while typing (it answers more with a 422)
+        clampBehavior="strict"
+        step={1}
+        decimalScale={2}
+        allowNegative={false}
+        suffix=" silver per minute"
+        value={settings.timeValue / 100}
+        onChange={(v) =>
+          onChange({
+            ...settings,
+            timeValue: Math.min(MAX_TIME_VALUE, Math.round(Math.max(0, asNumber(v)) * 100)),
+          })
+        }
+      />
+      <NumberInput
+        label="Lowest chance of a skill point"
+        description="Do not craft a recipe with a skill up chance less than this (unless there's no other option)"
+        min={0}
+        max={100}
+        clampBehavior="strict"
+        allowDecimal={false}
+        allowNegative={false}
+        suffix="%"
+        value={Math.round(settings.minChance * 100)}
+        onChange={(v) => onChange({ ...settings, minChance: Math.min(100, Math.max(0, asNumber(v))) / 100 })}
+      />
+      <Group gap="sm">
+        <Button type="submit" disabled={!settings.sources.length}>
+          Use this strategy
+        </Button>
+        <Button variant="subtle" onClick={onCancel}>
+          Cancel
+        </Button>
+      </Group>
+    </Stack>
   )
 }
 
@@ -264,6 +420,13 @@ function RecipeName({ result, items }: { result: RankResult; items: ItemMap }) {
 /** How far to craft and, unless another recipe takes over there, why it stops. */
 function RunText({ result: r }: { result: RankResult }) {
   return <>{runText(r)}</>
+}
+
+/** What a NumberInput holds: it reports a number, or the text as typed when that isn't one yet (a leading zero,
+ * a trailing point, nothing at all); 0 when the text says no number. */
+const asNumber = (v: number | string): number => {
+  const n = typeof v === 'number' ? v : Number.parseFloat(v)
+  return Number.isFinite(n) ? n : 0
 }
 
 // The size of the spinner beside the odds (px).
@@ -278,9 +441,6 @@ function reachPercent(r: RankResult, crafts: number): number {
   const chance = odds.length === 0 ? 1 : (odds[Math.min(crafts, odds.length) - 1] ?? 0)
   return Math.floor(chance * 100 + 1e-9)
 }
-
-/** Whether the climber must learn a run's recipe first. */
-const mustLearn = (r: RankResult): boolean => !!r.crafter && !r.crafters.includes(r.crafter)
 
 /** What the climber must do to learn a run's recipe; null when they know it. */
 function learnNote(r: RankResult, learn: Learn | undefined): ReactNode {
@@ -302,126 +462,13 @@ function learnNote(r: RankResult, learn: Learn | undefined): ReactNode {
   )
 }
 
-/** One option in the overview: the recipe, what its run comes to per skill point, how far it goes, how it is
- * learned. Without `onChoose`, a summary of a run to come (in the chain), with nothing to click; `fade`: it fades
- * in as the other options open out; `lit`: lit on hover, which says it opens (anywhere on it, as ever); `grow`: it
- * also grows a little on hover, where a click opens it out (not where a click only picks it). `action` names its
- * button ("Choose", "Open"), `layoutId` what it opens out into (by default the option's); a run in the chain stays
- * an `article` named after its recipe. A summary given a `layoutId` moves with it (the run crafted now's chain, between
- * the single column and the options side by side). */
-function OptionCard({
-  result: r,
-  items,
-  learn,
-  fade,
-  lit,
-  grow,
-  onChoose,
-  action = 'Choose',
-  layoutId,
-  article,
-}: {
-  result: RankResult
-  items: ItemMap
-  learn: Learn | undefined
-  fade?: boolean
-  lit?: boolean
-  grow?: boolean
-  onChoose?: () => void
-  action?: string
-  layoutId?: string
-  article?: boolean
-}) {
-  const body = (
-          <Stack gap={4}>
-            <Group justify="space-between" align="flex-start" gap="xs" wrap="nowrap">
-              <Text fw={600} size="sm">
-                <RecipeName result={r} items={items} />
-              </Text>
-            </Group>
-            <Text size="lg" fw={700}>
-              <NetPerPoint result={r} />
-            </Text>
-            <Text size="xs" c="dimmed">
-              {runLead(r)}
-            </Text>
-            {/* a recipe the climber lacks whose pattern nobody can price */}
-            {mustLearn(r) && r.learn_cost === null && (
-              <Text size="xs" c="orange">
-                {learnNote(r, learn)}
-              </Text>
-            )}
-            <RunSpread result={r} />
-          </Stack>
-  )
-  if (!onChoose) {
-    const summary = (
-      <Paper withBorder radius="md" p="sm" component="article" aria-label={r.output_name}>
-        {body}
-      </Paper>
-    )
-    return layoutId ? (
-      <motion.div layoutId={layoutId} transition={LAYOUT} style={{ borderRadius: 8 }}>
-        {summary}
-      </motion.div>
-    ) : (
-      summary
-    )
-  }
-  return (
-    <motion.div
-      layoutId={layoutId ?? `skill-option-${r.recipe_id}`}
-      transition={LAYOUT}
-      initial={fade ? { opacity: 0 } : false}
-      animate={{ opacity: 1 }}
-      style={{ borderRadius: 8 }}
-    >
-      <Paper
-        withBorder
-        radius="md"
-        p="sm"
-        h="100%"
-        className={[lit && classes.lit, grow && classes.grow].filter(Boolean).join(' ') || undefined}
-        {...(article ? { component: 'article', 'aria-label': r.output_name } : {})}
-      >
-        <UnstyledButton
-          onClick={onChoose}
-          aria-label={`${action} ${r.output_name}`}
-          w="100%"
-          h="100%"
-          // a button centres its content: cards of three lines and of four start at the same height
-          style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-start' }}
-        >
-          {body}
-        </UnstyledButton>
-      </Paper>
-    </motion.div>
-  )
-}
-
-/** A chain fading out where it was, over the options: what it showed and its box within them. */
-type Departing = {
-  key: number
-  runs: RankResult[]
-  start: number
-  preview: boolean
-  muted: boolean
-  top: number
-  left: number
-  width: number
-}
-
-/** What the reminders to train the next profession rank need: the version's ranks, the cap the climber has and the
- * profession. */
-type Training = { ranks: readonly ProfessionRank[]; maxRank: number; profession: string }
-
 /** Reminders to train each profession rank a run from `from` to `to` skill reaches (`ranksToTrain`); none when it
  * reaches none. */
 function TrainNote({ training, from, to, first }: { training: Training; from: number; to: number; first: boolean }) {
   const due = ranksToTrain(training.ranks, training.maxRank, from, to, first)
   if (!due.length) return null
   return (
-    <Stack gap={4} className={classes.train}>
+    <Stack gap={4}>
       {due.map(({ rank }) => {
         const name = `${rank.name} ${training.profession}`
         return (
@@ -436,176 +483,20 @@ function TrainNote({ training, from, to, first }: { training: Training; from: nu
   )
 }
 
-/** A run's card with the reminders to train beside it (to its left on a wide screen with room, else above it). */
-function Trained({
-  training,
-  from,
-  to,
-  first,
-  children,
-}: {
-  training: Training
-  from: number
-  to: number
-  first: boolean
-  children: ReactNode
-}) {
-  return (
-    <div className={classes.trained}>
-      <TrainNote training={training} from={from} to={to} first={first} />
-      {children}
-    </div>
-  )
-}
-
-/** The short arrow from one run to the run after it; with a `layoutId`, it moves with the chain (in a `div`: Motion
- * doesn't animate an SVG element's layout). */
-function ChainArrow({ layoutId }: { layoutId?: string }) {
-  return (
-    <motion.div layoutId={layoutId} transition={LAYOUT} className={classes.arrow}>
-      <svg width="16" height="24" viewBox="0 0 16 24" display="block" aria-hidden>
-        <path d="M8 2v18M3 15l5 5 5-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      </svg>
-    </motion.div>
-  )
-}
-
-/** The runs that follow a run, each under an arrow, hung under that run's card. `muted` while it isn't the chosen
- * option's own: the options are side by side, or its chain is on its way; `preview`: side by side, only the next run,
- * fading out downwards. `onOpen`: each card opens out in place, `opened` the one that has (its index and what it
- * shows instead of its card). `onMore`: Show more under the last, when
- * there may be more after it. The run crafted now's chain carries `layoutId` (named after the run it follows), so
- * its cards, arrows and skills move with that run's card, each on its own (the section is as wide as the row in the
- * single column, one column side by side: moved as one, its centred contents would start out of place); `column` places another option's under it, side by side. `fade`: it fades
- * in, arrows and all (a chain new to the run crafted now). */
-function Chain({
-  runs,
-  start,
-  items,
-  learn,
-  muted,
-  pending,
-  onMore,
-  label = 'What comes after',
-  layoutId,
-  column,
-  training,
-  preview,
-  onOpen,
-  opened,
-  fade,
-  ref,
-}: {
-  runs: RankResult[]
-  /** the skill the first of `runs` starts at: where the run they follow stops */
-  start: number
-  items: ItemMap
-  learn: Record<string, Learn>
-  muted: boolean
-  pending: boolean
-  onMore?: () => void
-  label?: string
-  layoutId?: string
-  column?: number
-  /** the reminders to train the next profession rank beside the cards (the single column only) */
-  training?: Training
-  preview?: boolean
-  onOpen?: (index: number) => void
-  opened?: { index: number; panel: ReactNode }
-  fade?: boolean
-  ref?: Ref<HTMLElement>
-}) {
-  if (preview) runs = runs.slice(0, 1)
-  if (!runs.length && !pending) return null
-  return (
-    <motion.section
-      ref={ref}
-      transition={LAYOUT}
-      // fading in, to the opacity its muting asks for (side by side, the next run alone isn't muted)
-      initial={fade ? { opacity: 0 } : false}
-      animate={fade ? { opacity: muted && !preview ? 0.4 : 1 } : undefined}
-      className={classes.chain}
-      style={column ? ({ '--column': column } as CSSProperties) : undefined}
-      data-muted={muted || undefined}
-      data-preview={preview || undefined}
-      aria-disabled={muted || undefined}
-      aria-label={label}
-    >
-      {runs.map((r, i) => {
-        const from = i === 0 ? start : (runs[i - 1]?.stop_skill ?? 0)
-        const card = (
-          <OptionCard
-            result={r}
-            items={items}
-            learn={learn[r.recipe_id]}
-            // the run crafted now's chain: each card moves with it, opened out or not
-            layoutId={layoutId && `${layoutId}-run-${i}`}
-            {...(onOpen && {
-              onChoose: () => onOpen(i),
-              action: 'Open',
-              lit: true,
-              grow: true,
-              article: true,
-            })}
-          />
-        )
-        const isOpen = opened?.index === i
-        return (
-          // a climb may come back to a recipe: keyed by place
-          <Stack key={`${i}-${r.recipe_id}`} gap={4} className={isOpen ? undefined : classes.link}>
-            <div className={classes.step}>
-              <ChainArrow layoutId={layoutId && `${layoutId}-arrow-${i}`} />
-              {from > 0 && (
-                // by position: text isn't stretched
-                <motion.div
-                  layout={layoutId ? 'position' : false}
-                  layoutId={layoutId && `${layoutId}-at-${i}`}
-                  transition={LAYOUT}
-                  className={classes.at}
-                >
-                  <Text size="xs" c="dimmed">
-                    At {from} skill
-                  </Text>
-                </motion.div>
-              )}
-            </div>
-            {isOpen ? (
-              opened?.panel
-            ) : training ? (
-              <Trained training={training} from={from} to={r.stop_skill} first={false}>
-                {card}
-              </Trained>
-            ) : (
-              card
-            )}
-          </Stack>
-        )
-      })}
-      {pending && <Loader size="xs" aria-label="Working out what comes after" className={classes.arrow} />}
-      {onMore && !pending && (
-        <Button size="compact-sm" variant="subtle" className={classes.chainMore} onClick={onMore}>
-          Show more
-        </Button>
-      )}
-    </motion.section>
-  )
-}
-
 /**
- * Skilling up one profession on one character. First an overview: the run to craft now (the first of the cheapest
- * climb up the profession; each option counted as the first run of the cheapest climb starting with it, until the
- * climb goes on with another recipe, it turns trivial or the skill reaches its cap), centred, with the rest of its
- * climb hung below; Show me other options lays
- * the best few side by side, the chain muted under the one it follows until another is picked, which then folds
- * back to be the one crafted now. Clicking a card in the single column (the run crafted now or one of its chain, one at a time) opens it out in place into the full run: what to make until when, what it costs,
- * what the next best was, what comes after it, and a checklist per character to take into the game. The list holds still while new prices come in, until the
- * user refreshes it.
+ * Skilling up one profession on one character: the strategy's whole climb as a table (`LadderTable`), the run to
+ * craft now first (each run counted as the cheapest climb's, until the climb goes on with another recipe, it turns
+ * trivial or the skill reaches its cap), under what the climb comes to by each rank. Compare strategies lays the
+ * strategies' summaries side by side as cards; picking one shows its climb's table. A row
+ * opens out under itself into the full run: what to make until when, what it costs, what the next best was, and a
+ * checklist per character to take into the game. The list holds still while new prices come in, until the user
+ * refreshes it.
  */
 export function SkillWorkspace({
   filters,
   climber,
   profession,
-  reachTarget = DEFAULT_REACH_TARGET,
+  reachTarget = REACH_TARGET,
   hypothetical = false,
 }: {
   filters: Filters
@@ -638,6 +529,8 @@ export function SkillWorkspace({
       bartering: barteringRank,
       ...(chefRank !== undefined ? { masterChef: chefRank } : {}),
       top: 1,
+      // the table shows the whole climb
+      chainLength: WHOLE_CHAIN,
     }),
     [filters, overtimeRank, barteringRank, chefRank],
   )
@@ -659,48 +552,69 @@ export function SkillWorkspace({
   const bestId = results[0]?.recipe_id
   // The strategy to craft now: the recommended one unless the user picked another (null: the recommended one).
   const [pickedKey, setPickedKey] = useState<Strategy | null>(null)
+  // The user's own strategy, once they made one unlike every built-in one; null: none.
+  const [custom, setCustom] = useState<StrategySettings | null>(null)
+  // A strategy being customized: the one it started from, and the settings so far.
+  const [customizing, setCustomizing] = useState<{ base: Strategy; draft: StrategySettings } | null>(null)
+  const customParams = (c: StrategySettings) => ({
+    strategy: 'custom' as const,
+    sources: c.sources,
+    timeValue: c.timeValue,
+    minChance: c.minChance,
+  })
+  // The custom strategy's whole climb: its card among the others, and its table once picked.
+  const customRank = useRank(custom ? { ...params, ...customParams(custom) } : params, {
+    priceVersion: frozen,
+    enabled: custom !== null,
+  })
+  const customRun = custom ? customRank.data?.results[0] : undefined
+  const customOption: Option | null = customRun
+    ? { key: 'custom', run: customRun, chain: customRank.data?.chain ?? NO_RUNS }
+    : null
+  // The strategies side by side: the custom one first, when there is one, unless the search's sources have since made
+  // it one of the built-in ones (picked, it stays)
+  const BUILT_IN = ['recommended', 'cheapest', 'no_patterns'] as const
+  const customIsBuiltIn = (c: StrategySettings) =>
+    BUILT_IN.find((k) => sameSettings(c, strategySettings(k, filters.sources)))
+  const compared =
+    customOption && custom && (pickedKey === 'custom' || !customIsBuiltIn(custom)) ? [customOption, ...options] : options
+  // The settings being customized, planned once they settle: only the start of the climb, its summary
+  const [draft] = useDebouncedValue(customizing?.draft ?? null, 400)
+  const draftRank = useRank(draft ? { ...params, ...customParams(draft), chainLength: undefined } : params, {
+    priceVersion: frozen,
+    enabled: customizing !== null && draft !== null,
+  })
+  // The draft's run as last planned: never another query's kept while the first one loads
+  const [draftShown, setDraftShown] = useState<RankResult | undefined>(undefined)
+  const draftFresh =
+    customizing && draft && draftRank.data && !draftRank.isPlaceholderData ? draftRank.data.results[0] : undefined
+  if (draftFresh && draftFresh !== draftShown) setDraftShown(draftFresh)
   const nowIndex = Math.max(
     0,
-    options.findIndex((o) => o.key === (pickedKey ?? 'recommended')),
+    compared.findIndex((o) => o.key === (pickedKey ?? 'recommended')),
   )
-  const nowOption = options[nowIndex]
-  const nowKey: Strategy = nowOption?.key ?? 'recommended'
+  // the custom strategy picked: nothing to show until its climb comes
+  const waitingForCustom = pickedKey === 'custom' && !customOption
+  const nowOption = waitingForCustom ? undefined : compared[nowIndex]
+  const nowKey: Strategy = waitingForCustom ? 'custom' : (nowOption?.key ?? 'recommended')
   const ranked = nowOption?.run
   const picked = nowKey !== 'recommended'
   // Whether the first few options are laid out side by side, the user choosing among them.
   const [expanded, setExpanded] = useState(false)
-  // How many runs the chain holds: CHAIN, and CHAIN_MORE more with each Show more (back to CHAIN on a pick).
-  const [chainLength, setChainLength] = useState(CHAIN)
-  const longer = chainLength > CHAIN
-  // A picked strategy's run and the rest of its climb, ranked under it; the recommended one's come with the list,
-  // unless more of them are shown.
-  const chainRank = useRank(
-    {
-      ...params,
-      ...(picked ? { strategy: nowKey } : {}),
-      ...(longer ? { chainLength } : {}),
-    },
-    { priceVersion: frozen, enabled: picked || longer },
-  )
+  // A picked strategy's run and the rest of its climb, ranked under it; the recommended one's come with the list.
+  const chainRank = useRank(nowKey === 'custom' && custom ? { ...params, ...customParams(custom) } : { ...params, strategy: nowKey }, {
+    priceVersion: frozen,
+    enabled: picked,
+  })
   const restart = picked && !chainRank.isPlaceholderData ? chainRank.data?.results[0] : undefined
   const now = restart?.recipe_id === ranked?.recipe_id ? restart : ranked
-  // The chain's layout id, named after the strategy it follows: another's chain never moves into its place
-  const chainId = `skill-chain-${nowKey}`
-  const chainData = picked || longer ? chainRank.data : rank.data
-  // The chain on its way: a picked option's (the one shown before it stays, muted) or a longer one.
-  const chainPending = (picked || longer) && (chainRank.isPlaceholderData || !chainRank.data)
-  // A picked strategy's chain on its way: its own as it came with the list meanwhile, never the one shown before
-  const current =
-    picked && chainPending && !longer
+  // A picked strategy's climb on its way: the start of it as it came with the list meanwhile, never another's
+  const chainPending = picked && (chainRank.isPlaceholderData || !chainRank.data)
+  const chain = picked
+    ? chainPending
       ? (nowOption?.chain ?? NO_RUNS)
-      : (chainData?.chain ?? rank.data?.chain ?? NO_RUNS)
-  // The chain as last settled: what stays shown while a longer one is on its way.
-  const [settled, setSettled] = useState(current)
-  if (!chainPending && current !== settled) setSettled(current)
-  const chain = chainPending && longer ? settled : current
-  // muted among the options side by side, and while another chain is on its way (a longer one on its way keeps the
-  // runs already shown as they are)
-  const chainMuted = expanded || (chainPending && !longer)
+      : (chainRank.data?.chain ?? NO_RUNS)
+    : (rank.data?.chain ?? NO_RUNS)
   // the run opened out: the one crafted now as it stands after a pick (else as ranked), or one of its chain
   const open = expanded || openAt === null ? undefined : openAt === 0 ? now : chain[openAt - 1]
   // the skill the run opened out starts at
@@ -711,7 +625,8 @@ export function SkillWorkspace({
   const planParams: EvaluateParams = {
     unlearned: filters.unlearned,
     lookAhead: filters.lookAhead,
-    sources: filters.sources,
+    sources: nowKey === 'custom' && custom ? custom.sources : filters.sources,
+    ...(nowKey === 'custom' && custom ? { timeValue: custom.timeValue, minChance: custom.minChance } : {}),
     includeTrivial: filters.includeTrivial,
     skillCrafters: filters.skillCrafters,
     exits: filters.exits,
@@ -740,10 +655,11 @@ export function SkillWorkspace({
   const buyCount = open ? (typed ?? craftsToReach(open, reachTarget)) : 0
   const [settledCount] = useDebouncedValue(buyCount, 400)
   // Each strategy's plan for the crafts it opens with, fetched ahead: opening one finds it ready.
+  // (the custom strategy's settings ride on the plan's parameters: with it picked, only its own run)
   usePrefetchSessionPlans(
     [
-      ...options.map((o) => ({ r: o.run, strategy: o.key })),
-      ...(now && now !== ranked ? [{ r: now, strategy: nowKey }] : []),
+      ...(nowKey === 'custom' ? [] : options.map((o) => ({ r: o.run, strategy: o.key }))),
+      ...(now && (now !== ranked || nowKey === 'custom') ? [{ r: now, strategy: nowKey }] : []),
     ].flatMap(({ r, strategy }) => {
       const copies = craftsToReach(r, reachTarget)
       return copies > r.crafts ? [{ recipeId: r.recipe_id, copies, strategy }] : []
@@ -774,8 +690,8 @@ export function SkillWorkspace({
     error: modified ? (plan.error?.message ?? null) : null,
   }
   const items = useMemo(
-    () => ({ ...rank.data?.items, ...chainRank.data?.items, ...plan.data?.items }),
-    [rank.data, chainRank.data, plan.data],
+    () => ({ ...rank.data?.items, ...customRank.data?.items, ...chainRank.data?.items, ...plan.data?.items }),
+    [rank.data, customRank.data, chainRank.data, plan.data],
   )
   // The run's market: closed at first; an item name in the plan opens it on that item.
   const [marketOpen, setMarketOpen] = useState<string | null>(null)
@@ -790,12 +706,6 @@ export function SkillWorkspace({
   const [view, setView] = useState<PlanView>('steps')
   // The steps with where to go in between: one setting with the gold list's
   const [detailed, setDetailed] = useStoredState('altarmy.steps.detailed', z.boolean(), false)
-  // The chain under the run crafted now is new to it (another run was picked): it fades in.
-  const [freshChain, setFreshChain] = useState(false)
-  // The chain shown before another run was picked, fading out where it was.
-  const [departing, setDeparting] = useState<Departing | null>(null)
-  const chainRef = useRef<HTMLElement>(null)
-  const areaRef = useRef<HTMLDivElement>(null)
   // Scrolls an option being opened out fully into view as it grows: its layout is final as soon as it renders (the
   // growing is a transform), so the scroll runs alongside, with the same timing. A wheel or touch stops it.
   const runRef = useRef<HTMLElement>(null)
@@ -840,7 +750,7 @@ export function SkillWorkspace({
 
   if (rank.isPending) return <Loader />
   if (rank.isError) return <Alert color="red">{rank.error.message}</Alert>
-  const learn = rank.data.learn
+  const learn = { ...rank.data.learn, ...chainRank.data?.learn }
   const refresh = frozen !== undefined && livePrices !== frozen && (
     <Alert color="blue" title="Prices updated since this list was made">
       <Group justify="space-between">
@@ -866,52 +776,39 @@ export function SkillWorkspace({
     )
   }
 
-  // Another run to craft now: its chain fades in under it, the one shown before fading out where it was (a copy,
-  // laid over the options, since what it hung under is gone).
-  const leave = (key: Strategy) => {
-    if (key === nowKey) return
-    setFreshChain(true)
-    const el = chainRef.current
-    const area = areaRef.current
-    if (!el || !area) return
-    const box = el.getBoundingClientRect()
-    const within = area.getBoundingClientRect()
-    setDeparting({
-      key: (departing?.key ?? 0) + 1,
-      runs: chain,
-      start: now?.stop_skill ?? 0,
-      preview: expanded,
-      muted: chainMuted,
-      top: box.top - within.top,
-      left: box.left - within.left,
-      width: box.width,
-    })
-  }
-  // Picking one of the strategies side by side makes it the one to craft now, the others folding away around it.
+  // Picking one of the strategies side by side shows its climb, the others folding away.
   const pick = (key: Strategy) => {
-    leave(key)
     setPickedKey(key === 'recommended' ? null : key)
-    setChainLength(CHAIN)
     setExpanded(false)
   }
-  // Back to the recommended climb, when another run to craft now was picked: the best and its own chain.
+  // Back to the recommended climb, when another strategy was picked.
   const reset = () => {
-    leave('recommended')
     choose(null)
     setPickedKey(null)
-    setChainLength(CHAIN)
     setExpanded(false)
   }
-  // The run opened out, in place of the card it grows out of
-  const panel = open && (
-    <motion.div
-      layoutId={openAt === 0 ? `skill-option-${nowKey}` : `${chainId}-run-${(openAt ?? 1) - 1}`}
-      transition={LAYOUT}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      style={{ borderRadius: 8 }}
-      className={classes.opened}
-    >
+  // Customizing a strategy side by side: its settings to start from.
+  const customize = (key: Strategy) => {
+    choose(null)
+    setDraftShown(undefined)
+    const from = key === 'custom' ? custom : strategySettings(key, filters.sources)
+    if (from) setCustomizing({ base: key, draft: from })
+  }
+  // The strategy customized: its climb's table. Settings a built-in strategy has pick that one instead.
+  const finishCustomizing = () => {
+    if (!customizing) return
+    const { draft } = customizing
+    setCustomizing(null)
+    const builtIn = customIsBuiltIn(draft)
+    if (builtIn) {
+      pick(builtIn)
+      return
+    }
+    setCustom(draft)
+    pick('custom')
+  }
+  // The run opened out: its full view, under its row
+  const details = open && (
         <Paper ref={runRef} withBorder p="md" radius="md" aria-label="Run details" component="section">
           <Stack gap="xs">
             {/* the recipe (and whether its plan was changed) on the left, Close on the right */}
@@ -962,7 +859,7 @@ export function SkillWorkspace({
                   allowDecimal={false}
                   aria-label="Crafts to buy for"
                   value={buyCount}
-                  onChange={(v) => setTyped(typeof v === 'number' && v >= 1 ? Math.min(v, MAX_BUY) : null)}
+                  onChange={(v) => setTyped(asNumber(v) >= 1 ? Math.min(Math.floor(asNumber(v)), MAX_BUY) : null)}
                 />
                 <Text size="xs" c="dimmed">
                   {reachPercent(open, buyCount)}% chance to reach your target of {open.stop_skill} skill
@@ -1050,39 +947,14 @@ export function SkillWorkspace({
             </Group>
           </Stack>
         </Paper>
-    </motion.div>
   )
-  // The run crafted now's chain: under its card, opened out or not, and muted under it among the options
-  const chainView = (
-    <Chain
-      runs={chain}
-      start={now?.stop_skill ?? 0}
-      items={items}
-      learn={{ ...learn, ...chainRank.data?.learn }}
-      key={chainId}
-      ref={chainRef}
-      layoutId={chainId}
-      column={nowIndex + 1}
-      fade={freshChain}
-      // among the options side by side: the next run alone, and no reminders
-      preview={expanded}
-      training={expanded ? undefined : training}
-      muted={chainMuted}
-      pending={chainPending && !expanded}
-      onMore={!expanded && chain.length >= chainLength ? () => setChainLength((n) => n + CHAIN_MORE) : undefined}
-      // in the single column each run opens out in place; not while another chain is on its way
-      onOpen={expanded || chainPending ? undefined : (i) => choose(openAt === i + 1 ? null : i + 1)}
-      opened={panel && openAt !== null && openAt > 0 ? { index: openAt - 1, panel } : undefined}
-    />
-  )
-
   return (
     <CharacterClasses.Provider value={rank.data.classes}>
       <Stack>
         {capCard}
         {refresh}
         <LayoutGroup>
-          <Stack ref={areaRef} gap="xs" component="section" aria-label="Your options" pos="relative">
+          <Stack gap="xs" component="section" aria-label="Your options" pos="relative">
             {picked && (
               <div className={classes.heading}>
                 <Button size="compact-sm" variant="light" className={classes.reset} onClick={reset}>
@@ -1095,60 +967,81 @@ export function SkillWorkspace({
               profession={profession}
               onChange={(ranks) => setTalents({ who: climber.name, ranks })}
             />
-            {expanded ? (
+            {customizing ? (
+              <div className={classes.customizing}>
+                <Milestones
+                  result={(() => {
+                    const base = compared.find((o) => o.key === customizing.base)
+                    return customizing.base === nowKey && now ? now : base?.run
+                  })()}
+                  strategy={customizing.base}
+                  detail={customizing.base === 'custom' && custom ? customDetail(custom) : undefined}
+                  column={1}
+                  card
+                />
+                {draftShown ? (
+                  <Milestones
+                    result={draftShown}
+                    strategy="custom"
+                    name="Your strategy"
+                    detail={customDetail(customizing.draft)}
+                    layoutKey="draft"
+                    column={2}
+                    card
+                  />
+                ) : (
+                  <div className={classes.milestones} style={{ '--column': 2 } as CSSProperties}>
+                    <Paper withBorder radius="md" p="sm" className={classes.card} component="section" aria-label="Your strategy">
+                      <Stack align="center" gap="xs">
+                        <Text fw={600}>Your strategy</Text>
+                        <Loader size="sm" aria-label="Planning your strategy" />
+                      </Stack>
+                    </Paper>
+                  </div>
+                )}
+                <CustomizeForm
+                  settings={customizing.draft}
+                  onChange={(settings) => setCustomizing({ ...customizing, draft: settings })}
+                  onDone={finishCustomizing}
+                  onCancel={() => setCustomizing(null)}
+                />
+              </div>
+            ) : expanded ? (
               <div
                 className={classes.options}
                 style={
                   {
-                    '--options': options.length,
+                    '--options': compared.length,
                     '--now': nowIndex + 1,
                   } as CSSProperties
                 }
               >
-                {options.map(({ key, run: r, chain: after }, i) => (
-                  <Fragment key={key}>
-                    <Milestones
-                      result={key === nowKey && now ? now : r}
-                      strategy={key}
-                      column={i + 1}
-                      fade={key !== nowKey}
-                    />
-                    <div className={classes.option} style={{ '--column': i + 1 } as CSSProperties}>
-                      <OptionCard
-                        result={key === nowKey && now ? now : r}
-                        items={items}
-                        learn={learn[r.recipe_id]}
-                        fade={key !== nowKey}
-                        lit
-                        layoutId={`skill-option-${key}`}
-                        onChoose={() => pick(key)}
-                        action={`Choose ${STRATEGY_LABELS[key].name}:`}
-                      />
-                    </div>
-                    {/* every strategy's chain under it, muted until one is picked */}
-                    {key === nowKey ? (
-                      chainView
-                    ) : (
-                      <Chain
-                        runs={after}
-                        start={r.stop_skill}
-                        items={items}
-                        learn={learn}
-                        label={`What comes after ${r.output_name}`}
-                        column={i + 1}
-                        muted
-                        preview
-                        pending={false}
-                      />
-                    )}
-                  </Fragment>
+                {compared.map(({ key, run: r }, i) => (
+                  <Milestones
+                    key={key}
+                    result={key === nowKey && now ? now : r}
+                    strategy={key}
+                    detail={key === 'custom' && custom ? customDetail(custom) : undefined}
+                    column={i + 1}
+                    fade={key !== nowKey}
+                    onChoose={() => pick(key)}
+                    onCustomize={() => customize(key)}
+                    // the custom one is edited, the built-in ones customized
+                    customizeLabel={key === 'custom' ? 'Edit' : 'Customize'}
+                  />
                 ))}
               </div>
+            ) : waitingForCustom ? (
+              <Loader aria-label="Planning your strategy" />
             ) : (
               now && (
                 <div className={classes.single}>
-                  <Milestones result={now} strategy={nowKey} />
-                  {options.length > 1 && openAt !== 0 && (
+                  <Milestones
+                    result={now}
+                    strategy={nowKey}
+                    detail={nowKey === 'custom' && custom ? customDetail(custom) : undefined}
+                  />
+                  {compared.length > 1 && (
                     <Button
                       variant="subtle"
                       size="compact-sm"
@@ -1156,56 +1049,25 @@ export function SkillWorkspace({
                       leftSection={<IconSwap size={16} />}
                       onClick={() => {
                         choose(null)
-                        setFreshChain(false)
                         setExpanded(true)
                       }}
                     >
                       Compare strategies
                     </Button>
                   )}
-                  {openAt === 0 && panel ? (
-                    <div className={classes.nowOpen}>{panel}</div>
-                  ) : (
-                    <div className={classes.now}>
-                      <Trained training={training} from={climber.rank} to={now.stop_skill} first>
-                        <OptionCard
-                          result={now}
-                          items={items}
-                          learn={learn[now.recipe_id]}
-                          lit
-                          grow
-                          layoutId={`skill-option-${nowKey}`}
-                          onChoose={() => choose(0)}
-                        />
-                      </Trained>
-                    </div>
-                  )}
-                  {chainView}
+                  <LadderTable
+                    runs={[now, ...chain]}
+                    start={climber.rank}
+                    items={items}
+                    training={training}
+                    pending={chainPending}
+                    openAt={openAt}
+                    onOpen={(i) => choose(openAt === i ? null : i)}
+                    details={details}
+                    className={classes.ladder}
+                  />
                 </div>
               )
-            )}
-            {departing && (
-              <motion.div
-                key={departing.key}
-                aria-hidden
-                className={classes.departing}
-                data-single={!departing.preview || undefined}
-                style={{ top: departing.top, left: departing.left, width: departing.width }}
-                initial={{ opacity: 1 }}
-                animate={{ opacity: 0 }}
-                transition={LAYOUT}
-                onAnimationComplete={() => setDeparting((d) => (d?.key === departing.key ? null : d))}
-              >
-                <Chain
-                  runs={departing.runs}
-                  start={departing.start}
-                  items={items}
-                  learn={learn}
-                  muted={departing.muted}
-                  preview={departing.preview}
-                  pending={false}
-                />
-              </motion.div>
             )}
           </Stack>
         </LayoutGroup>

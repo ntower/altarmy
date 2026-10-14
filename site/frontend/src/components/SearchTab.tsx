@@ -26,7 +26,7 @@ import {
 } from '../lib/setup'
 import { rankCap } from '../lib/skill'
 import { useStoredState } from '../lib/storage'
-import { AimSearch, SkillOptions } from './AimSearch'
+import { AimSearch } from './AimSearch'
 import { ClimberCard } from './ClimberCard'
 import { HypotheticalCard } from './HypotheticalCard'
 import { PriceSignal } from './PriceSignal'
@@ -233,7 +233,7 @@ export function SearchTab({
     <Stack>
       <PriceSignal />
       {(run || hypothetical) && !charactersOpen ? (
-        // The climber's card beside the auction house's and the Options button under it, as tall as the two.
+        // The climber's card beside the auction house's.
         <div className={classes.run}>
           <div className={classes.climberCell}>
             {run ? (
@@ -269,7 +269,6 @@ export function SearchTab({
           <div className={classes.houseCell}>
             <RealmCard lastScan={selection ? lastScan : undefined} uploadAsked={uploadAsked} />
           </div>
-          <SkillOptions salvagerDefault={characters.data?.arcane_salvager ?? false} />
         </div>
       ) : (
         <>
@@ -281,11 +280,6 @@ export function SearchTab({
               uploadAsked={uploadAsked}
             />
           </div>
-          {(run || hypothetical) && (
-            <div className={classes.half}>
-              <SkillOptions salvagerDefault={characters.data?.arcane_salvager ?? false} />
-            </div>
-          )}
         </>
       )}
       {switching ? (

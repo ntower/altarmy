@@ -620,7 +620,6 @@
           "chain_at": {
             "anyOf": [
               {
-                "maximum": 40.0,
                 "minimum": 1.0,
                 "type": "integer"
               },
@@ -747,6 +746,19 @@
             ],
             "title": "Master Chef"
           },
+          "min_chance": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Chance"
+          },
           "price_version": {
             "anyOf": [
               {
@@ -796,10 +808,24 @@
             "enum": [
               "recommended",
               "cheapest",
-              "no_patterns"
+              "no_patterns",
+              "custom"
             ],
             "title": "Strategy",
             "type": "string"
+          },
+          "time_value": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Value"
           },
           "unlearned": {
             "default": "none",
@@ -1857,7 +1883,7 @@
         "type": "object"
       },
       "MilestoneOut": {
-        "description": "What a climb is expected to come to by the time it reaches `skill`: its crafts (spent less what\nselling what they make brings back, so negative when they earn) and its patterns, `unknown` of which have\nno known price (not counted), and the crafts it is expected to take to get there.",
+        "description": "What a climb is expected to come to by the time it reaches `skill`: its crafts (spent less what\nselling what they make brings back, so negative when they earn) and its patterns, `unknown` of which have\nno known price (not counted), and the crafts it is expected to take to get there. Not `reachable`: the\nclimb ends short of it (the rest is 0).",
         "properties": {
           "cost": {
             "title": "Cost",
@@ -1867,6 +1893,11 @@
             "default": 0,
             "title": "Crafts",
             "type": "integer"
+          },
+          "reachable": {
+            "default": true,
+            "title": "Reachable",
+            "type": "boolean"
           },
           "skill": {
             "title": "Skill",
@@ -3023,7 +3054,8 @@
             "enum": [
               "recommended",
               "cheapest",
-              "no_patterns"
+              "no_patterns",
+              "custom"
             ],
             "title": "Key",
             "type": "string"
@@ -3488,6 +3520,157 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VendorCheck": {
+        "description": "The vendor check: one page of what the selected realm's auction house lists, with vendor prices.",
+        "properties": {
+          "classes": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Classes",
+            "type": "array"
+          },
+          "faction": {
+            "title": "Faction",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/VendorCheckItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "listed": {
+            "title": "Listed",
+            "type": "integer"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "qualities": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Qualities",
+            "type": "array"
+          },
+          "realm": {
+            "title": "Realm",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "realm",
+          "faction",
+          "items",
+          "total",
+          "listed",
+          "page",
+          "page_size",
+          "classes",
+          "qualities"
+        ],
+        "title": "VendorCheck",
+        "type": "object"
+      },
+      "VendorCheckItem": {
+        "description": "An item the selected auction house lists now, beside what a vendor pays for it.",
+        "properties": {
+          "ah_price": {
+            "title": "Ah Price",
+            "type": "integer"
+          },
+          "ah_quantity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ah Quantity"
+          },
+          "class_id": {
+            "title": "Class Id",
+            "type": "integer"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "quality": {
+            "title": "Quality",
+            "type": "integer"
+          },
+          "seen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seen At"
+          },
+          "sell_price": {
+            "title": "Sell Price",
+            "type": "integer"
+          },
+          "subclass_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subclass Name"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "quality",
+          "class_id",
+          "subclass_name",
+          "icon",
+          "sell_price",
+          "ah_price",
+          "ah_quantity",
+          "seen_at"
+        ],
+        "title": "VendorCheckItem",
         "type": "object"
       },
       "VendorDiscountOut": {
@@ -4765,20 +4948,61 @@
             }
           },
           {
-            "description": "with runs: how a climb is planned (`STRATEGIES`): as recommended, cheapest (copper alone, whatever the crafts), or no patterns (only recipes trainers teach)",
+            "description": "with runs: how a climb is planned (`STRATEGIES`): as recommended, cheapest (copper alone, whatever the crafts), no patterns (only recipes trainers teach), or custom (the sources, time_value and min_chance given)",
             "in": "query",
             "name": "strategy",
             "required": false,
             "schema": {
               "default": "recommended",
-              "description": "with runs: how a climb is planned (`STRATEGIES`): as recommended, cheapest (copper alone, whatever the crafts), or no patterns (only recipes trainers teach)",
+              "description": "with runs: how a climb is planned (`STRATEGIES`): as recommended, cheapest (copper alone, whatever the crafts), no patterns (only recipes trainers teach), or custom (the sources, time_value and min_chance given)",
               "enum": [
                 "recommended",
                 "cheapest",
-                "no_patterns"
+                "no_patterns",
+                "custom"
               ],
               "title": "Strategy",
               "type": "string"
+            }
+          },
+          {
+            "description": "with strategy=custom: what a minute of the climber's time is worth, in copper (default: the recommended strategy's): a craft is worth the time it takes",
+            "in": "query",
+            "name": "time_value",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 1000000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "with strategy=custom: what a minute of the climber's time is worth, in copper (default: the recommended strategy's): a craft is worth the time it takes",
+              "title": "Time Value"
+            }
+          },
+          {
+            "description": "with strategy=custom: the least chance of a skill point a run crafts at, unless nothing gives one that often (default: the recommended strategy's)",
+            "in": "query",
+            "name": "min_chance",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "with strategy=custom: the least chance of a skill point a run crafts at, unless nothing gives one that often (default: the recommended strategy's)",
+              "title": "Min Chance"
             }
           },
           {
@@ -4871,14 +5095,13 @@
             }
           },
           {
-            "description": "with sort=skill and runs: the runs the chain may hold",
+            "description": "with sort=skill and runs: the runs the chain may hold (all of it when it has fewer)",
             "in": "query",
             "name": "chain_length",
             "required": false,
             "schema": {
               "default": 2,
-              "description": "with sort=skill and runs: the runs the chain may hold",
-              "maximum": 40,
+              "description": "with sort=skill and runs: the runs the chain may hold (all of it when it has fewer)",
               "minimum": 1,
               "title": "Chain Length",
               "type": "integer"
@@ -5317,6 +5540,206 @@
           }
         ],
         "summary": "Post Paste"
+      }
+    },
+    "/api/vendorcheck": {
+      "get": {
+        "description": "What the selected realm's auction house lists now, with each item's cheapest listing and what a vendor\npays for it (the /profit/vendorcheck page), filtered, sorted and paged (`VENDOR_CHECK_PAGE` an answer;\na page past the last gives the last); nothing without a selection or prices.",
+        "operationId": "get_vendor_check_api_vendorcheck_get",
+        "parameters": [
+          {
+            "description": "item classes left out",
+            "in": "query",
+            "name": "hide_classes",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "item classes left out",
+              "title": "Hide Classes"
+            }
+          },
+          {
+            "description": "qualities left out",
+            "in": "query",
+            "name": "hide_qualities",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "qualities left out",
+              "title": "Hide Qualities"
+            }
+          },
+          {
+            "description": "the column: item name, type (class name), cheapest listing, what a vendor pays, the difference, or it as a percentage of the listing (no vendor buying it last either way)",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "difference",
+              "description": "the column: item name, type (class name), cheapest listing, what a vendor pays, the difference, or it as a percentage of the listing (no vendor buying it last either way)",
+              "enum": [
+                "item",
+                "type",
+                "ah_price",
+                "vendor",
+                "difference",
+                "percent"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": "desc",
+              "enum": [
+                "desc",
+                "asc"
+              ],
+              "title": "Order",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 for the first",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "description": "1 for the first",
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "which game's data: tbc or forever",
+            "in": "query",
+            "name": "game_version",
+            "required": true,
+            "schema": {
+              "description": "which game's data: tbc or forever",
+              "enum": [
+                "tbc",
+                "forever"
+              ],
+              "title": "Game Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VendorCheck"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Vendor Check"
+      }
+    },
+    "/api/vendorcheck/items/{item_id}": {
+      "get": {
+        "description": "One item as the selected realm's auction house has it, every price level included: what a vendor check\nrow shows when opened. 404 for an item the game version hasn't.",
+        "operationId": "get_vendor_check_item_api_vendorcheck_items__item_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "which game's data: tbc or forever",
+            "in": "query",
+            "name": "game_version",
+            "required": true,
+            "schema": {
+              "description": "which game's data: tbc or forever",
+              "enum": [
+                "tbc",
+                "forever"
+              ],
+              "title": "Game Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Vendor Check Item"
       }
     },
     "/api/versions": {

@@ -1,4 +1,6 @@
 import type { FlowNode, ProfessionRank, RankResult, StrategyOut } from '../api/client'
+import type { Source } from '../api/queries'
+import { formatMoney } from './money'
 import { formatCoords } from './time'
 
 /*
@@ -6,29 +8,69 @@ import { formatCoords } from './time'
  * the cheapest climb up the profession that starts with the recipe, until the climb goes on with another).
  */
 
-/** The skill workspace's strategy cards (the server's `STRATEGIES`): each one's name and what it plans for. */
+/** What a minute of the climber's time is worth, in copper (a craft is worth the time it takes), and the least chance
+ * of a point a run crafts at, unless nothing gives one that often: the recommended strategy's (the engine's
+ * `TIME_VALUE` and `MIN_CHANCE`). */
+export const TIME_VALUE = 500
+/** The most a minute may be worth in a custom strategy, in copper (the API's `MAX_TIME_VALUE`: more is a 422). */
+export const MAX_TIME_VALUE = 1_000_000
+export const MIN_CHANCE = 0.1
+
+/** What a climb is planned with (the server's custom strategy): the sources its recipes may be taught by, what a
+ * minute of the climber's time is worth in copper, and the least chance of a point a run crafts at. */
+export type StrategySettings = { sources: Source[]; timeValue: number; minChance: number }
+
+/** A built-in strategy's settings, with the search's `sources` (the strategy without patterns: trainers alone). */
+export function strategySettings(key: Exclude<StrategyOut['key'], 'custom'>, sources: Source[]): StrategySettings {
+  if (key === 'cheapest') return { sources, timeValue: 0, minChance: 0 }
+  if (key === 'no_patterns') return { sources: ['trainer'], timeValue: TIME_VALUE, minChance: MIN_CHANCE }
+  return { sources, timeValue: TIME_VALUE, minChance: MIN_CHANCE }
+}
+
+/** Whether two settings plan the same climb (the sources in any order). */
+export function sameSettings(a: StrategySettings, b: StrategySettings): boolean {
+  const sorted = (s: Source[]) => [...new Set(s)].sort().join()
+  return (
+    sorted(a.sources) === sorted(b.sources) && a.timeValue === b.timeValue && Math.abs(a.minChance - b.minChance) < 1e-9
+  )
+}
+
+const SOURCE_WORDS: Record<Source, string> = {
+  trainer: 'the trainer',
+  recipe: 'patterns you can buy',
+  bop: 'bind on pickup patterns',
+}
+
+/** What a strategy plans for, in words: where its recipes come from, what the climber's time is worth, and the
+ * cutoff for slow points. */
+export function customDetail({ sources, timeValue, minChance }: StrategySettings): string[] {
+  const words = (['trainer', 'recipe', 'bop'] as const).filter((s) => sources.includes(s)).map((s) => SOURCE_WORDS[s])
+  const from =
+    words.length === 3
+      ? 'all sources'
+      : words.length <= 1
+        ? (words[0] ?? 'nowhere')
+        : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`
+  const percent = Math.round(minChance * 100)
+  return [
+    `Uses recipes from ${from}`,
+    timeValue ? `Values your time at ${formatMoney(timeValue)} per minute` : 'Time taken does not matter, only gold',
+    percent
+      ? `Avoid crafts with <${percent}% chance of a skill point`
+      : 'No cutoff for recipes with a low chance of a skill point',
+  ]
+}
+
+/** What teaches the built-in strategies' recipes, where they don't say otherwise: trainers and patterns you can buy. */
+export const BUILT_IN_SOURCES: Source[] = ['trainer', 'recipe']
+
+/** The skill workspace's strategy cards (the server's `STRATEGIES`, and the user's own): each one's name and what
+ * it plans for, in the words a custom strategy's settings get (`customDetail`; the custom one's from its own). */
 export const STRATEGY_LABELS: Record<StrategyOut['key'], { name: string; detail: string[] }> = {
-  recommended: {
-    name: 'Recommended',
-    detail: [
-      'Uses recipes from both the trainer and from patterns you can buy',
-      'Avoids grinding 50+ crafts on the last few skill points of a near-trivial recipe',
-    ],
-  },
-  cheapest: {
-    name: 'Cheapest',
-    detail: [
-      'Uses recipes from both the trainer and from patterns you can buy',
-      'Always pick the cheapest option, even if it means grinding a near-trivial recipe',
-    ],
-  },
-  no_patterns: {
-    name: 'Trainer only',
-    detail: [
-      'Exclusively use recipes taught by trainers',
-      'Avoids grinding 50+ crafts on the last few skill points of a near-trivial recipe',
-    ],
-  },
+  recommended: { name: 'Recommended', detail: customDetail(strategySettings('recommended', BUILT_IN_SOURCES)) },
+  cheapest: { name: 'Cheapest', detail: customDetail(strategySettings('cheapest', BUILT_IN_SOURCES)) },
+  no_patterns: { name: 'Trainer only', detail: customDetail(strategySettings('no_patterns', BUILT_IN_SOURCES)) },
+  custom: { name: 'Custom', detail: [] },
 }
 
 /** What an expected skill point costs in copper (negative when the run earns gold); null when it gives none. */
@@ -71,11 +113,12 @@ export function craftUntil(r: Count): string {
   return r.stop_skill ? `${r.stop_skill} (${crafts})` : crafts
 }
 
-/** The default chance, in percent, that the crafts a run's checklist buys for reach its skill. */
-export const DEFAULT_REACH_TARGET = 75
-/** The most the user may ask for (the server's odds go at least this far). */
-export const MAX_REACH_TARGET = 95
-export const MIN_REACH_TARGET = 50
+/** Whether the climber must learn a run's recipe first. */
+export const mustLearn = (r: Pick<RankResult, 'crafter' | 'crafters'>): boolean =>
+  !!r.crafter && !r.crafters.includes(r.crafter)
+
+/** The chance, in percent, that the crafts a run's checklist buys for reach its skill: four times in five. */
+export const REACH_TARGET = 80
 
 /** The crafts to buy for so that a run reaches its `stop_skill` with at least `target` percent chance: never fewer
  * than its expected crafts; when the odds the server sent never get there, as many as they go to (without them, the

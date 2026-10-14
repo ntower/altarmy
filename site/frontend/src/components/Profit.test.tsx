@@ -150,6 +150,31 @@ describe('ProfitPage', () => {
     expect(await screen.findByRole('group', { name: "What's your goal?" })).toBeInTheDocument()
   })
 
+  it('shows the vendor check at its path, with nothing of the start, and no redirect', async () => {
+    navigate('/profit/vendorcheck')
+    const fetch = mockApi({
+      '/api/status': status(),
+      '/api/characters': characters,
+      '/api/vendorcheck': {
+        realm: 'Classic Beta PvE',
+        faction: 'Horde',
+        items: [],
+        total: 0,
+        listed: 0,
+        page: 1,
+        page_size: 50,
+        classes: [],
+        qualities: [],
+      },
+    })
+    renderWithProviders(<ProfitPage />)
+    expect(await screen.findByRole('heading', { name: 'Vendor check' })).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/profit/vendorcheck')
+    expect(cards()).not.toBeInTheDocument()
+    expect(hero()).not.toBeInTheDocument()
+    expect(paths(fetch, '/api/rank')).toEqual([])
+  })
+
   it('uploads pasted characters, then shows them above the search', async () => {
     let have = false
     const fetch = mockApi({

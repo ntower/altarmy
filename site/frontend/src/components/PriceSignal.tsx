@@ -10,7 +10,7 @@ import { watchPriceSignal } from '../lib/signals'
  * Keeps the Profit page's prices live: listens to the selected auction house's price signal and refetches the
  * status when the server's price version passes the one shown (which refetches every price-dependent query, keyed
  * on it). Whenever the shown version moves on for the same auction house, by a signal or the status poll, it says
- * so. Renders nothing.
+ * so and marks every cached ranking stale. Renders nothing.
  */
 export function PriceSignal() {
   const status = useStatus().data
@@ -35,13 +35,16 @@ export function PriceSignal() {
     const before = last.current
     last.current = { ah, version: shown }
     if (before && before.ah === ah && before.version !== null && shown !== null && shown > before.version) {
+      // Every cached ranking is stale now, but none is refetched here: the live ones are keyed on the version, and a
+      // list held at its prices (the skill workspace) waits for its Refresh. A ranking asked for again is fetched anew.
+      void queryClient.invalidateQueries({ queryKey: ['rank'], refetchType: 'none' })
       notifications.show({
         id: 'prices-updated', // one notice however many updates arrive
         title: 'Prices updated',
         message: `New auction house prices for ${where}: the results were refreshed.`,
       })
     }
-  }, [ah, shown, where])
+  }, [ah, shown, where, queryClient])
 
   return null
 }

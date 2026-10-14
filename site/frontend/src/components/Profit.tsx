@@ -26,6 +26,7 @@ import { PasteForm } from './PasteForm'
 import { SearchTab } from './SearchTab'
 import { AimQuestion } from './Setup'
 import { type CardSpec, type Phase, StartCard } from './StartCard'
+import { VendorCheck } from './VendorCheck'
 
 type CardKey = 'import' | 'auto' | 'browse'
 
@@ -291,6 +292,9 @@ export function ProfitPage() {
       }.`,
     })
   }
+
+  // The vendor check is its own page under /profit, reached by its path alone: none of the start or search below.
+  if (view?.kind === 'vendorcheck') return <VendorCheck />
 
   // The strip, or the start cards while one is open (or nothing is started): beside the realm card past the start,
   // taking the whole width while open.

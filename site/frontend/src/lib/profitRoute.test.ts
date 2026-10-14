@@ -18,6 +18,7 @@ describe('the Profit page paths', () => {
     expect(parseProfitPath('/profit/')).toEqual({ kind: 'start' })
     expect(parseProfitPath('/profit/gold')).toEqual({ kind: 'gold' })
     expect(parseProfitPath('/profit/skill')).toEqual({ kind: 'skill' })
+    expect(parseProfitPath('/profit/vendorcheck')).toEqual({ kind: 'vendorcheck' })
     expect(parseProfitPath('/profit/skill/dreamscythe-horde/Frell/first-aid')).toEqual({
       kind: 'run',
       realm: 'dreamscythe-horde',
@@ -37,6 +38,7 @@ describe('the Profit page paths', () => {
     for (const path of [
       '/profit/nope',
       '/profit/gold/x',
+      '/profit/vendorcheck/x',
       '/profit/skill/r/c',
       '/profit/skill/r//p',
       '/profit/skill/r/%E0/p',
@@ -51,6 +53,7 @@ describe('the Profit page paths', () => {
       { kind: 'start' },
       { kind: 'gold' },
       { kind: 'skill' },
+      { kind: 'vendorcheck' },
       { kind: 'run', realm: 'classic-beta-pve-horde', character: 'Ëlf Guy', profession: 'tailoring' },
       { kind: 'hypothetical', realm: 'classic-beta-pve-horde', profession: 'first-aid', skill: 120 },
     ]

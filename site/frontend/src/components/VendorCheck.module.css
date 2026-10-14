@@ -1,0 +1,57 @@
+/* The item cell: its icon beside the name, the subclass under it. */
+.item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  flex: none;
+}
+
+/* Coins never broken between them. */
+.figure {
+  white-space: nowrap;
+}
+
+/* Sortable column headers: the arrow shows faintly until its column is the sort. */
+.sort {
+  font-weight: inherit;
+  white-space: nowrap;
+}
+
+.arrow {
+  margin-left: 4px;
+  font-size: 0.7em;
+  opacity: 0.25;
+}
+
+.arrow[data-active] {
+  opacity: 1;
+}
+
+/* A row opens into its order book on a click. */
+.row {
+  cursor: pointer;
+}
+
+.row[data-open] {
+  background-color: var(--mantine-color-default-hover);
+}
+
+.name {
+  text-align: left;
+}
+
+/* The opened row: plain, not hover-highlighted. */
+tr.detailsRow,
+tr.detailsRow:hover {
+  background-color: transparent;
+}
+
+.details {
+  padding: 8px 4px 16px;
+}

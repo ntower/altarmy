@@ -1,5 +1,7 @@
 import { Notifications, notifications } from '@mantine/notifications'
+import { type QueryClient, useQueryClient } from '@tanstack/react-query'
 import { act, screen, waitFor } from '@testing-library/react'
+import { useEffect } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { status } from '../test/status'
 import { mockApi, renderWithProviders } from '../test/utils'
@@ -49,6 +51,35 @@ describe('PriceSignal', () => {
     await waitFor(() => expect(statusCalls(fetch)).toBe(2))
     expect(await screen.findByText('Prices updated')).toBeInTheDocument()
     expect(screen.getByText(/New auction house prices for Classic Beta PvE \(Horde\)/)).toBeInTheDocument()
+  })
+
+  it('marks every cached ranking stale when new prices come, refetching none', async () => {
+    let version = 3
+    const fetch = mockApi({ '/api/status': () => status({ price_version: version }) })
+    let client: QueryClient | undefined
+    function Probe() {
+      const found = useQueryClient()
+      useEffect(() => {
+        client = found
+      }, [found])
+      return null
+    }
+    renderWithProviders(
+      <>
+        <Notifications />
+        <PriceSignal />
+        <Probe />
+      </>,
+    )
+    await waitFor(() => expect(listeners.has(1)).toBe(true))
+    client?.setQueryData(['rank', 'forever', '1.3', { held: true }], { results: [] })
+    const ranking = () => client?.getQueryCache().find({ queryKey: ['rank', 'forever', '1.3', { held: true }] })
+    expect(ranking()?.state.isInvalidated).toBe(false)
+
+    version = 4
+    act(() => listeners.get(1)?.(4))
+    await waitFor(() => expect(ranking()?.state.isInvalidated).toBe(true))
+    expect(fetch.mock.calls.filter(([r]) => new URL(r.url).pathname === '/api/rank')).toHaveLength(0)
   })
 
   it('says nothing when another realm is selected', async () => {

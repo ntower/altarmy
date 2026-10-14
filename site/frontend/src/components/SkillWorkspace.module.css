@@ -1,5 +1,5 @@
-/* The skill workspace's overview: the run to craft now, centred with the chain of runs after it hung below, or the
-   best few options side by side with the chain still under the one it follows. */
+/* The skill workspace's overview: the strategy's whole climb as a table under its summary, or the strategies'
+   summaries side by side as cards that pick them. */
 
 /* Reset to recommended, once another strategy was picked: at the right (centred on a narrow screen). */
 .heading {
@@ -13,8 +13,8 @@
   }
 }
 
-/* One option: centred, the link to the others beside its summary table (under it on a narrow screen), the chain in
-   the rows below. */
+/* One strategy: its summary table centred, the link to the others beside it (under it on a narrow screen), its
+   climb's table in the row below. */
 .single {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -30,12 +30,11 @@
     grid-template-columns: minmax(0, 1fr) minmax(0, 300px) minmax(0, 1fr);
   }
 
-  .now,
   .single > .milestones {
     grid-column: 2;
   }
 
-  /* beside the summary table over the card */
+  /* beside the summary over the table */
   .more {
     grid-row: 1;
     grid-column: 3;
@@ -43,19 +42,10 @@
     align-self: center;
   }
 
-  /* the chain and a run opened out take the whole row, the chain's cards (`.link`) keeping the column's width */
-  .single > .chain,
-  .nowOpen {
+  /* the climb's table takes the whole row */
+  .single > .ladder {
     grid-column: 1 / -1;
   }
-}
-
-/* A run of the chain in the single column: as wide as the card above it, centred. */
-.single .link,
-.departing[data-single] .link {
-  width: 100%;
-  max-width: 300px;
-  align-self: center;
 }
 
 /* The swap button holds still when pressed (Mantine nudges a pressed button down a pixel). */
@@ -63,7 +53,8 @@
   transform: none;
 }
 
-/* The options side by side: each option's chain under it (`--column`), in the row below. */
+/* The strategies' summaries side by side (`--column`), as cards of one height: three, or four with the user's own
+   first. */
 .options {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -75,31 +66,59 @@
     grid-template-columns: repeat(var(--options), minmax(0, 1fr));
   }
 
-  /* each option's column: what its climb comes to by each rank, its card, its chain */
   .options > .milestones {
     grid-row: 1;
     grid-column: var(--column);
   }
-
-  .options > .option {
-    grid-row: 2;
-    grid-column: var(--column);
-  }
-
-  .options > .chain {
-    grid-row: 3;
-    grid-column: var(--column);
-  }
 }
 
-/* An option's card in its cell, stretched to the row's height as the grid stretches the cell. */
-.option {
+/* A strategy's card side by side, as tall as the row, Customize under it. */
+.options > .milestones,
+.customizing > .milestones {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.choice,
+.card {
+  flex: 1;
+}
+
+.customize {
+  align-self: center;
+}
+
+/* A strategy being customized: the one it started from and the one being made side by side, its settings under
+   them. */
+.customizing {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--mantine-spacing-sm);
 }
 
-/* Over a strategy's card: its name and what its climb comes to by each rank, from the top of its row, so the
-   names line up across the columns. */
-.milestones {
+@media (min-width: 48em) {
+  .customizing {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .customizing > .milestones {
+    grid-row: 1;
+    grid-column: var(--column);
+  }
+
+  .customizing > .customizeForm {
+    grid-column: 1 / -1;
+  }
+}
+
+.customizeForm {
+  max-width: 36rem;
+}
+
+/* A strategy's summary: its name and what its climb comes to by each rank, from the top of its card, so the names
+   line up across the columns. */
+.summary {
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
@@ -159,125 +178,36 @@
   padding: 0 var(--mantine-spacing-sm) 0 0;
 }
 
+/* A rank the climb never reaches: "Unreachable" at the row's right, out of the flow so it sizes no column (the
+   cell keeps a line's height with a non-breaking space). */
+.milestoneTable td.unreachable {
+  position: relative;
+  color: var(--mantine-color-dimmed);
+}
+
+.milestoneTable td.unreachable > span {
+  position: absolute;
+  right: 0;
+  white-space: nowrap;
+}
+
 .milestoneTable td.milestoneNote {
   font-size: var(--mantine-font-size-xs);
   color: var(--mantine-color-dimmed);
   text-align: left;
 }
 
-.chain {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  transition: opacity 200ms ease;
-}
-
-.chain[data-muted] {
-  opacity: 0.4;
-}
-
-/* Side by side, the next run alone: its card fades from partly faded at its top to nothing at its bottom. */
-.chain[data-preview] {
-  opacity: 1;
-}
-
-.chain[data-preview] article {
-  mask-image: linear-gradient(to bottom, rgb(0 0 0 / 0.4), transparent);
-}
-
-.chainMore {
-  align-self: center;
-}
-
-.arrow {
-  align-self: center;
-  color: var(--mantine-color-dimmed);
-}
-
-/* An arrow, centred, with the skill the next run starts at beside it. */
-.step {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  column-gap: var(--mantine-spacing-xs);
-}
-
-.step > .arrow {
-  grid-column: 2;
-}
-
-.at {
-  grid-column: 3;
-}
-
-/* A run's card in the single column with the reminders to train the next profession rank (`.train`) above it. */
-.trained {
-  display: flex;
-  flex-direction: column;
-  gap: var(--mantine-spacing-xs);
-}
-
-/* With room beside the centred card and its chain, the reminders hang to the left of the card. */
-@media (min-width: 62em) {
-  .single .trained {
-    position: relative;
-  }
-
-  /* not the reminders inside a run opened out */
-  .single .trained > .train {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    right: calc(100% + var(--mantine-spacing-md));
-    width: 240px;
-  }
-}
-
-/* A run opened out in place of its card: centred, at most 80% of the widest the page gets (`Container size="xl"`, 82.5rem, less its
-   padding), so it narrows only once the page is narrower than that. `width`: in the Stack's flex column, auto
-   margins would otherwise shrink it to its content. */
-.opened {
-  width: 100%;
-  max-width: calc(0.8 * (82.5rem - 2 * var(--mantine-spacing-md)));
-  margin-inline: auto;
-}
-
-/* An option card that opens or picks on a click: lit on hover. */
-.lit {
+/* A strategy's card side by side: picks it on a click, lit on hover. */
+.choice {
+  cursor: pointer;
   transition:
     background-color 150ms ease,
     border-color 150ms ease;
 }
 
-.lit:hover {
+.choice:hover {
   background-color: var(--mantine-color-default-hover);
   border-color: var(--mantine-primary-color-filled);
-}
-
-/* A card that opens out on a click (the single column) also grows a little on hover; one a click only picks
-   doesn't. On the card itself, not the Motion wrapper whose transform carries the layout animations. */
-.grow {
-  transition:
-    background-color 150ms ease,
-    border-color 150ms ease,
-    transform 150ms ease;
-}
-
-.grow:hover {
-  transform: scale(1.03);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .grow:hover {
-    transform: none;
-  }
-}
-
-
-/* A chain fading out where it was after another run was picked, laid over the options. */
-.departing {
-  position: absolute;
-  pointer-events: none;
 }
 
 /* The talent sliders over the strategies: side by side, centred, each a fixed width. */

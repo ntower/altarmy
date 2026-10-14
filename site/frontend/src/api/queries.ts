@@ -57,6 +57,56 @@ export function useCharacters() {
   })
 }
 
+/** Which page of the vendor check to ask for: item classes and qualities left out, the column and order. */
+export type VendorCheckParams = {
+  hideClasses: readonly number[]
+  hideQualities: readonly number[]
+  sort: 'item' | 'type' | 'ah_price' | 'vendor' | 'difference' | 'percent'
+  descending: boolean
+  page: number
+}
+
+/** One page of the vendor check, filtered, sorted and paged by the server; new prices refetch it, and the page shown
+ * stays until the next one comes. */
+export function useVendorCheck(params: VendorCheckParams) {
+  const version = useDataVersion()
+  return useQuery({
+    queryKey: ['vendorcheck', GAME_VERSION, version, params],
+    queryFn: () =>
+      call(
+        client.GET('/api/vendorcheck', {
+          params: {
+            query: {
+              game_version: GAME_VERSION,
+              hide_classes: params.hideClasses.length ? [...params.hideClasses] : undefined,
+              hide_qualities: params.hideQualities.length ? [...params.hideQualities] : undefined,
+              sort: params.sort,
+              order: params.descending ? 'desc' : 'asc',
+              page: params.page,
+            },
+          },
+        }),
+      ),
+    enabled: version !== undefined,
+    placeholderData: keepPreviousData,
+  })
+}
+
+/** One item as the selected auction house has it, every price level included (an opened vendor check row). */
+export function useVendorCheckItem(itemId: number) {
+  const version = useDataVersion()
+  return useQuery({
+    queryKey: ['vendorcheck-item', GAME_VERSION, version, itemId],
+    queryFn: () =>
+      call(
+        client.GET('/api/vendorcheck/items/{item_id}', {
+          params: { path: { item_id: itemId }, query: { game_version: GAME_VERSION } },
+        }),
+      ),
+    enabled: version !== undefined,
+  })
+}
+
 /** Every profession that has recipes in this game version, by name (game data: it changes only with an update). */
 export function useProfessions() {
   return useQuery({
@@ -92,6 +142,9 @@ export const ALL_SOURCES: readonly Source[] = ['trainer', 'recipe', 'bop']
 export const MAX_LOOK_AHEAD = 50
 
 /** `/api/rank` parameters: money in copper, ROI as a fraction (0.5 = 50%), `null` for no bound. */
+/** A chain length more runs than any climb has (at most one a skill point): the whole climb. */
+export const WHOLE_CHAIN = 1000
+
 export type RankParams = {
   unlearned: Unlearned
   /** recipes to train: how much more skill than a character has one may need (0: what they can train now) */
@@ -125,13 +178,18 @@ export type RankParams = {
   runs: boolean
   /** items the user gathers themselves: had for what selling them would make, instead of bought */
   gathered?: number[]
-  /** skilling up a run: the runs `chain` may hold; unset for the API's default (`CHAIN`) */
+  /** skilling up a run: the runs `chain` may hold (`WHOLE_CHAIN` for all of them); unset for the API's default
+   * (`CHAIN`) */
   chainLength?: number
   /** skilling up a character nobody uploaded: the one name in `skillCrafters` is them, with the one profession in
    * `professions` at this skill (knowing what comes with it and what its trainers teach up to there) */
   climberSkill?: number
   /** skilling up: how the climb is planned (the skill workspace's strategy cards); unset: recommended */
   strategy?: Strategy
+  /** with the custom strategy: what a minute of the climber's time is worth in copper (a craft is worth the time it
+   * takes), and the least chance of a point a run crafts at (unset: the recommended strategy's) */
+  timeValue?: number
+  minChance?: number
   /** skilling up one character: plan as if they had Working Overtime and Bartering at these ranks (unset: as
    * uploaded) */
   workingOvertime?: number
@@ -210,6 +268,8 @@ export function useRank(
               chain_length: params.chainLength,
               climber_skill: params.climberSkill,
               strategy: params.strategy === 'recommended' ? undefined : params.strategy,
+              time_value: params.strategy === 'custom' ? params.timeValue : undefined,
+              min_chance: params.strategy === 'custom' ? params.minChance : undefined,
               working_overtime: params.workingOvertime,
               bartering: params.bartering,
               master_chef: params.masterChef,
@@ -221,8 +281,13 @@ export function useRank(
       ),
     enabled: enabled && version !== undefined,
     placeholderData: keepPreviousData,
+    // settings stepped back to soon after find their ranking cached; new prices mark it stale at once (`PriceSignal`)
+    staleTime: RANK_STALE_MS,
   })
 }
+
+/** How long a ranking is reused without asking again (unless new prices come first). */
+export const RANK_STALE_MS = 2 * 60_000
 
 /** What `/api/evaluate` needs besides the choices: the search's settings, and the data version its results
  * came from (so a sync re-costs the user's changed plans too). */
@@ -237,6 +302,8 @@ export type EvaluateParams = Pick<
   | 'arcaneSalvager'
   | 'climberSkill'
   | 'strategy'
+  | 'timeValue'
+  | 'minChance'
   | 'workingOvertime'
   | 'bartering'
   | 'masterChef'
@@ -301,7 +368,7 @@ export function useEvaluations(
  * until they move: never stale. */
 function sessionPlanQuery(
   recipeId: number,
-  { unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, runs, gathered, version, chain, climberSkill, strategy, workingOvertime, bartering, masterChef }: EvaluateParams,
+  { unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, runs, gathered, version, chain, climberSkill, strategy, timeValue, minChance, workingOvertime, bartering, masterChef }: EvaluateParams,
   choices: Choices | undefined,
   copies: number | null,
   city: string | null,
@@ -310,7 +377,7 @@ function sessionPlanQuery(
 ) {
   return {
     // under 'evaluate', so whatever re-costs plans (time settings, AH blocks) re-plans sessions too
-    queryKey: ['evaluate', GAME_VERSION, version, recipeId, unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, runs, gathered, choices ?? {}, 'session', copies, city, crafter, chain ?? null, climberSkill ?? null, strategy ?? null, workingOvertime ?? null, bartering ?? null, masterChef ?? null],
+    queryKey: ['evaluate', GAME_VERSION, version, recipeId, unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, runs, gathered, choices ?? {}, 'session', copies, city, crafter, chain ?? null, climberSkill ?? null, strategy ?? null, strategy === 'custom' ? [timeValue ?? null, minChance ?? null] : null, workingOvertime ?? null, bartering ?? null, masterChef ?? null],
     queryFn: () =>
       call(
         client.POST('/api/evaluate', {
@@ -335,6 +402,8 @@ function sessionPlanQuery(
             price_version: priceVersion,
             climber_skill: climberSkill,
             strategy: strategy ?? 'recommended',
+            time_value: strategy === 'custom' ? timeValue : undefined,
+            min_chance: strategy === 'custom' ? minChance : undefined,
             working_overtime: workingOvertime,
             bartering,
             master_chef: masterChef,

@@ -997,7 +997,7 @@ def test_a_strategy_starts_with_the_first_run_of_its_cheapest_climb() -> None:
         ranked[0].climb_cost,
     )
     # copper alone: a craft is worth nothing, so the climb is chosen by less
-    cheapest = start_of(base, who, run=engine.SkillRuns(craft_value=0.0))
+    cheapest = start_of(base, who, run=engine.SkillRuns(time_value=0.0))
     assert cheapest is not None and cheapest.climb_cost is not None and got.climb_cost is not None
     assert cheapest.climb_cost < got.climb_cost
 

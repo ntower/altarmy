@@ -1016,13 +1016,23 @@ def _recipe(i: int, low: int, high: int) -> Recipe:
     return Recipe(i, f"R{i}", 100 + i, 1, ((COPPER, 1),), "Blacksmithing", trivial_low=low, trivial_high=high)
 
 
+def _per_craft(copper: float) -> float:
+    """The time value that makes a craft of these recipes (no cast: `engine.CRAFT_OVERHEAD` a craft) worth
+    `copper`."""
+    return copper * 60 / engine.CRAFT_OVERHEAD
+
+
+# 50c a craft of these recipes: what the climbs below were written for
+BALANCED = _per_craft(50.0)
+
+
 def _climb(
     crafter: Crafter,
     *candidates: engine.Candidate,
-    craft_value: float = engine.CRAFT_VALUE,
+    time_value: float = BALANCED,
     min_chance: float = engine.MIN_CHANCE,
 ) -> engine.Climb:
-    return engine.plan_climb(crafter, "Blacksmithing", candidates, craft_value, min_chance)
+    return engine.plan_climb(crafter, "Blacksmithing", candidates, time_value, min_chance)
 
 
 def _route(plan: engine.ClimbPlan | None) -> list[tuple[str, int, int]]:
@@ -1052,7 +1062,7 @@ def _brute_cost(
     candidates: Sequence[engine.Candidate],
     start: int,
     end: int,
-    craft_value: float,
+    time_value: float,
     min_chance: float = 0.0,
 ) -> float:
     """The cheapest climb from `start` to `end` found by trying every recipe at every level: each stretch of
@@ -1080,9 +1090,10 @@ def _brute_cost(
                 break
             crafts = sum(1 / p for p in chances)
             spread = math.sqrt(sum((1 - p) / p**2 for p in chances))
-            effort = sum(craft_value * (1 / p - 1) ** 2 for p in chances)
+            worth = engine.craft_value(c.recipe, time_value)
+            effort = sum(worth * (1 / p - 1) ** 2 for p in chances)
             total += (
-                (c.cost + craft_value) * crafts
+                (c.cost + worth) * crafts
                 + max(c.cost, 0.0) * engine.SPARE_Z * spread
                 + effort
                 + (c.learn or 0)
@@ -1104,30 +1115,30 @@ def test_a_climb_switches_once_a_recipe_falls_behind_and_never_back() -> None:
     pants = engine.Candidate(
         Recipe(2, "Pants", 102, 1, (), "Blacksmithing", trivial_low=75, trivial_high=115), 160.0
     )
-    route = _route(_climb(_smith(84), belt, pants, craft_value=0).best)
+    route = _route(_climb(_smith(84), belt, pants, time_value=0).best)
     assert [name for name, _, _ in route] == ["Belt", "Pants"]
     (_, start, switch), (_, again, end) = route
     assert (start, end) == (84, 115) and switch == again and 90 <= switch <= 100
     # pants at 121 give the cheaper point from 87, and three points of belt don't pay for a run's spares
     dear = replace(pants, cost=121.0)
-    assert [name for name, _, _ in _route(_climb(_smith(84), belt, dear, craft_value=0).best)] == ["Pants"]
+    assert [name for name, _, _ in _route(_climb(_smith(84), belt, dear, time_value=0).best)] == ["Pants"]
     # counting what a craft is worth to the climber, the pants' surer points win from the start
     assert [name for name, _, _ in _route(_climb(_smith(84), belt, pants).best)] == ["Pants"]
 
 
 @pytest.mark.parametrize("min_chance", [0.0, engine.MIN_CHANCE, 0.5])
-@pytest.mark.parametrize("craft_value", [0.0, engine.CRAFT_VALUE, 200.0])
-def test_a_climb_is_the_cheapest_way_up(craft_value: float, min_chance: float) -> None:
+@pytest.mark.parametrize("time_value", [0.0, BALANCED, _per_craft(200.0)])
+def test_a_climb_is_the_cheapest_way_up(time_value: float, min_chance: float) -> None:
     # every way of crafting four recipes level by level, against the plan (one that earns, at its real cost)
     a = engine.Candidate(_recipe(1, 30, 50), 100.0)
     b = engine.Candidate(_recipe(2, 38, 46), 120.0)
     c = engine.Candidate(_recipe(3, 42, 60), 160.0, from_skill=36, learn=200)
     d = engine.Candidate(_recipe(4, 35, 44), -300.0)
     smith = _smith(32, cap=41)
-    best = _climb(smith, a, b, c, d, craft_value=craft_value, min_chance=min_chance).best
+    best = _climb(smith, a, b, c, d, time_value=time_value, min_chance=min_chance).best
     assert best is not None
     assert _route(best)[0][1] == 32 and _route(best)[-1][2] == 41
-    assert best.cost == pytest.approx(_brute_cost(smith, (a, b, c, d), 32, 41, craft_value, min_chance))
+    assert best.cost == pytest.approx(_brute_cost(smith, (a, b, c, d), 32, 41, time_value, min_chance))
 
 
 def test_a_short_detour_must_pay_for_the_spare_materials_it_adds() -> None:
@@ -1276,7 +1287,7 @@ def test_a_craft_that_pays_counts_at_its_real_cost_but_the_cutoff_ends_its_grind
         Recipe(2, "Cod", 102, 1, (), "Cooking", trivial_low=190, trivial_high=230), 8.0, from_skill=175
     )
     cook = Crafter("Cook", (("Cooking", 110, 200),), frozenset())
-    plan = engine.plan_climb(cook, "Cooking", (venison, cod)).best
+    plan = engine.plan_climb(cook, "Cooking", (venison, cod), BALANCED).best
     assert plan is not None
     (_, _, switch), *_ = _route(plan)
     assert _route(plan)[0][0] == "Venison" and switch < 187
@@ -1298,9 +1309,9 @@ def test_spares_are_bought_for_a_craft_that_costs_and_none_for_one_that_earns() 
     spread = math.sqrt(
         sum((1 - (p := engine._chance_at(costs.recipe, smith, s))) / p**2 for s in range(30, 50))
     )
-    plan = _climb(_smith(30, cap=50), costs, craft_value=0).best
+    plan = _climb(_smith(30, cap=50), costs, time_value=0).best
     assert plan is not None and plan.cost == pytest.approx(20.0 * expected + 20.0 * engine.SPARE_Z * spread)
-    plan = _climb(_smith(30, cap=50), earns, craft_value=0).best
+    plan = _climb(_smith(30, cap=50), earns, time_value=0).best
     assert plan is not None and plan.cost == pytest.approx(-100.0 * expected)
 
 
@@ -1313,18 +1324,30 @@ def test_an_unused_candidate_never_moves_the_plan() -> None:
     assert _route(_climb(_smith(30), a, b).best) == _route(_climb(_smith(30), a, b, ghost).best)
 
 
-def test_a_higher_craft_value_trades_copper_for_fewer_crafts() -> None:
+def test_a_long_cast_costs_more_of_the_climbers_time() -> None:
+    # two recipes alike in all but their casts: the 3s one costs a little more in copper, the 60s one more
+    # of the climber's time
+    quick = engine.Candidate(replace(_recipe(1, 40, 60), cast_time_ms=3000), 12.0)
+    slow = engine.Candidate(replace(_recipe(2, 40, 60), id=2, cast_time_ms=60_000), 10.0)
+    assert engine.craft_seconds(quick.recipe) == 3.5
+    assert engine.craft_value(slow.recipe, 600.0) == pytest.approx(605.0)  # 60.5s at 6s a minute
+    assert [n for n, _, _ in _route(_climb(_smith(30), quick, slow, time_value=0).best)] == ["R2"]
+    # 1s a minute: the slow one's craft is 1s 1c of time, the quick one's 6c
+    assert [n for n, _, _ in _route(_climb(_smith(30), quick, slow, time_value=100.0).best)] == ["R1"]
+
+
+def test_a_higher_time_value_trades_copper_for_fewer_crafts() -> None:
     a = engine.Candidate(_recipe(1, 40, 60), 10.0)
     b = engine.Candidate(_recipe(2, 50, 90), 200.0)
 
     def crafts_and_copper(value: float) -> tuple[int, float]:
-        plan = _climb(_smith(45), a, b, craft_value=value).best
+        plan = _climb(_smith(45), a, b, time_value=value).best
         assert plan is not None
         spent = plan.spent_by(plan.runs[-1].stop_skill)
         assert spent is not None
         return sum(r.crafts for r in plan.runs), spent[0]
 
-    cheapest, balanced, fewest = (crafts_and_copper(v) for v in (0.0, engine.CRAFT_VALUE, 200.0))
+    cheapest, balanced, fewest = (crafts_and_copper(v) for v in (0.0, BALANCED, _per_craft(200.0)))
     assert cheapest[0] >= balanced[0] >= fewest[0] and cheapest[0] > fewest[0]
     assert cheapest[1] <= balanced[1] <= fewest[1]
 
@@ -1352,7 +1375,7 @@ def test_a_long_run_buys_its_pattern_once() -> None:
     assert [(r.recipe and r.recipe.name, r.start_skill, r.stop_skill, r.reason) for r in plan.runs] == [
         ("R1", 0, 150, "cap"),
     ]
-    assert plan.cost == pytest.approx(150 * (1 + engine.CRAFT_VALUE) + 400)  # orange: no effort, no spares
+    assert plan.cost == pytest.approx(150 * (1 + 50.0) + 400)  # orange: no effort, no spares
 
 
 def test_useful_crafts_are_those_for_every_point_a_recipe_can_give() -> None:
@@ -1487,7 +1510,7 @@ def test_a_ranking_of_runs_plans_each_as_the_first_run_of_the_cheapest_climb() -
         exits=frozenset({"vendor", KEEP_EXIT}),
     )
     one = must_evaluate(m, GREY_AT_60)
-    run = m.evaluate(GREY_AT_60, skill_run=engine.SkillRuns())
+    run = m.evaluate(GREY_AT_60, skill_run=engine.SkillRuns(time_value=BALANCED))
     assert run is not None
     assert (run.stop_reason, run.overtaken_by, run.overtaken_by_item) == ("rival", "Copper Belt", 10)
     assert 1 < run.crafts < 20
@@ -1499,7 +1522,9 @@ def test_a_ranking_of_runs_plans_each_as_the_first_run_of_the_cheapest_climb() -
     ]
     assert run.climb_cost is not None and run.climb_unknown == 0
     assert one.crafts == 1 and one.climb_cost is None and one.climb_after == ()
-    ranked = {r.recipe.name: r for r in m.rank(min_profit=-(10**9), skill_run=engine.SkillRuns())}
+    ranked = {
+        r.recipe.name: r for r in m.rank(min_profit=-(10**9), skill_run=engine.SkillRuns(time_value=BALANCED))
+    }
     assert ranked["Heavy Copper Maul"].crafts == run.crafts  # the same plan as evaluated alone
     assert ranked["Heavy Copper Maul"].climb_cost == run.climb_cost
     belt_first = ranked["Copper Belt"].climb_cost
@@ -2688,7 +2713,7 @@ def test_markets_of_the_same_prices_share_their_climbs() -> None:
     climb = first._climb("Blacksmithing", smith, runs, {})
     assert second._climb("Blacksmithing", smith, runs, {}) is climb
     # so is another craft value
-    fewest = replace(runs, craft_value=200.0)
+    fewest = replace(runs, time_value=200.0)
     other = second._climb("Blacksmithing", smith, fewest, {})
     assert other is not climb and first._climb("Blacksmithing", smith, fewest, {}) is other
 
@@ -2718,7 +2743,7 @@ def test_the_climbs_inner_loop_costs_runs_as_a_run_costs_them() -> None:
             learn = rng.choice((0, 0, 0, 150.0, None))
             from_skill = rng.choice((0, 0, rng.randint(1, 60)))
             candidates.append(engine.Candidate(recipe, cost, from_skill, learn))
-        value = rng.choice((0.0, engine.CRAFT_VALUE, 200.0, 7.5))
+        value = rng.choice((0.0, engine.TIME_VALUE, 200.0, 7.5))
         cutoff = rng.choice((0.0, engine.MIN_CHANCE, 0.4))
         climb = engine.plan_climb(smith, "Blacksmithing", candidates, value, cutoff)
         for u in climb._usable:

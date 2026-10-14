@@ -4,11 +4,13 @@ search an auction house's prices."""
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, fields
+from datetime import datetime
 from pathlib import Path
+from typing import Any, Literal
 
-from sqlalchemy import Connection, delete, func, select
+from sqlalchemy import ColumnElement, Connection, Float, case, cast, delete, func, literal, select
 
 from . import db, itemstats, prices, schema, timing, versions
 from .altarmy import Character, Profession
@@ -228,6 +230,146 @@ def load_cities(folder: Path) -> dict[str, timing.CityMap]:
             raise ValueError(f"bad city preset {path.name}: {e}") from e
         out[city.name] = city
     return dict(sorted(out.items()))
+
+
+@dataclass(frozen=True)
+class ListedItem:
+    """An item an auction house lists now, with what a vendor pays for it (the vendor check)."""
+
+    id: int
+    name: str
+    quality: int
+    class_id: int
+    subclass_name: str | None
+    icon: str | None
+    sell_price: int  # what a vendor pays a unit; 0: no vendor buys it
+    ah_price: int  # the cheapest listing, a unit
+    ah_quantity: int | None  # units listed; None: unknown (a hand-set price)
+    seen_at: datetime | None
+
+
+# Item class names by ItemClass id, for sorting the vendor check by type (the front end's `ITEM_CLASS_NAMES`).
+ITEM_CLASS_NAMES = {
+    0: "Consumable",
+    1: "Container",
+    2: "Weapon",
+    3: "Gem",
+    4: "Armor",
+    5: "Reagent",
+    6: "Projectile",
+    7: "Trade Goods",
+    8: "Generic",
+    9: "Recipe",
+    10: "Money",
+    11: "Quiver",
+    12: "Quest",
+    13: "Key",
+    14: "Permanent",
+    15: "Miscellaneous",
+    16: "Glyph",
+}
+
+ListedSort = Literal["item", "type", "ah_price", "vendor", "difference", "percent"]
+
+
+@dataclass(frozen=True)
+class ListedPage:
+    """One page of what an auction house lists now (`load_listed`)."""
+
+    items: list[ListedItem]
+    total: int  # the items the filters keep
+    listed: int  # every item listed
+    classes: list[int]  # the item classes among everything listed, ascending (what there is to filter by)
+    qualities: list[int]
+
+
+def load_listed(
+    conn: Connection,
+    game_version: str,
+    auction_house_id: int | None,
+    *,
+    first_party: bool = False,
+    hide_classes: Collection[int] = (),
+    hide_qualities: Collection[int] = (),
+    sort: ListedSort = "difference",
+    descending: bool = True,
+    offset: int = 0,
+    limit: int | None = None,
+) -> ListedPage:
+    """What the auction house lists now (its current price, unless the newest scan had none of it),
+    without the hidden item classes and qualities, sorted and sliced (`offset`, `limit`) in the query. The
+    vendor columns (`vendor`, `difference`, `percent`: what a vendor pays over the cheapest listing, and that
+    as a share of it) put items no vendor buys last either way; ties go by name. With `first_party` only Alt
+    Army's scans and hand-set prices count. Nothing for None."""
+    if auction_house_id is None:
+        return ListedPage([], 0, 0, [], [])
+    i, pc, snap = schema.items, schema.price_current, schema.price_snapshots
+    listed = (
+        select()
+        .select_from(i)
+        .join(pc, pc.c.item_id == i.c.id)
+        .join(snap, snap.c.id == pc.c.snapshot_id)
+        .where(
+            i.c.game_version == game_version,
+            pc.c.auction_house_id == auction_house_id,
+            pc.c.listed.is_not(False),
+        )
+    )
+    if first_party:
+        listed = listed.where(snap.c.source.in_(prices.FIRST_PARTY))
+    everything = listed.add_columns(i.c.class_id, i.c.quality).subquery()
+    facets = conn.execute(select(everything.c.class_id, everything.c.quality).distinct()).all()
+    count: int = conn.execute(select(func.count()).select_from(everything)).scalar_one()
+    kept = listed
+    if hide_classes:
+        kept = kept.where(i.c.class_id.not_in(sorted(set(hide_classes))))
+    if hide_qualities:
+        kept = kept.where(i.c.quality.not_in(sorted(set(hide_qualities))))
+    total: int = conn.execute(kept.add_columns(func.count())).scalar_one()
+
+    gain = i.c.sell_price - pc.c.price
+    keys: dict[str, ColumnElement[Any]] = {
+        "item": i.c.name,
+        "type": case(ITEM_CLASS_NAMES, value=i.c.class_id, else_=literal("~")),
+        "ah_price": pc.c.price,
+        "vendor": i.c.sell_price,
+        "difference": gain,
+        "percent": cast(gain, Float) / func.nullif(pc.c.price, 0),
+    }
+    key = keys[sort]
+    order: list[ColumnElement[Any]] = []
+    if sort in ("vendor", "difference", "percent"):
+        order.append(case((i.c.sell_price > 0, 0), else_=1))  # no vendor buys it: last either way
+    order += [key.desc() if descending else key.asc(), i.c.name, i.c.id]
+    query = (
+        kept.add_columns(i.c.id, i.c.name, i.c.quality, i.c.class_id, i.c.subclass_name, i.c.icon)
+        .add_columns(i.c.sell_price, pc.c.price, pc.c.quantity, pc.c.seen_at)
+        .order_by(*order)
+        .offset(offset)
+        .limit(limit)
+    )
+    items = [
+        ListedItem(
+            r.id,
+            r.name,
+            r.quality,
+            r.class_id,
+            r.subclass_name,
+            r.icon,
+            r.sell_price,
+            r.price,
+            r.quantity,
+            db.utc(r.seen_at) if r.seen_at is not None else None,
+        )
+        for r in conn.execute(query)
+    ]
+    return ListedPage(
+        items,
+        total,
+        count,
+        sorted({r.class_id for r in facets}),
+        sorted({r.quality for r in facets}),
+    )
 
 
 def load_item_details(conn: Connection, game_version: str, ids: Iterable[int]) -> dict[int, ItemDetails]:

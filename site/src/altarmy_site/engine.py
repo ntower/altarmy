@@ -331,12 +331,29 @@ SPARE_Z = 0.8416
 # The least chance of a skill point a recommended climb crafts at (`SkillRuns.min_chance`): a recipe's last
 # points before grey are left to another, unless nothing at that skill gives a point this often (`Climb`)
 MIN_CHANCE = 0.1
-# What a craft is worth to the climber, in copper (`SkillRuns.craft_value`: the skill Options' Balanced; 0 is
-# Cheapest). A climb charges it for every craft, and again for each point's wasted crafts squared (1/p - 1)^2,
-# p the chance after talents: nothing while orange, a quarter of it at 2/3, 9 times it at 1 in 4, 81 times at
-# 1 in 10: the last points before grey are left to another recipe unless every other costs far more in
-# copper. Only plans are chosen by it; no price includes it.
-CRAFT_VALUE = 50.0
+# What a minute of the climber's time is worth, in copper (`SkillRuns.time_value`: the recommended
+# strategy's; 0 is Cheapest). A craft is worth that for the time it takes (`craft_value`: its cast and
+# `CRAFT_OVERHEAD`), so a recipe of long casts costs more of it a craft. A climb charges that for every
+# craft, and again for each point's wasted crafts squared (1/p - 1)^2, p the chance after talents: nothing
+# while orange, a quarter of it at 2/3, 9 times it at 1 in 4, 81 times at 1 in 10: the last points before
+# grey are left to another recipe unless every other costs far more in copper. Only plans are chosen by it;
+# no price includes it. 5s a minute: about the 50c a craft of a 5s cast that a flat value per craft used to
+# charge.
+TIME_VALUE = 500.0
+# Seconds a craft takes on top of its cast (the time model's `craft_overhead`)
+CRAFT_OVERHEAD = timing.TimeConfig().craft_overhead
+
+
+def craft_seconds(recipe: Recipe) -> float:
+    """The seconds a craft of `recipe` takes: its cast (`cast_time_ms`, DB2's base) and `CRAFT_OVERHEAD`."""
+    return recipe.cast_time_ms / 1000 + CRAFT_OVERHEAD
+
+
+def craft_value(recipe: Recipe, time_value: float) -> float:
+    """What a craft of `recipe` is worth to a climber whose minute is worth `time_value` copper."""
+    return time_value * craft_seconds(recipe) / 60
+
+
 _EPSILON = 1e-6  # copper: plans this close cost the same (the longer run, the earlier recipe wins)
 
 
@@ -356,10 +373,10 @@ class Candidate:
 @dataclass(frozen=True)
 class SkillRuns:
     """Rank each recipe as the first run of the cheapest climb that starts with it (`plan_climb`).
-    `craft_value`: what a craft is worth to the climber (`CRAFT_VALUE`); `min_chance`: the least chance of a
-    point a run crafts at, unless nothing gives one that often (`MIN_CHANCE`; 0: any)."""
+    `time_value`: what a minute of the climber's time is worth, in copper (`TIME_VALUE`); `min_chance`: the
+    least chance of a point a run crafts at, unless nothing gives one that often (`MIN_CHANCE`; 0: any)."""
 
-    craft_value: float = CRAFT_VALUE
+    time_value: float = TIME_VALUE
     min_chance: float = MIN_CHANCE
 
 
@@ -516,7 +533,8 @@ class Climb:
     or a skill nothing gives a point at. A run of a recipe costs its expected crafts (a point at skill s
     costs 1/p(s) crafts, p as `skill_up_chance`, talents included, so the expectation is exact) at what a
     craft comes to (`Candidate.cost`, the real copper: a craft that earns lowers the climb's cost) plus what
-    a craft is worth to the climber (`craft_value`), plus the spare materials bought for it (`SPARE_Z`
+    a craft is worth to the climber (`craft_value`: the time it takes at `time_value` copper a minute), plus
+    the spare materials bought for it (`SPARE_Z`
     standard deviations of its crafts at the cost, nothing for one that earns: what buying for an unlucky run
     adds, which makes short detours pay for themselves), plus the effort of its low-chance points
     (`craft_value` x (1/p - 1)^2 a point: one exchange rate between copper and crafts at every level), plus
@@ -533,7 +551,7 @@ class Climb:
         crafter: Crafter,
         profession: str,
         candidates: Sequence[Candidate],
-        craft_value: float = CRAFT_VALUE,
+        time_value: float = TIME_VALUE,
         min_chance: float = MIN_CHANCE,
     ) -> None:
         skill = crafter.skill(profession)
@@ -564,17 +582,18 @@ class Climb:
         cutoff = min_chance - 1e-12
         usable = []
         for c, lo, chances in spans:
+            worth = craft_value(c.recipe, time_value)
             crafts, variance, effort = [0.0], [0.0], [0.0]
             for p in chances:
                 crafts.append(crafts[-1] + 1 / p)
                 variance.append(variance[-1] + (1 - p) / p**2)
-                effort.append(effort[-1] + craft_value * (1 / p - 1) ** 2)
+                effort.append(effort[-1] + worth * (1 / p - 1) ** 2)
             allowed = [p >= cutoff or best[lo + i - self.rank] < cutoff for i, p in enumerate(chances)]
             reach = [-1] * len(chances)
             for i in range(len(chances) - 1, -1, -1):
                 if allowed[i]:
                     reach[i] = reach[i + 1] if i + 1 < len(chances) and allowed[i + 1] else lo + i + 1
-            rate, spare = c.cost + craft_value, max(c.cost, 0.0) * SPARE_Z
+            rate, spare = c.cost + worth, max(c.cost, 0.0) * SPARE_Z
             usable.append(
                 _Usable(c, lo, tuple(crafts), tuple(variance), tuple(effort), rate, spare, tuple(reach))
             )
@@ -711,11 +730,11 @@ def plan_climb(
     crafter: Crafter,
     profession: str,
     candidates: Sequence[Candidate],
-    craft_value: float = CRAFT_VALUE,
+    time_value: float = TIME_VALUE,
     min_chance: float = MIN_CHANCE,
 ) -> Climb:
     """`crafter`'s cheapest ways up `profession` crafting `candidates` (see `Climb`)."""
-    return Climb(crafter, profession, candidates, craft_value, min_chance)
+    return Climb(crafter, profession, candidates, time_value, min_chance)
 
 
 def can_start_climb(recipes: Iterable[Recipe], crafter: Crafter, profession: str) -> bool:
@@ -2251,15 +2270,15 @@ class Market:
 
     def _climb(self, skill_name: str, crafter: Crafter, runs: SkillRuns, memo: Memo) -> Climb:
         """`crafter`'s climbs up `skill_name` (`plan_climb`) over `_candidates`; worked out once a market."""
-        key = (skill_name.lower(), crafter.name, runs.craft_value, runs.min_chance)
+        key = (skill_name.lower(), crafter.name, runs.time_value, runs.min_chance)
         found = self._climb_cache.get(key)
         if found is None:
             candidates = tuple(self._candidates(skill_name, crafter, memo))
             # a climb depends on nothing else: markets of the same prices (`climbs`) share it
-            shared: ClimbKey = (crafter, skill_name.lower(), runs.craft_value, runs.min_chance, candidates)
+            shared: ClimbKey = (crafter, skill_name.lower(), runs.time_value, runs.min_chance, candidates)
             found = self.climbs.get(shared)
             if found is None:
-                found = plan_climb(crafter, skill_name, candidates, runs.craft_value, runs.min_chance)
+                found = plan_climb(crafter, skill_name, candidates, runs.time_value, runs.min_chance)
                 self.climbs.put(shared, found)
             self._climb_cache[key] = found
         return found

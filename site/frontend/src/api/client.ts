@@ -30,6 +30,8 @@ export type AhBlocked = components['schemas']['AhBlocked']
 /** The user's favorite recipes, listed first in searches. */
 export type Favorites = components['schemas']['Favorites']
 export type Coverage = components['schemas']['CoverageOut']
+/** Every item the selected house lists, beside what a vendor pays for it (the vendor check page). */
+export type VendorCheck = components['schemas']['VendorCheck']
 export type Config = components['schemas']['ConfigOut']
 export type Me = components['schemas']['Me']
 /** What the ingestion jobs, uploads and feeds have been doing (the Admin page). */

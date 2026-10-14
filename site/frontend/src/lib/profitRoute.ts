@@ -6,7 +6,8 @@ import { type Holder, type ProfessionChoice, professionsOf, professionsToImagine
  * /profit/skill (which profession), /profit/skill/<realm>/<character>/<profession> (one character skilling up one
  * profession: a link to it opens exactly that, switching the realm) and /profit/skill/<realm>/<profession>/<skill>
  * (a character nobody uploaded skilling up one profession from that skill; the last part is all digits, which a
- * profession's never is).
+ * profession's never is). /profit/vendorcheck (what the selected realm's auction house lists beside the vendor
+ * price) is reached only by its path: nothing links it.
  */
 
 export type ProfitView =
@@ -17,6 +18,7 @@ export type ProfitView =
   | { kind: 'run'; realm: string; character: string; profession: string }
   /** a character nobody uploaded, with `profession` (a slug) at `skill` on `realm` (a slug) */
   | { kind: 'hypothetical'; realm: string; profession: string; skill: number }
+  | { kind: 'vendorcheck' }
 
 /** Lower-case words joined by dashes: "Classic Beta PvE" is "classic-beta-pve", "First Aid" "first-aid". */
 const slug = (text: string) =>
@@ -36,6 +38,7 @@ export function parseProfitPath(pathname: string): ProfitView | null {
   const [first, ...rest] = parts
   if (first === undefined) return { kind: 'start' }
   if (first === 'gold' && rest.length === 0) return { kind: 'gold' }
+  if (first === 'vendorcheck' && rest.length === 0) return { kind: 'vendorcheck' }
   if (first !== 'skill') return null
   if (rest.length === 0) return { kind: 'skill' }
   if (rest.length !== 3 || rest.some((p) => !p)) return null
@@ -60,6 +63,8 @@ export function profitPath(view: ProfitView): string {
       return '/profit/gold'
     case 'skill':
       return '/profit/skill'
+    case 'vendorcheck':
+      return '/profit/vendorcheck'
     case 'run':
       return `/profit/skill/${[view.realm, view.character, view.profession].map(encodeURIComponent).join('/')}`
     case 'hypothetical':

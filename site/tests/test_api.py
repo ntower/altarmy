@@ -26,6 +26,7 @@ from altarmy_site import (
     service,
     store,
     uploads,
+    versions,
 )
 from altarmy_site.altarmy import Character, Profession
 from altarmy_site.api import create_app
@@ -384,6 +385,98 @@ def test_ah_blocked_items_are_never_sold_on_the_ah(client: TestClient, priced: C
     assert client.delete("/api/ah-blocked/3").json() == {"items": [], "details": {}}
     (r,) = client.get("/api/rank").json()["results"]
     assert r["best_exit"] == "ah"
+
+
+def test_vendor_check_lists_what_the_selected_house_has_beside_the_vendor_price(
+    client: TestClient, priced: Connection
+) -> None:
+    at = db.utcnow()  # after the fixture's hand-set prices: the newest sighting wins
+    scanned(priced, {1: [(5, 10), (30, 4)], 2: [(100, 50)]}, at=at)  # linen vendors at 13, thread at 10
+    body = client.get("/api/vendorcheck").json()
+    assert (body["realm"], body["faction"]) == ("Classic Beta PvE", "Horde")
+    rows = {i["id"]: i for i in body["items"]}
+    assert [i["name"] for i in body["items"]] == ["Linen Cloth", "Coarse Thread"]  # the biggest gain first
+    assert (body["total"], body["listed"], body["page"], body["page_size"]) == (2, 2, 1, 50)
+    assert (body["classes"], body["qualities"]) == ([7], [1])
+    assert (rows[1]["ah_price"], rows[1]["ah_quantity"], rows[1]["sell_price"]) == (5, 14, 13)
+    assert (rows[2]["ah_price"], rows[2]["ah_quantity"], rows[2]["sell_price"]) == (100, 50, 10)
+    assert (rows[1]["class_id"], rows[1]["quality"], rows[1]["icon"]) == (7, 1, "inv_fabric_linen_01")
+    assert rows[1]["seen_at"].startswith(at.strftime("%Y-%m-%dT%H:%M"))
+
+    scanned(priced, {1: [(6, 3)]}, at=at + timedelta(minutes=5))  # the thread is gone from the newest scan
+    body = client.get("/api/vendorcheck").json()
+    assert [(i["id"], i["ah_price"]) for i in body["items"]] == [(1, 6)]
+
+
+def test_vendor_check_filters_sorts_and_pages_on_the_server(
+    client: TestClient, priced: Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # linen vendors at 13 (gain 8, +160%), thread at 10 (-90, -90%), the robe at 500 (+380, +317%)
+    scanned(priced, {1: [(5, 10)], 2: [(100, 50)], 3: [(120, 1)]})
+
+    def names(**params: str | int | list[int]) -> list[str]:
+        return [i["name"] for i in client.get("/api/vendorcheck", params=params).json()["items"]]
+
+    assert names() == ["Green Robe", "Linen Cloth", "Coarse Thread"]
+    assert names(order="asc") == ["Coarse Thread", "Linen Cloth", "Green Robe"]
+    assert names(sort="item") == ["Linen Cloth", "Green Robe", "Coarse Thread"]  # desc: Z first
+    assert names(sort="item", order="asc") == ["Coarse Thread", "Green Robe", "Linen Cloth"]
+    # Armor, then Trade Goods
+    assert names(sort="type", order="asc") == ["Green Robe", "Coarse Thread", "Linen Cloth"]
+    assert names(sort="ah_price") == ["Green Robe", "Coarse Thread", "Linen Cloth"]
+    assert names(sort="vendor", order="asc") == ["Coarse Thread", "Linen Cloth", "Green Robe"]
+    assert names(sort="percent") == ["Green Robe", "Linen Cloth", "Coarse Thread"]
+
+    body = client.get("/api/vendorcheck", params={"hide_classes": [4]}).json()
+    assert [i["name"] for i in body["items"]] == ["Linen Cloth", "Coarse Thread"]
+    assert (body["total"], body["listed"], body["classes"]) == (2, 3, [4, 7])  # what to filter by stays
+    assert names(hide_qualities=[1]) == ["Green Robe"]  # the robe is uncommon
+    assert names(hide_classes=[4, 7]) == []
+
+    monkeypatch.setattr(api, "VENDOR_CHECK_PAGE", 2)
+    body = client.get("/api/vendorcheck", params={"page": 2}).json()
+    assert ([i["name"] for i in body["items"]], body["page"], body["total"]) == (["Coarse Thread"], 2, 3)
+    # a page past the last gives the last
+    body = client.get("/api/vendorcheck", params={"page": 9, "hide_classes": [4]}).json()
+    assert ([i["name"] for i in body["items"]], body["page"]) == (["Linen Cloth", "Coarse Thread"], 1)
+    assert client.get("/api/vendorcheck", params={"page": 0}).status_code == 422
+    assert client.get("/api/vendorcheck", params={"sort": "nope"}).status_code == 422
+
+
+def test_vendor_check_puts_what_no_vendor_buys_last(client: TestClient, priced: Connection) -> None:
+    priced.execute(update(schema.items).where(schema.items.c.id == 2).values(sell_price=0))
+    scanned(priced, {1: [(5, 10)], 2: [(100, 50)], 3: [(120, 1)]})
+    for sort in ("vendor", "difference", "percent"):
+        for order in ("desc", "asc"):
+            items = client.get("/api/vendorcheck", params={"sort": sort, "order": order}).json()["items"]
+            assert items[-1]["name"] == "Coarse Thread", (sort, order)
+
+
+def test_vendor_check_item_has_every_price_level(client: TestClient, priced: Connection) -> None:
+    scanned(priced, {1: [(5, 10), (30, 4)]})
+    linen = client.get("/api/vendorcheck/items/1").json()
+    assert (linen["name"], linen["sell_price"], linen["ah_price"], linen["ah_quantity"]) == (
+        "Linen Cloth",
+        13,
+        5,
+        14,
+    )
+    assert [(lv["price"], lv["quantity"]) for lv in linen["ah_levels"]] == [(5, 10), (30, 4)]
+    assert client.get("/api/vendorcheck/items/999").status_code == 404
+
+
+def test_vendor_check_is_empty_without_a_selection(client: TestClient) -> None:
+    assert client.get("/api/vendorcheck").json() == {
+        "realm": "",
+        "faction": "",
+        "items": [],
+        "total": 0,
+        "listed": 0,
+        "page": 1,
+        "page_size": 50,
+        "classes": [],
+        "qualities": [],
+    }
 
 
 def test_rank_filters_and_validation(client: TestClient, priced: Connection) -> None:
@@ -766,16 +859,18 @@ SKILL_UP: dict[str, str | bool | list[str]] = {
 }
 
 
-def test_a_climb_says_what_it_comes_to_by_each_rank_cap_it_reaches() -> None:
+def test_a_climb_says_what_it_comes_to_by_each_rank_cap_and_which_it_never_reaches() -> None:
     smith = engine.Crafter("Smith", (("Blacksmithing", 75, 300),), frozenset())
     recipe = engine.Recipe(1, "R", 100, 1, ((1, 1),), "Blacksmithing", trivial_low=270, trivial_high=280)
     climb = engine.plan_climb(smith, "Blacksmithing", [engine.Candidate(recipe, 10.0, learn=None)]).best
     # 75 reached already; the climb ends where the recipe turns grey, before 300
-    assert api._milestones(climb) == [
+    ranks = versions.PROFESSION_RANKS[:4]  # up to Artisan's 300
+    assert api._milestones(climb, ranks) == [
         api.MilestoneOut(skill=150, cost=750, unknown=1, crafts=75),
         api.MilestoneOut(skill=225, cost=1500, unknown=1, crafts=150),
+        api.MilestoneOut(skill=300, cost=0, reachable=False),
     ]
-    assert api._milestones(None) == []
+    assert api._milestones(None, ranks) == []
 
 
 def test_skill_up_ranks_each_recipe_as_the_first_run_of_its_climb(
@@ -790,7 +885,13 @@ def test_skill_up_ranks_each_recipe_as_the_first_run_of_its_climb(
     assert body["chain"] == []
     assert body["strategies"][0] == {"key": "recommended", "run": r, "chain": []}
     assert r["climb_cost"] is not None and r["climb_cost"] > -r["profit"]  # what it costs, spares too
-    assert r["milestones"] == []  # the climb ends at 60, short of the next rank's cap (75)
+    # the climb ends at 60, short of every rank's cap above it, up to the version's highest
+    assert [(m["skill"], m["reachable"]) for m in r["milestones"]] == [
+        (75, False),
+        (150, False),
+        (225, False),
+        (300, False),
+    ]
     assert r["overtaken_by_item"] == 0
     assert r["skill_bonus"] == 0.0  # no Working Overtime
     assert r["crafts_p80"] >= r["crafts"]
@@ -886,6 +987,45 @@ def test_the_cheapest_strategy_counts_copper_alone(client: TestClient, priced: C
     assert cheapest[0] >= recommended[0]  # however many crafts it takes
     assert cheapest[1] < recommended[1]  # what a craft is worth is not counted in what chooses the climb
     assert client.get("/api/rank", params={**params, "strategy": "quickest"}).status_code == 422
+
+
+def test_a_custom_strategy_plans_with_the_time_value_and_chance_given(
+    client: TestClient, priced: Connection
+) -> None:
+    tailoring_options(priced)
+    params = {**SKILL_UP, "skill_crafters": ["Tailor"], "runs": True, "chain_length": 20}
+
+    def climb(**strategy: str | float | list[str]) -> list[tuple[int, int, int]]:
+        body = client.get("/api/rank", params={**params, **strategy}).json()
+        runs = body["results"][:1] + body["chain"]
+        return [(r["recipe_id"], r["crafts"], r["stop_skill"]) for r in runs]
+
+    # the cheapest's weights and the recommended one's, under the request's sources
+    assert climb(strategy="custom", time_value=0, min_chance=0) == climb(strategy="cheapest")
+    assert climb(strategy="custom", time_value=int(engine.TIME_VALUE), min_chance=0.1) == climb()
+    assert climb(strategy="custom") == climb()  # unset: as recommended
+    # trainers alone, as the strategy without patterns
+    assert climb(strategy="custom", sources=["trainer"]) == climb(strategy="no_patterns")
+    # a run of it opens as ranked
+    custom: dict[str, str | int] = {"strategy": "custom", "time_value": 0, "min_chance": 0}
+    r = client.get("/api/rank", params={**params, **custom}).json()["results"][0]
+    got = client.post(
+        "/api/evaluate",
+        json={
+            "recipe_id": r["recipe_id"],
+            "choices": {},
+            "include_trivial": False,
+            "skill_crafters": ["Tailor"],
+            "exits": ["vendor", "keep"],
+            "runs": True,
+            "strategy": "custom",
+            "time_value": 0,
+            "min_chance": 0,
+        },
+    ).json()["result"]
+    assert (got["recipe_id"], got["stop_skill"]) == (r["recipe_id"], r["stop_skill"])
+    for bad in ({"time_value": -1}, {"min_chance": 1.5}):
+        assert client.get("/api/rank", params={**params, "strategy": "custom", **bad}).status_code == 422
 
 
 def test_a_climb_goes_on_past_the_climbers_rank_cap(client: TestClient, priced: Connection) -> None:
@@ -2154,11 +2294,10 @@ def test_skill_up_counts_the_pattern_and_says_what_comes_next(client: TestClient
     chained = {**params, "chain_from": r["recipe_id"]}
     assert client.get("/api/rank", params=chained).json()["chain"] == []
     assert client.get("/api/rank", params={**params, "chain_from": 999999}).json()["chain"] == []
-    # a longer chain on asking, up to a bound
+    # a longer chain on asking: however long, the whole climb when it has fewer runs
     assert client.get("/api/rank", params={**params, "chain_length": 8}).json()["chain"] == []
-    assert (
-        client.get("/api/rank", params={**params, "chain_length": api.MAX_SKILL_CHAIN + 1}).status_code == 422
-    )
+    assert client.get("/api/rank", params={**params, "chain_length": 1000}).json()["chain"] == []
+    assert client.get("/api/rank", params={**params, "chain_length": 0}).status_code == 422
     service.replace_characters(
         priced, ME, FOREVER, [replace(low, professions=(Profession("Tailoring", 50, 150, frozenset({900})),))]
     )

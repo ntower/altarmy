@@ -1,4 +1,4 @@
-import { memo, type ReactNode, useEffect, useId, useMemo, useState } from 'react'
+import { memo, type ReactNode, useEffect, useMemo, useState } from 'react'
 import {
   Accordion,
   Alert,
@@ -10,17 +10,12 @@ import {
   SimpleGrid,
   Stack,
   Text,
-  Tooltip,
-  UnstyledButton,
   useMantineTheme,
-  VisuallyHidden,
 } from '@mantine/core'
 import { z } from 'zod'
 import {
-  ALL_SOURCES,
   type RankParams,
   type RankSort,
-  type Source,
   useAhBlocked,
   useDataVersion,
   useFavorites,
@@ -41,9 +36,8 @@ import {
   SKILL_EXITS,
   skillCrafters,
 } from '../lib/setup'
-import { DEFAULT_REACH_TARGET, MAX_REACH_TARGET, MIN_REACH_TARGET } from '../lib/skill'
+import { BUILT_IN_SOURCES } from '../lib/skill'
 import { useStoredState } from '../lib/storage'
-import { IconChevron, IconInfo } from './icons'
 import { HOW_TO_SCAN } from './PriceFreshness'
 import { ProfessionIcon } from './ProfessionIcon'
 import classes from './SearchTab.module.css'
@@ -60,55 +54,6 @@ const PAGE = 50
 const ENHANCING: ReadonlySet<string> = new Set(['enchanting', 'engineering'])
 /** The Arcane Salvager checkbox is hidden for now: while it is, disenchants never count on a salvager. */
 export const SHOW_ARCANE_SALVAGER = false
-
-/**
- * One way to sell: its checkbox, with the explanation in a tooltip beside it (and as the checkbox's description for
- * screen readers), so the options stay one short row. A `warning` sentence follows the explanation in a warning
- * colour, an `aside` (a secondary detail) goes on a line of its own in smaller, fainter text, and a `note` (something
- * about the user's characters) on a line of its own in the warning colour.
- */
-function SellVia({
-  value,
-  label,
-  description,
-  warning,
-  aside,
-  note,
-}: {
-  value: string
-  label: string
-  description: string
-  warning?: string | undefined
-  aside?: string | undefined
-  note?: string | undefined
-}) {
-  const id = useId()
-  const text = [description, warning, aside, note].filter(Boolean).join(' ')
-  const tooltip = (
-    <>
-      {description}
-      {warning && (
-        <>
-          {' '}
-          <span className={classes.warning}>{warning}</span>
-        </>
-      )}
-      {aside && <div className={classes.aside}>{aside}</div>}
-      {note && <div className={classes.warning}>{note}</div>}
-    </>
-  )
-  return (
-    <Group gap={6} wrap="nowrap">
-      <Checkbox value={value} label={label} aria-describedby={id} />
-      <VisuallyHidden id={id}>{text}</VisuallyHidden>
-      <Tooltip label={tooltip} multiline w={280} withArrow events={{ hover: true, focus: false, touch: true }}>
-        <Text component="span" c="dimmed" lh={0} aria-hidden="true">
-          <IconInfo size={15} />
-        </Text>
-      </Tooltip>
-    </Group>
-  )
-}
 
 /**
  * The options, a section named `label`. It starts open, except where its columns stack (below the `sm` breakpoint): there
@@ -136,18 +81,6 @@ function Options({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-const SOURCES: { value: Source; label: string; description?: string }[] = [
-  { value: 'trainer', label: 'Taught by trainers' },
-  {
-    value: 'recipe',
-    label: 'Taught by normal recipes',
-    description:
-      'Includes recipes sold by vendors (even if they are bind-on-pickup) and non-soulbound recipes you could find on the auction house.',
-  },
-  { value: 'bop', label: 'Taught by bind on pickup recipes' },
-]
-const sourceList = z.array(z.enum(['trainer', 'recipe', 'bop']))
-const DEFAULT_SOURCES: Source[] = ['trainer', 'recipe']
 const SECTIONS = ['advanced'] as const
 const NONE_OPEN: string[] = []
 
@@ -301,128 +234,11 @@ function Range({ name, min, max, onMin, onMax, step }: RangeProps) {
   )
 }
 
-/** A chance to reach a run's target, in whole percent within what is offered. */
-const reachTarget = (v: number) => Math.min(MAX_REACH_TARGET, Math.max(MIN_REACH_TARGET, Math.round(v)))
-
-/** "a" or "an" before a percent as said aloud ("an 80%", "a 95%"), for the percents on offer. */
-const article = (percent: number) => (String(percent).startsWith('8') ? 'an' : 'a')
-
-/** How sure the materials bought for a run are to get it to its target skill, what that means in a tooltip beside it. */
-function ReachTarget({ value, onChange }: { value: number; onChange: (v: number) => void }) {
-  const shown = reachTarget(value)
-  return (
-    <NumberInput
-      label={
-        <Group gap={6} wrap="nowrap" component="span">
-          Chance to reach target skill
-          <Tooltip
-            label={
-              <>
-                Since skill ups are random, we can&apos;t predict exactly how many times you&apos;ll need to craft each
-                recipe. With this setting, we&apos;ll choose the number of crafts so you have {article(shown)} {shown}% chance to reach
-                the target skill level
-                <br />
-                <br />
-                Put another way: {shown}% of the time, you won&apos;t need to make a second trip to the auction house
-              </>
-            }
-            multiline
-            w={280}
-            withArrow
-            events={{ hover: true, focus: false, touch: true }}
-          >
-            <Text component="span" c="dimmed" lh={0} aria-hidden="true">
-              <IconInfo size={15} />
-            </Text>
-          </Tooltip>
-        </Group>
-      }
-      value={value}
-      onChange={(v) => {
-        if (typeof v === 'number') onChange(v)
-      }}
-      onBlur={() => onChange(shown)}
-      min={MIN_REACH_TARGET}
-      max={MAX_REACH_TARGET}
-      clampBehavior="blur"
-      allowDecimal={false}
-      allowNegative={false}
-      suffix="%"
-      step={5}
-      styles={{ wrapper: { maxWidth: 120 } }}
-    />
-  )
-}
-
 /** A filter of the aim's search: kept under the aim's own key, starting from where every filter used to be kept. */
 function useFilter<T>(aim: Aim, name: string, schema: z.ZodType<T>, defaultValue: T) {
   return useStoredState(searchKey(aim, name), schema, defaultValue, legacySearchKey(name))
 }
 
-
-/**
- * Skilling up's Options as two pieces for the skill page's top row to place: a button (`.optionsControl`) and, while it
- * is open, the options under it (`.optionsPanel`): what may teach the recipes, then the chance to reach the target, one
- * column. Closed at first. Kept under the skill search's own keys, which `AimSearch` reads (the stored values stay in
- * step across the two).
- */
-export function SkillOptions({ salvagerDefault }: { salvagerDefault: boolean }) {
-  const [open, setOpen] = useState(false)
-  const id = useId()
-  const [sources, setSources] = useFilter<Source[]>('skill', 'sources', sourceList, DEFAULT_SOURCES)
-  const [reach, setReach] = useFilter('skill', 'reachTarget', z.number(), DEFAULT_REACH_TARGET)
-  const [salvagerPick, setSalvagerPick] = useFilter<boolean | null>(
-    'skill',
-    'arcaneSalvager',
-    z.boolean().nullable(),
-    null,
-  )
-  return (
-    <>
-      <UnstyledButton
-        className={classes.optionsControl}
-        aria-expanded={open}
-        aria-controls={id}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <Text fw={500}>Options</Text>
-        <span className={classes.chevron} data-open={open || undefined}>
-          <IconChevron size={16} />
-        </span>
-      </UnstyledButton>
-      {open && (
-        <div id={id} className={classes.optionsPanel}>
-          <Stack gap="lg">
-            <Checkbox.Group
-              label="Recipes taught by"
-              value={sources}
-              onChange={(v) => setSources(ALL_SOURCES.filter((s) => v.includes(s)))}
-            >
-              <Stack mt={4} gap="xs">
-                {SOURCES.map((s) =>
-                  s.description ? (
-                    <SellVia key={s.value} value={s.value} label={s.label} description={s.description} />
-                  ) : (
-                    <Checkbox key={s.value} value={s.value} label={s.label} />
-                  ),
-                )}
-              </Stack>
-            </Checkbox.Group>
-            <ReachTarget value={reach} onChange={setReach} />
-            {SHOW_ARCANE_SALVAGER && (
-              <Checkbox
-                label="Use Arcane Salvager for disenchanting"
-                description="10% chance of extra disenchanting materials. Usable only at campfires."
-                checked={salvagerPick ?? salvagerDefault}
-                onChange={(e) => setSalvagerPick(e.currentTarget.checked)}
-              />
-            )}
-          </Stack>
-        </div>
-      )}
-    </>
-  )
-}
 
 /**
  * One aim's search, once the setup is complete and a realm is selected: its options and ranked recipes. Mounted per
@@ -470,8 +286,6 @@ export function AimSearch({
 }) {
   const { aim } = setup
   const skill = aim === 'skill'
-  // Skilling up's options are set in `SkillOptions` (on the skill page's top row), kept under the same keys.
-  const [sources] = useFilter<Source[]>(aim, 'sources', sourceList, DEFAULT_SOURCES)
   // Stored as strings: sections that no longer exist (the old Characters and Time assumptions ones) are dropped,
   // not an error.
   const [stored, setOpen] = useFilter(aim, 'open', z.array(z.string()), NONE_OPEN)
@@ -490,8 +304,6 @@ export function AimSearch({
   const [goldSort, setGoldSort] = useFilter<RankSort>(aim, 'sort', goldSortSchema, 'likely')
   const [goldOrder, setGoldOrder] = useFilter<SortOrder>(aim, 'order', sortOrderSchema, 'desc')
   const [learnable, setLearnable] = useFilter(aim, 'learnable', z.boolean(), false)
-  // Skill up only: how sure the materials bought for a run are to get there, in percent.
-  const [reach] = useFilter(aim, 'reachTarget', z.number(), DEFAULT_REACH_TARGET)
   // The newest scan's notice, dismissed per auction house.
   const [dismissed, setDismissed] = useStoredState(
     `altarmy.notice.unwatched.${houseId ?? 0}`,
@@ -514,7 +326,8 @@ export function AimSearch({
             // Recipes they know or can train now that still give a point, sold to a vendor or kept; no bounds.
             unlearned: 'train',
             lookAhead: 0,
-            sources: ALL_SOURCES.filter((s) => sources.includes(s)),
+            // the built-in strategies' (a custom one brings its own)
+            sources: BUILT_IN_SOURCES,
             includeTrivial: false,
             exits: [
               // disenchanting only counts where someone can: the server drops it otherwise
@@ -539,7 +352,7 @@ export function AimSearch({
             // The recipes the characters know (and, if asked, can train now), trivial or not.
             unlearned: learnable ? 'train' : 'none',
             lookAhead: 0,
-            sources: DEFAULT_SOURCES,
+            sources: BUILT_IN_SOURCES,
             includeTrivial: true,
             // every way to sell, side by side: the list shows playing it safe and the auction house apart
             exits: [...ALL_EXITS],
@@ -559,7 +372,6 @@ export function AimSearch({
           },
     [
       skill,
-      sources,
       skilling,
       arcaneSalvager,
       minCost,
@@ -706,7 +518,6 @@ export function AimSearch({
           filters={debouncedFilters}
           climber={climber}
           profession={profession}
-          reachTarget={reachTarget(reach)}
           hypothetical={climberSkill !== undefined}
         />
       ) : (

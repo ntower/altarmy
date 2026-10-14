@@ -68,14 +68,16 @@ from .versions import GameVersion, GameVersionKey
 
 DEFAULT_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 # The runs `/api/rank` says follow the one crafted now (`RankResponse.chain`), unless `chain_length` asks for
-# more, up to `MAX_SKILL_CHAIN`
+# more (all of it when it has fewer: the skill workspace's ladder table asks for more than any climb has)
 SKILL_CHAIN = 2
-MAX_SKILL_CHAIN = 40
 # The skill workspace's strategies, side by side in this order (`RankResponse.strategies`, `_strategy`): the
-# climb as recommended (`engine.MIN_CHANCE`, each craft worth `engine.CRAFT_VALUE`), the cheapest in copper
+# climb as recommended (`engine.MIN_CHANCE`, a minute worth `engine.TIME_VALUE`), the cheapest in copper
 # alone (at any chance of a point), and one up recipes trainers teach alone (no patterns to buy or farm)
-Strategy = Literal["recommended", "cheapest", "no_patterns"]
+# ... and `custom`: the user's own, planned with the request's sources, `time_value` and `min_chance`
+Strategy = Literal["recommended", "cheapest", "no_patterns", "custom"]
 STRATEGIES: tuple[Strategy, ...] = ("recommended", "cheapest", "no_patterns")
+# The most a minute may be worth to the climber in a custom strategy (`time_value`, copper)
+MAX_TIME_VALUE = 1_000_000
 # The ranks of the Legacy talents a skill climb may be planned with in place of the climber's own (the skill
 # workspace's sliders: `working_overtime`, `bartering`, `master_chef`)
 WORKING_OVERTIME_RANKS = talents.LEGACY_TALENTS[talents.WORKING_OVERTIME].max_rank
@@ -453,12 +455,14 @@ class RankResult(BaseModel):
 class MilestoneOut(BaseModel):
     """What a climb is expected to come to by the time it reaches `skill`: its crafts (spent less what
     selling what they make brings back, so negative when they earn) and its patterns, `unknown` of which have
-    no known price (not counted), and the crafts it is expected to take to get there."""
+    no known price (not counted), and the crafts it is expected to take to get there. Not `reachable`: the
+    climb ends short of it (the rest is 0)."""
 
     skill: int
     cost: int
     unknown: int = 0
     crafts: int = 0
+    reachable: bool = True
 
 
 class ConfidenceOut(BaseModel):
@@ -555,6 +559,8 @@ class EvaluateRequest(BaseModel):
     copies: int | None = Field(default=None, ge=1, le=1000)
     runs: bool = False  # as /api/rank's: plan the run, unless `copies` is given
     strategy: Strategy = "recommended"  # as /api/rank's
+    time_value: int | None = Field(default=None, ge=0, le=MAX_TIME_VALUE)  # as /api/rank's
+    min_chance: float | None = Field(default=None, ge=0, le=1)  # as /api/rank's
     # as /api/rank's: the one character skilled up's Legacy talents at these ranks instead
     working_overtime: int | None = Field(default=None, ge=0, le=WORKING_OVERTIME_RANKS)
     bartering: int | None = Field(default=None, ge=0, le=BARTERING_RANKS)
@@ -563,7 +569,7 @@ class EvaluateRequest(BaseModel):
     # `strategy`) and `recipe_id`'s place in that chain (1: the run after it), planned at the skill it starts
     # from as the chain has it
     chain_from: int | None = None
-    chain_at: int | None = Field(default=None, ge=1, le=MAX_SKILL_CHAIN)
+    chain_at: int | None = Field(default=None, ge=1)
     gathered: list[int] = []  # as /api/rank's
     city: str | None = None  # time and route the session in this city (the selection's faction's)
     price_version: int | None = None  # the auction house's price version the front end knows of
@@ -630,6 +636,38 @@ class AhBlocked(BaseModel):
 
     items: list[AhBlockedItem]  # newest first
     details: dict[int, ItemInfo]  # for tooltips
+
+
+class VendorCheckItem(BaseModel):
+    """An item the selected auction house lists now, beside what a vendor pays for it."""
+
+    id: int
+    name: str
+    quality: int  # 0 poor .. 5 legendary
+    class_id: int  # 2 weapon, 4 armor, 7 trade goods, ...
+    subclass_name: str | None
+    icon: str | None  # wow.zamimg.com icon name
+    sell_price: int  # what a vendor pays a unit, copper; 0: no vendor buys it
+    ah_price: int  # the cheapest listing, copper a unit
+    ah_quantity: int | None  # units listed; None: unknown
+    seen_at: datetime | None
+
+
+class VendorCheck(BaseModel):
+    """The vendor check: one page of what the selected realm's auction house lists, with vendor prices."""
+
+    realm: str  # the selected realm and faction; "" without a selection
+    faction: str
+    items: list[VendorCheckItem]  # the page, in the order asked for
+    total: int  # the items the filters keep
+    listed: int  # every item listed
+    page: int  # the page shown (1 = first), the last one if the one asked for is past it
+    page_size: int
+    classes: list[int]  # the item classes and qualities among everything listed: what there is to filter by
+    qualities: list[int]
+
+
+VENDOR_CHECK_PAGE = 50  # items a page of the vendor check
 
 
 class FavoriteRecipe(BaseModel):
@@ -1166,9 +1204,28 @@ def get_rank(
         Strategy,
         Query(
             description="with runs: how a climb is planned (`STRATEGIES`): as recommended, cheapest (copper "
-            "alone, whatever the crafts), or no patterns (only recipes trainers teach)"
+            "alone, whatever the crafts), no patterns (only recipes trainers teach), or custom (the sources, "
+            "time_value and min_chance given)"
         ),
     ] = "recommended",
+    time_value: Annotated[
+        int | None,
+        Query(
+            ge=0,
+            le=MAX_TIME_VALUE,
+            description="with strategy=custom: what a minute of the climber's time is worth, in copper "
+            "(default: the recommended strategy's): a craft is worth the time it takes",
+        ),
+    ] = None,
+    min_chance: Annotated[
+        float | None,
+        Query(
+            ge=0,
+            le=1,
+            description="with strategy=custom: the least chance of a skill point a run crafts at, unless "
+            "nothing gives one that often (default: the recommended strategy's)",
+        ),
+    ] = None,
     working_overtime: Annotated[
         int | None,
         Query(
@@ -1199,7 +1256,10 @@ def get_rank(
     ] = None,
     chain_length: Annotated[
         int,
-        Query(ge=1, le=MAX_SKILL_CHAIN, description="with sort=skill and runs: the runs the chain may hold"),
+        Query(
+            ge=1,
+            description="with sort=skill and runs: the runs the chain may hold (all of it when it has fewer)",
+        ),
     ] = SKILL_CHAIN,
     climber_skill: Annotated[
         int | None,
@@ -1231,7 +1291,7 @@ def get_rank(
     # it by rate or skill.
     whose = user.uid if chars and climber_skill is None else ""
     asked = engine.Learning(unlearned, look_ahead, frozenset(sources)).normalized()
-    learning, planned = _strategy(strategy, asked)
+    learning, planned = _strategy(strategy, asked, time_value, min_chance)
     run = planned if runs and skilled else None
     chars = _trained_up(state, chars, skilled, skill_name, runs)
     gather = service.gather_values(base, gathered) if gathered else None
@@ -1420,13 +1480,24 @@ def get_rank(
     )
 
 
-def _strategy(strategy: Strategy, learning: engine.Learning) -> tuple[engine.Learning, engine.SkillRuns]:
+def _strategy(
+    strategy: Strategy,
+    learning: engine.Learning,
+    time_value: int | None = None,
+    min_chance: float | None = None,
+) -> tuple[engine.Learning, engine.SkillRuns]:
     """The recipes a climb planned by `strategy` may learn and how it weighs its crafts (`SkillRuns`):
-    cheapest counts copper alone, at any chance of a point; the others count each craft as worth
-    `engine.CRAFT_VALUE` and craft at no less than `engine.MIN_CHANCE` (unless nothing gives a point that
-    often); no patterns learns only what trainers teach."""
+    cheapest counts copper alone, at any chance of a point; the others count a minute of the climber's time
+    as worth `engine.TIME_VALUE` and craft at no less than `engine.MIN_CHANCE` (unless nothing gives a point
+    that often); no patterns learns only what trainers teach; custom learns from `learning`'s sources and
+    weighs crafts by `time_value` and `min_chance` (the recommended strategy's where not given)."""
+    if strategy == "custom":
+        return learning, engine.SkillRuns(
+            time_value=engine.TIME_VALUE if time_value is None else float(time_value),
+            min_chance=engine.MIN_CHANCE if min_chance is None else min_chance,
+        )
     if strategy == "cheapest":
-        return learning, engine.SkillRuns(craft_value=0.0, min_chance=0.0)
+        return learning, engine.SkillRuns(time_value=0.0, min_chance=0.0)
     if strategy == "no_patterns":
         return replace(learning, sources=frozenset({"trainer"})).normalized(), engine.SkillRuns()
     return learning, engine.SkillRuns()
@@ -1500,7 +1571,10 @@ def evaluate(state: State, user: CurrentUser, body: EvaluateRequest) -> Evaluate
     with _http_errors():
         time = service.session_model(s.time, s.cities, body.city)
     learning, planned = _strategy(
-        body.strategy, engine.Learning(body.unlearned, body.look_ahead, frozenset(body.sources))
+        body.strategy,
+        engine.Learning(body.unlearned, body.look_ahead, frozenset(body.sources)),
+        body.time_value,
+        body.min_chance,
     )
     run = planned if body.runs and body.copies is None else None
     recipe_skill = next((r.skill_name for r in s.base.recipes if r.id == body.recipe_id), None)
@@ -1620,6 +1694,8 @@ class Selected:
     watched: float = 0.0  # `prices.watched_hours` of the auction house
     token: Hashable = None  # what the market was built from (`service.Held.token`): the rank cache's key
     selection: service.Selection | None = None  # the realm and faction selected; None without one
+    # the version's profession ranks (`GameVersion.profession_ranks`): the rows of `RankResult.milestones`
+    ranks: tuple[versions.ProfessionRank, ...] = versions.PROFESSION_RANKS
 
 
 def _hypothetical(
@@ -1693,6 +1769,7 @@ def _selected(state: AppState, user: auth.User, price_version: int | None = None
         priced.watched,
         held.token,
         sel,
+        state.version.profession_ranks,
     )
 
 
@@ -1935,18 +2012,25 @@ def _best_city(cities: Sequence[CityTimingOut]) -> str | None:
     return max(possible, key=lambda c: service.city_worth(True, c.profit, c.per_hour, c.total_seconds)).city
 
 
-def _milestones(climb: engine.ClimbPlan | None) -> list[MilestoneOut]:
-    """What `climb` comes to by each profession rank's cap above where it starts that it reaches."""
+def _milestones(
+    climb: engine.ClimbPlan | None, ranks: Sequence[versions.ProfessionRank] = versions.PROFESSION_RANKS
+) -> list[MilestoneOut]:
+    """What `climb` comes to by each of `ranks`' caps above where it starts, those it never reaches said
+    to be unreachable."""
     if climb is None or not climb.runs:
         return []
     out = []
-    for rank in versions.PROFESSION_RANKS:
-        spent = climb.spent_by(rank.cap) if rank.cap > climb.runs[0].start_skill else None
+    for rank in ranks:
+        if rank.cap <= climb.runs[0].start_skill:
+            continue
+        spent = climb.spent_by(rank.cap)
         crafts = climb.crafts_by(rank.cap)
         if spent is not None and crafts is not None:
             out.append(
                 MilestoneOut(skill=rank.cap, cost=round(spent[0]), unknown=spent[1], crafts=round(crafts))
             )
+        else:
+            out.append(MilestoneOut(skill=rank.cap, cost=0, reachable=False))
     return out
 
 
@@ -2060,7 +2144,7 @@ def _result_out(
         climb_cost=round(r.climb_cost) if r.climb_cost is not None else None,
         climb_unknown=r.climb_unknown,
         climb_end=r.climb.runs[-1].stop_skill if r.climb is not None and r.climb.runs else 0,
-        milestones=_milestones(r.climb),
+        milestones=_milestones(r.climb, s.ranks),
         sell_options=[SellOptionOut(**asdict(o)) for o in r.sell_options],
         timing=None
         if t is None or r.time_model is None
@@ -2156,6 +2240,73 @@ def _ah_blocked(state: AppState, conn: Connection, user: auth.User) -> AhBlocked
         items=[AhBlockedItem(item_id=i, added_at=added) for i, added in blocked],
         details=_item_details(state, conn, priced, (i for i, _ in blocked)),
     )
+
+
+@router.get("/vendorcheck")
+def get_vendor_check(
+    state: State,
+    user: CurrentUser,
+    hide_classes: Annotated[list[int] | None, Query(description="item classes left out")] = None,
+    hide_qualities: Annotated[list[int] | None, Query(description="qualities left out")] = None,
+    sort: Annotated[
+        store.ListedSort,
+        Query(
+            description="the column: item name, type (class name), cheapest listing, what a vendor pays, the "
+            "difference, or it as a percentage of the listing (no vendor buying it last either way)"
+        ),
+    ] = "difference",
+    order: Annotated[Literal["desc", "asc"], Query()] = "desc",
+    page: Annotated[int, Query(ge=1, description="1 for the first")] = 1,
+) -> VendorCheck:
+    """What the selected realm's auction house lists now, with each item's cheapest listing and what a vendor
+    pays for it (the /profit/vendorcheck page), filtered, sorted and paged (`VENDOR_CHECK_PAGE` an answer;
+    a page past the last gives the last); nothing without a selection or prices."""
+    with _connect(state) as conn:
+        sel, _ = service.selected_characters(conn, user.uid, state.key)
+        ah = service.auction_house_of(conn, state.key, sel)
+
+        def load(at: int) -> store.ListedPage:
+            return store.load_listed(
+                conn,
+                state.key,
+                ah,
+                first_party=state.version.first_party_prices,
+                hide_classes=hide_classes or (),
+                hide_qualities=hide_qualities or (),
+                sort=sort,
+                descending=order == "desc",
+                offset=(at - 1) * VENDOR_CHECK_PAGE,
+                limit=VENDOR_CHECK_PAGE,
+            )
+
+        found = load(page)
+        last = max(1, -(-found.total // VENDOR_CHECK_PAGE))
+        if page > last:  # the filters shrank the list under the page asked for
+            page = last
+            found = load(page)
+        return VendorCheck(
+            realm=sel.realm if sel else "",
+            faction=sel.faction if sel else "",
+            items=[VendorCheckItem(**asdict(i)) for i in found.items],
+            total=found.total,
+            listed=found.listed,
+            page=page,
+            page_size=VENDOR_CHECK_PAGE,
+            classes=found.classes,
+            qualities=found.qualities,
+        )
+
+
+@router.get("/vendorcheck/items/{item_id}")
+def get_vendor_check_item(state: State, user: CurrentUser, item_id: int) -> ItemInfo:
+    """One item as the selected realm's auction house has it, every price level included: what a vendor check
+    row shows when opened. 404 for an item the game version hasn't."""
+    with _connect(state) as conn:
+        priced = state.cache.get_priced(service.selected_auction_house(conn, user.uid, state.key))
+        found = _item_details(state, conn, priced, [item_id]).get(item_id)
+        if found is None:
+            raise HTTPException(status_code=404, detail=f"no item {item_id}")
+        return found
 
 
 @router.get("/ah-blocked")

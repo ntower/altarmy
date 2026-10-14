@@ -1,30 +1,3 @@
-/* A warning sentence in a Sell via tooltip. Mantine's tooltip is dark on the light scheme and light on the dark one,
-   so the orange is light on the first and deep on the second. */
-.warning {
-  color: var(--mantine-color-orange-4);
-  font-weight: 600;
-}
-
-:global([data-mantine-color-scheme='dark']) .warning {
-  color: var(--mantine-color-orange-9);
-}
-
-/* A secondary detail in a Sell via tooltip, on a line of its own: smaller and faded, so it reads after the main text
-   whichever way the tooltip's colours run. */
-.aside {
-  margin-top: 6px;
-  font-size: var(--mantine-font-size-xs);
-  opacity: 0.75;
-}
-
-/* The options of one radio, set in under it: a rule drops from the radio's centre and the options line up with its
-   label, so they read as belonging to that choice. */
-.suboptions {
-  margin-left: calc(0.625rem - 1px);
-  padding: 2px 0 2px calc(0.625rem + var(--mantine-spacing-sm) - 1px);
-  border-left: 2px solid var(--mantine-color-default-border);
-}
-
 /* The characters and the realm card side by side, half each; whichever opens up (an upload's steps, the start cards)
    takes the whole width, first, the other below it at its half. One column on phones. */
 .panels {
@@ -45,44 +18,20 @@
   }
 }
 
-/* A run's page: the climber's card on the left, as tall as the auction house's card and the Options button under it
-   on the right; the opened options below the button, not stretching the climber's card. The auction house's card,
-   opened to upload, goes across the top. One column on phones. */
+/* A run's page: the climber's card on the left, the auction house's on the right; opened to upload, the auction
+   house's card goes across the top. One column on phones. */
 .run {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--mantine-spacing-md);
 }
 
-.run > .climberCell {
-  grid-column: 1;
-  grid-row: 1 / span 2;
-}
-
-.run > .houseCell {
-  grid-column: 2;
+.run:has(> .houseCell [data-wide]) > .houseCell {
+  grid-column: 1 / -1;
   grid-row: 1;
 }
 
-.run > .optionsControl {
-  grid-column: 2;
-  grid-row: 2;
-}
-
-.run > .optionsPanel {
-  grid-column: 2;
-  grid-row: 3;
-}
-
-.run:has(> .houseCell [data-wide]) > .houseCell {
-  grid-column: 1 / -1;
-}
-
 .run:has(> .houseCell [data-wide]) > .climberCell {
-  grid-row: 2 / span 2;
-}
-
-.run:has(> .houseCell [data-wide]) > .optionsControl {
   grid-row: 2;
 }
 
@@ -90,74 +39,11 @@
   .run {
     grid-template-columns: minmax(0, 1fr);
   }
-
-  .run > .climberCell,
-  .run > .houseCell,
-  .run > .optionsControl,
-  .run > .optionsPanel,
-  .run:has(> .houseCell [data-wide]) > .houseCell,
-  .run:has(> .houseCell [data-wide]) > .climberCell,
-  .run:has(> .houseCell [data-wide]) > .optionsControl {
-    grid-column: 1;
-    grid-row: auto;
-  }
-}
-
-/* Half the width, on the left (one column on phones). */
-.half {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--mantine-spacing-md);
-}
-
-@media (max-width: 48em) {
-  .half {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 .climberCell,
 .houseCell {
   min-width: 0;
-}
-
-/* Skilling up's Options button, looking like a closed accordion section, and the options it opens. */
-.optionsControl {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--mantine-spacing-sm);
-  padding: var(--mantine-spacing-sm) var(--mantine-spacing-lg);
-  border-radius: 12px;
-  border: 1px solid var(--mantine-color-default-border);
-  background: var(--mantine-color-body);
-}
-
-.optionsControl:hover,
-.optionsControl:focus-visible {
-  border-color: var(--mantine-primary-color-filled);
-}
-
-.optionsPanel {
-  padding: var(--mantine-spacing-lg);
-  border-radius: 12px;
-  border: 1px solid var(--mantine-color-default-border);
-  background: var(--mantine-color-body);
-}
-
-:global([data-mantine-color-scheme='dark']) .optionsControl,
-:global([data-mantine-color-scheme='dark']) .optionsPanel {
-  background: var(--mantine-color-dark-6);
-}
-
-.chevron {
-  display: inline-flex;
-  color: var(--mantine-color-dimmed);
-  transition: transform 200ms ease;
-}
-
-.chevron[data-open] {
-  transform: rotate(180deg);
 }
 
 /* A profession icon in a line of text. */

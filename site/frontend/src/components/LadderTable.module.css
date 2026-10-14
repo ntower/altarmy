@@ -1,0 +1,30 @@
+/* The whole ladder as a table: the loader centred under it. */
+.ladder {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.loader {
+  align-self: center;
+}
+
+/* The skill a run covers, never broken; the reminder to train under it. */
+.skill {
+  white-space: nowrap;
+}
+
+.train {
+  white-space: nowrap;
+}
+
+/* A run's crafts and what it comes to: never broken between its coins. */
+.figure {
+  white-space: nowrap;
+}
+
+/* The run opened out under its row: plain, not hover-highlighted. */
+tr.details,
+tr.details:hover {
+  background-color: transparent;
+}

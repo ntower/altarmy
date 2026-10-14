@@ -14,6 +14,12 @@ export const QUALITY_COLORS = [
   '#00ccff',
 ] as const
 
+/** Quality names, indexed as `QUALITY_COLORS` is. */
+export const QUALITY_NAMES = ['Poor', 'Common', 'Uncommon', 'Rare', 'Epic', 'Legendary', 'Artifact', 'Heirloom'] as const
+
+/** A quality's name, or "Quality N" for one the game added since. */
+export const qualityName = (quality: number): string => QUALITY_NAMES[quality] ?? `Quality ${quality}`
+
 /** Equip slot names by InventoryType, as the tooltip's left-hand slot line shows them. */
 export const INVENTORY_TYPES: Readonly<Record<number, string>> = {
   1: 'Head',
@@ -45,6 +51,30 @@ export const INVENTORY_TYPES: Readonly<Record<number, string>> = {
 }
 
 const ITEM_CLASS = { container: 1, weapon: 2, armor: 4, quiver: 11 } as const
+
+/** Item class names by ItemClass id (the DB2 enum), as the vendor check's type filter names them. */
+export const ITEM_CLASS_NAMES: Readonly<Record<number, string>> = {
+  0: 'Consumable',
+  1: 'Container',
+  2: 'Weapon',
+  3: 'Gem',
+  4: 'Armor',
+  5: 'Reagent',
+  6: 'Projectile',
+  7: 'Trade Goods',
+  8: 'Generic',
+  9: 'Recipe',
+  10: 'Money',
+  11: 'Quiver',
+  12: 'Quest',
+  13: 'Key',
+  14: 'Permanent',
+  15: 'Miscellaneous',
+  16: 'Glyph',
+}
+
+/** An item class's name, or "Class N" for one the game added since. */
+export const itemClassName = (classId: number): string => ITEM_CLASS_NAMES[classId] ?? `Class ${classId}`
 
 const BINDINGS: Readonly<Record<number, string>> = {
   1: 'Binds when picked up',

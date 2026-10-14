@@ -49,7 +49,6 @@ const TAILOR = '/profit/skill/classic-beta-pve-horde/Tailor%20Guy/tailoring'
 
 /** The buttons of the question named `name`, by label. */
 /** Open skilling up's Options, closed at first. */
-const openOptions = async () => userEvent.click(await screen.findByRole('button', { name: 'Options' }))
 
 const answers = (name: string) =>
   within(screen.getByRole('group', { name }))
@@ -288,16 +287,15 @@ describe('SearchTab', () => {
     expect(screen.queryByRole('checkbox', { name: /Disenchant/ })).not.toBeInTheDocument()
     expect(localStorage.getItem('altarmy.search.minProfit')).toBe('0.5') // where it used to be: left alone
     expect(screen.queryByRole('group', { name: 'Your setup' })).not.toBeInTheDocument()
-    // none of making gold's options
-    expect(screen.getByRole('button', { name: 'Options' })).toBeInTheDocument()
-    for (const gone of ['Advanced Filters', 'Filters']) {
+    // none of making gold's options, and no Options: the strategy builder sets them
+    for (const gone of ['Advanced Filters', 'Filters', 'Options']) {
       expect(screen.queryByRole('button', { name: gone })).not.toBeInTheDocument()
     }
     expect(screen.queryByLabelText('Crafts per session')).not.toBeInTheDocument()
     expect(screen.queryByRole('radio', { name: 'Include recipes I can train' })).not.toBeInTheDocument()
   })
 
-  it("lays out a run's page: the climber's card beside the auction house's and the Options button under it", async () => {
+  it("lays out a run's page: the climber's card beside the auction house's", async () => {
     at(TAILOR)
     mockApi({
       '/api/status': status(),
@@ -308,8 +306,7 @@ describe('SearchTab', () => {
     renderWithProviders(<SearchTab />)
     const climber = await screen.findByRole('region', { name: 'Skilling up' })
     const house_ = screen.getByRole('region', { name: 'Realm' })
-    // one grid: the climber's cell, the auction house's, then the Options button (the grid sets the climber's as tall
-    // as the other two)
+    // one grid: the climber's cell, then the auction house's
     const grid = climber.parentElement!.parentElement!
     expect(house_.parentElement!.parentElement).toBe(grid)
     expect(within(climber).getByRole('button', { name: 'Switch character or profession' })).toBeInTheDocument()
@@ -318,19 +315,10 @@ describe('SearchTab', () => {
     expect(screen.queryByRole('combobox', { name: 'Realm' })).not.toBeInTheDocument()
     expect(await within(house_).findByRole('status', { name: 'Price freshness' })).toBeInTheDocument()
     expect(within(house_).getByRole('button', { name: 'Upload your scan' })).toBeInTheDocument()
-    // the Options button under the auction house's, closed; open, one column: what teaches the recipes, then the
-    // chance to reach
-    const options = screen.getByRole('button', { name: 'Options' })
-    expect(options).toHaveAttribute('aria-expanded', 'false')
-    expect(options.parentElement).toBe(grid)
-    expect(options.previousElementSibling).toBe(house_.parentElement)
+    expect(grid.children).toHaveLength(2)
+    // no Options: the strategy builder sets them
+    expect(screen.queryByRole('button', { name: 'Options' })).not.toBeInTheDocument()
     expect(screen.queryByRole('group', { name: 'Recipes taught by' })).not.toBeInTheDocument()
-    await userEvent.click(options)
-    expect(options).toHaveAttribute('aria-expanded', 'true')
-    expect(document.getElementById(options.getAttribute('aria-controls')!)?.parentElement).toBe(grid)
-    const taught = screen.getByRole('group', { name: 'Recipes taught by' })
-    const chance = screen.getByRole('textbox', { name: 'Chance to reach target skill' })
-    expect(taught.compareDocumentPosition(chance)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
   })
 
   it("shows the Profit page's characters in the climber's card's place while they upload again", async () => {
@@ -720,26 +708,19 @@ describe('SearchTab', () => {
     )
   })
 
-  it('skills up with the stored skill options', async () => {
+  it('skills up with the built-in strategies\' sources, whatever was stored before', async () => {
     at(TAILOR)
     localStorage.setItem('altarmy.search.sources', JSON.stringify(['bop', 'trainer'])) // from before
+    localStorage.setItem('altarmy.search.skill.sources', JSON.stringify(['bop']))
     const fetch = mockApi({
       '/api/status': status(),
       '/api/characters': withEnchanter,
       '/api/rank': noResults,
     })
     renderWithProviders(<SearchTab />)
-    await openOptions()
-    expect(await screen.findByRole('checkbox', { name: 'Taught by trainers' })).toBeChecked()
-    expect(screen.getByRole('checkbox', { name: 'Taught by normal recipes' })).not.toBeChecked()
-    expect(
-      screen.getByRole('checkbox', {
-        name: 'Taught by bind on pickup recipes',
-      }),
-    ).toBeChecked()
     await screen.findByText('No path was found for Tailor Guy to gain skill in Tailoring')
     const [rank] = urls(fetch, '/api/rank')
-    expect(rank?.searchParams.getAll('sources')).toEqual(['trainer', 'bop'])
+    expect(rank?.searchParams.getAll('sources')).toEqual(['trainer', 'recipe'])
     expect(rank?.searchParams.getAll('exits')).toEqual(['vendor', 'disenchant', 'keep'])
   })
 
@@ -754,20 +735,10 @@ describe('SearchTab', () => {
     })
     renderWithProviders(<SearchTab />)
     const exitsSent = () => urls(fetch, '/api/rank').at(-1)?.searchParams.getAll('exits')
-    const sourcesSent = () => urls(fetch, '/api/rank').at(-1)?.searchParams.getAll('sources')
     await waitFor(() => expect(exitsSent()).toEqual(['vendor', 'disenchant', 'keep']))
-    await openOptions()
-    await userEvent.click(await screen.findByRole('checkbox', { name: 'Taught by trainers' }))
-    await waitFor(() => expect(sourcesSent()).toEqual(['recipe']))
 
     act(() => navigate('/profit/gold'))
     await waitFor(() => expect(exitsSent()).toEqual(['vendor', 'disenchant', 'ah'])) // every way, whatever was stored
-    expect(localStorage.getItem('altarmy.search.skill.sources')).toBe('["recipe"]') // untouched by gold
-
-    // back to skilling up: what may teach its recipes, as the user left it
-    act(() => window.history.back())
-    await waitFor(() => expect(exitsSent()).toEqual(['vendor', 'disenchant', 'keep']))
-    expect(sourcesSent()).toEqual(['recipe'])
   })
 
   it('hides the Arcane Salvager checkbox and never counts on one while it is hidden', async () => {
@@ -1040,45 +1011,6 @@ describe('SearchTab', () => {
     expect(await put?.json()).toEqual({ realm: 'Atiesh', faction: '' })
   })
 
-  it('offers what may teach the recipes skilled up on', async () => {
-    at(TAILOR)
-    const fetch = mockApi({
-      '/api/status': status(),
-      '/api/characters': characters,
-      '/api/rank': noResults,
-    })
-    renderWithProviders(<SearchTab />)
-    await openOptions()
-    const taught = await screen.findByRole('group', {
-      name: 'Recipes taught by',
-    })
-    const boxes = within(taught).getAllByRole<HTMLInputElement>('checkbox')
-    expect(boxes.map((c) => [c.closest('.mantine-Checkbox-root')?.textContent, c.checked])).toEqual([
-      ['Taught by trainers', true],
-      ['Taught by normal recipes', true],
-      ['Taught by bind on pickup recipes', false],
-    ])
-    expect(
-      within(taught).getByRole('checkbox', {
-        name: 'Taught by normal recipes',
-      }),
-    ).toHaveAccessibleDescription(
-      'Includes recipes sold by vendors (even if they are bind-on-pickup) and non-soulbound recipes you could find on the auction house.',
-    )
-    expect(screen.queryByText('What is made')).not.toBeInTheDocument()
-    await waitFor(() => expect(urls(fetch, '/api/rank')).toHaveLength(1))
-    fireEvent.click(
-      within(taught).getByRole('checkbox', {
-        name: 'Taught by bind on pickup recipes',
-      }),
-    )
-    fireEvent.click(within(taught).getByRole('checkbox', { name: 'Taught by trainers' }))
-    expect(localStorage.getItem('altarmy.search.skill.sources')).toBe('["recipe","bop"]')
-    await waitFor(() => expect(urls(fetch, '/api/rank')).toHaveLength(2))
-    expect(urls(fetch, '/api/rank')[1]?.searchParams.getAll('sources')).toEqual(['recipe', 'bop'])
-    expect(screen.queryByRole('slider')).not.toBeInTheDocument() // only what can be trained now
-  })
-
   it('no longer asks what to plan for: the strategies side by side say', async () => {
     at(TAILOR)
     const fetch = mockApi({
@@ -1087,39 +1019,9 @@ describe('SearchTab', () => {
       '/api/rank': noResults,
     })
     renderWithProviders(<SearchTab />)
-    await openOptions()
     await waitFor(() => expect(urls(fetch, '/api/rank')).toHaveLength(1))
     expect(screen.queryByRole('radiogroup', { name: 'Plan for' })).not.toBeInTheDocument()
     expect(urls(fetch, '/api/rank')[0]?.searchParams.get('effort')).toBeNull()
-  })
-
-  it('asks how sure the materials bought for a run should be to reach its target, saying what that means', async () => {
-    at(TAILOR)
-    const fetch = mockApi({
-      '/api/status': status(),
-      '/api/characters': characters,
-      '/api/rank': noResults,
-    })
-    renderWithProviders(<SearchTab />)
-    await openOptions()
-    const chance = await screen.findByRole('textbox', { name: 'Chance to reach target skill' })
-    expect(chance).toHaveValue('75%')
-    // the info icon beside the label says what it means
-    const info = chance.closest('.mantine-InputWrapper-root')!.querySelector('label [aria-hidden="true"]')!
-    await userEvent.hover(info)
-    expect(await screen.findByText(/Since skill ups are random/)).toHaveTextContent(
-      'so you have a 75% chance to reach the target skill level' +
-        "Put another way: 75% of the time, you won't need to make a second trip to the auction house",
-    )
-    await waitFor(() => expect(urls(fetch, '/api/rank')).toHaveLength(1))
-    fireEvent.change(chance, { target: { value: '95' } })
-    expect(localStorage.getItem('altarmy.search.skill.reachTarget')).toBe('95')
-    expect(screen.getByText(/Since skill ups are random/)).toHaveTextContent(/so you have a 95% chance.*95% of the time/)
-    fireEvent.change(chance, { target: { value: '100' } })
-    fireEvent.blur(chance)
-    expect(chance).toHaveValue('95%') // at most 95%
-    // only the checklist follows it: the ranking isn't asked for again
-    expect(urls(fetch, '/api/rank')).toHaveLength(1)
   })
 
   it('saves changed parameters and ignores malformed stored values', async () => {
