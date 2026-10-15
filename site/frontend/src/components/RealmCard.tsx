@@ -41,27 +41,15 @@ const BACK = 'Back to the realm'
 export function RealmCard({
   select,
   lastScan,
-  uploadAsked = 0,
 }: {
   /** the realm and faction picker; none: the card shows only how old the prices are and the upload */
   select?: ReactNode
   /** the auction house's newest scan; undefined while unknown or with no realm selected */
   lastScan: string | null | undefined
-  /** counts the times something else asked to upload a scan (making gold's no-scan notice): each opens the upload */
-  uploadAsked?: number
 }) {
   const [mode, setMode] = useState<Mode>('realm')
   const upload = () => setMode('upload')
   const section = useRef<HTMLElement>(null)
-  // A new ask opens the upload while rendering (no effect needed), then the card scrolls into view.
-  const [asked, setAsked] = useState(uploadAsked)
-  if (asked !== uploadAsked) {
-    setAsked(uploadAsked)
-    setMode('upload')
-  }
-  useEffect(() => {
-    if (uploadAsked) section.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
-  }, [uploadAsked])
 
   // Alt Army Sync's first scan lands while its steps are open: back to the realm, where its age now shows.
   const shownScan = useRef(lastScan)

@@ -14,6 +14,7 @@ import getpass
 import os
 import sys
 from collections.abc import Iterable, Mapping
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -24,6 +25,7 @@ from . import (
     auth,
     cloudlog,
     db,
+    feed,
     gamedata,
     ingest,
     jobs,
@@ -33,6 +35,7 @@ from . import (
     schema,
     signals,
     signin,
+    snapshots,
     versions,
     watch,
     wowfiles,
@@ -119,6 +122,37 @@ def cmd_merge(args: argparse.Namespace) -> None:
                 observations=observations,
             )
         run.say(_signal(signals.from_env(), moved))
+
+
+def cmd_feed_load(args: argparse.Namespace) -> None:
+    """Record saved auction snapshots (bodies as Blizzard serves them) for one house, an hour apart."""
+    version = versions.get(args.game_version)
+    start = (
+        datetime.fromisoformat(args.start)
+        if args.start
+        else db.utcnow() - timedelta(hours=len(args.files) - 1)
+    )
+    start = db.utc(start)
+    moved: set[int] = set()
+    with args.database.begin() as conn:
+        ah = prices.auction_house(conn, version.key, version.realm_name(args.realm), args.faction)
+        for i, path in enumerate(args.files):
+            t = int((start + timedelta(minutes=args.step * i)).timestamp())
+            try:
+                snap = snapshots.parse_blizzard(
+                    Path(path).read_bytes(), t=t, realm=args.realm, faction=args.faction
+                )
+            except ValueError as e:
+                sys.exit(f"{path}: {e}")
+            got = feed.record_auction_snapshot(conn, ah, snap, version)
+            print(
+                f"{path}: {got.items} items, {got.moved} moved, {got.ended} ended, {got.posted} posted"
+                + (" (stale)" if got.stale else " (held back: cut short)" if got.quarantined else "")
+            )
+            if got.moved:
+                moved.add(ah)
+        versions_moved = _price_versions(conn, moved)
+    print(_signal(signals.from_env(), versions_moved))
 
 
 def _price_versions(conn: Connection, auction_house_ids: Iterable[int]) -> dict[str, dict[int, int]]:
@@ -350,6 +384,19 @@ def main(argv: list[str] | None = None) -> None:
         help="recompute daily medians and the 7-day price statistics (every game version)",
     )
     s.set_defaults(fn=cmd_merge)
+
+    s = sub.add_parser(
+        "feed-load",
+        help="record saved auction snapshots (bodies Blizzard's auctions endpoint served) for one house",
+    )
+    s.add_argument(
+        "--realm", required=True, help="the realm as the snapshot names it (a fixed realm's alias works)"
+    )
+    s.add_argument("--faction", required=True, choices=list(versions.FACTIONS))
+    s.add_argument("--start", help="UTC time of the first, ISO 8601 (default: an hour apart, ending now)")
+    s.add_argument("--step", type=int, default=60, help="minutes between them (default: %(default)s)")
+    s.add_argument("files", nargs="+")
+    s.set_defaults(fn=cmd_feed_load)
 
     s = sub.add_parser(
         "admin", help="grant, revoke or list the site admin claim on Firebase accounts (needs the [ui] extra)"

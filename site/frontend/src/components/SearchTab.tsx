@@ -12,7 +12,9 @@ import {
 } from '../api/queries'
 import { hypotheticalPath, parseProfitPath, resolveHypothetical, resolveRun, runPath } from '../lib/profitRoute'
 import { fromKey, realmOptions, toKey } from '../lib/realms'
+import { STRATEGY_PICKER } from '../lib/features'
 import { navigate, usePath } from '../lib/router'
+import { StrategyBar, StrategyPicker } from './StrategyPicker'
 import { useSession } from '../lib/session'
 import {
   CLIMBER_NAME,
@@ -91,7 +93,6 @@ export function SearchTab({
   const maxSkill = useMaxSkill()
   const flush = usePathMoves(path)
   // Asks from the search to upload a scan (making gold's no-scan notice), each opening the realm card's upload.
-  const [uploadAsked, setUploadAsked] = useState(0)
 
   // A run's path needs its character, with that profession, on that realm; a hypothetical climb's a priced realm and
   // a profession to skill up. Either failing, the profession is asked again.
@@ -224,6 +225,8 @@ export function SearchTab({
   // Without characters on the selected realm, every recipe is ranked for one unnamed crafter (making gold), or for
   // the character nobody uploaded (a hypothetical climb).
   const browsing = group === undefined && hypothetical === null
+  // A way to make gold with its own page (`STRATEGY_PICKER`): the strategy bar over its search.
+  const strategy = STRATEGY_PICKER && view?.kind === 'gold' ? view.strategy : undefined
   const noEnchanter = !!selection && group !== undefined && !hasEnchanter(group)
   // The selection's auction house and its newest scan; undefined while the coverage is still loading.
   const house = coverage.data?.find((c) => c.auction_house_id === status.data.auction_house_id)
@@ -267,7 +270,7 @@ export function SearchTab({
           </div>
           {/* A run's realm is its climber's: no picker, only how old the prices are. */}
           <div className={classes.houseCell}>
-            <RealmCard lastScan={selection ? lastScan : undefined} uploadAsked={uploadAsked} />
+            <RealmCard lastScan={selection ? lastScan : undefined} />
           </div>
         </div>
       ) : (
@@ -277,7 +280,6 @@ export function SearchTab({
             <RealmCard
               select={run || hypothetical ? undefined : realmSelect(true)}
               lastScan={selection ? lastScan : undefined}
-              uploadAsked={uploadAsked}
             />
           </div>
         </>
@@ -286,9 +288,14 @@ export function SearchTab({
         <Group justify="center" py="xl">
           <Loader aria-label="Switching realm" />
         </Group>
+      ) : selection && setup.aim === 'gold' && STRATEGY_PICKER && view?.kind === 'gold' && !view.strategy ? (
+        <StrategyPicker />
       ) : selection ? (
+        <>
+        {strategy && <StrategyBar current={strategy} />}
         <AimSearch
-          key={setup.aim}
+          key={`${setup.aim}-${strategy ?? ''}`}
+          strategy={strategy}
           setup={setup}
           professions={professions}
           browsing={browsing}
@@ -296,11 +303,9 @@ export function SearchTab({
           noPrices={status.data.prices === 0}
           salvagerDefault={characters.data?.arcane_salvager ?? false}
           flush={characters.data ? flush : -1}
-          onUpload={() => setUploadAsked((n) => n + 1)}
           lastScan={lastScan}
-          watchedHours={house?.watched_hours}
-          houseId={status.data.auction_house_id}
         />
+        </>
       ) : (
         status.data.prices === 0 && <Alert color="yellow">No data collected for this auction house</Alert>
       )}

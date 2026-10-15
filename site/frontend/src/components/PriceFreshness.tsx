@@ -7,9 +7,6 @@ import { IconWarning } from './icons'
 /** Prices older than this are called out: a scan since then would give better results. */
 export const STALE_AFTER_MS = 30 * 60_000
 
-/** How a scan is taken: prices come from the Alt Army addon's own scan of the auction house. */
-export const HOW_TO_SCAN = 'At the auction house, press Alt Army scan, then upload your Alt Army data.'
-
 /**
  * How fresh the selected auction house's prices are: when its newest scan was made, in a warning colour once
  * that is over half an hour ago (or there is no scan at all). The Realm card's Upload your scan button sits beside it.

@@ -45,7 +45,7 @@ describe('confidence', () => {
 
   it('leads with the level', () => {
     expect(confidenceTitle(base)).toBe(
-      'Medium confidence in the sell price: Sales unknown: they are seen only between scans taken within 30 minutes of each other',
+      'Medium confidence in the sell price: Sales unknown: they are seen only between snapshots of the auction house taken close together',
     )
   })
 })

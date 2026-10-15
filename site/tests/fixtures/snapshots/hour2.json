@@ -1,0 +1,42 @@
+{
+ "id": 6,
+ "name": "Horde Auction House",
+ "auctions": [
+  {
+   "id": 900,
+   "item": {
+    "id": 2770
+   },
+   "quantity": 20,
+   "time_left": "VERY_LONG",
+   "buyout": 10000
+  },
+  {
+   "id": 901,
+   "item": {
+    "id": 2840
+   },
+   "quantity": 5,
+   "time_left": "VERY_LONG",
+   "buyout": 4500
+  },
+  {
+   "id": 5,
+   "item": {
+    "id": 2770
+   },
+   "quantity": 20,
+   "time_left": "VERY_LONG",
+   "buyout": 2600
+  },
+  {
+   "id": 7,
+   "item": {
+    "id": 4000
+   },
+   "quantity": 5,
+   "time_left": "VERY_LONG",
+   "buyout": 750
+  }
+ ]
+}

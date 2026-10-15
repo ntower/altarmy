@@ -239,6 +239,10 @@ def test_the_sell_price_is_the_lowest_of_what_is_asked_and_what_sells() -> None:
     # not listed: what it used to go for, never the last listing alone if anything better is known
     assert prices.book_sell_price(market=500, listed=False, reference=150, sale_price=None) == 150
     assert prices.book_sell_price(market=500, listed=False, reference=None, sale_price=None) == 500
+    # the time-weighted price stands in for a median a new house hasn't got, and the lower of the two counts
+    assert prices.book_sell_price(market=500, listed=True, reference=None, sale_price=None, recent=200) == 200
+    assert prices.book_sell_price(market=500, listed=True, reference=150, sale_price=None, recent=200) == 150
+    assert prices.book_sell_price(market=500, listed=True, reference=150, sale_price=300, recent=200) == 300
 
 
 def test_first_party_prices_ignore_other_sources(conn: Connection) -> None:
@@ -252,6 +256,18 @@ def test_first_party_prices_ignore_other_sources(conn: Connection) -> None:
     books = prices.load_books(conn, ah)
     assert list(books) == [ORE]
     assert set(prices.load_buy_and_sell(conn, ah)[0]) == {ORE, EARTH, BAR}
+
+
+def test_demand_is_sales_seen_and_ahead_is_what_is_listed_at_or_under_a_price() -> None:
+    ladder = (Level(100, 5, 1), Level(150, 10, 1))
+    listing = prices.Listing(100, 15, ladder, sale_rate=2.0, source=prices.BLIZZARD)
+    assert prices.demand(listing) == 2.0 * prices.SALES_DAYS
+    assert prices.demand(listing, days=1) == 2.0
+    assert prices.demand(prices.Listing(100, 15, ladder, source=prices.ALTARMY)) == 0.0
+    assert prices.demand(prices.Listing(100, 15, ladder, sale_rate=2.0, source="manual")) is None
+    assert prices.ahead(listing, 120) == 5
+    assert prices.ahead(listing, 150) == 15
+    assert prices.ahead(listing, None) == 0
 
 
 def test_sale_depth_is_the_more_of_seen_sold_and_listed_at_or_under_the_price() -> None:

@@ -9,6 +9,7 @@ import { formatRoi } from '../lib/money'
 import { EXIT_SHORT } from '../lib/exits'
 import { ahCount, ahProfit, depthNote, safeProfit } from '../lib/selling'
 import { craftUntil, perPoint } from '../lib/skill'
+import { byGroup, CRAFT_GROUP_LABELS, type CraftGroup } from '../lib/strategies'
 import { CharacterClasses } from '../lib/characterClasses'
 import { CharacterName } from './CharacterName'
 import { DisenchantLabel, ItemLink, RecipeTooltip } from './ItemTooltip'
@@ -28,7 +29,12 @@ const columnsFor = (rankBy: RankBy | undefined): string[] =>
     ? ['Recipe', PER_POINT, CRAFT_UNTIL, 'Investment', 'Learn']
     : rankBy === 'gold'
       ? ['', 'Recipe', SAFE, AUCTION]
-      : ['', PROFIT, 'Investment', 'ROI', 'Recipe', 'Crafter', 'Sell via']
+      : rankBy === 'craft'
+        ? ['', 'Craft', WHAT_TO_DO, EACH]
+        : ['', PROFIT, 'Investment', 'ROI', 'Recipe', 'Crafter', 'Sell via']
+/** Craft and sell's columns: what to do with a craft, and what one likely makes. */
+const WHAT_TO_DO = 'What to do'
+const EACH = 'Each'
 /** How far a skill-up run goes: "110 (~17 crafts)". */
 const CRAFT_UNTIL = 'Craft until'
 /** A gold list's two ways to sell, side by side: playing it safe (the better of a vendor and disenchanting) and the
@@ -101,12 +107,13 @@ const COLUMN_HIDDEN: Readonly<Record<string, string | undefined>> = {
 }
 /** What the server ranks by here (the whole ranking, not just this page): profit per session, best first; the
  * cost of an expected skill point, cheapest first; or a gold list (sorted by the server: its headers don't sort). */
-export type RankBy = 'profit' | 'skill' | 'gold'
+export type RankBy = 'profit' | 'skill' | 'gold' | 'craft'
 /** The column showing each ranking, and whether the server's order is largest first on it. */
 const RANK_COLUMN: Readonly<Record<RankBy, Sort | null>> = {
   profit: { column: PROFIT, descending: true },
   skill: { column: PER_POINT, descending: false },
   gold: null,
+  craft: null, // by what a day makes, in its groups (`byGroup`)
 }
 
 type Sort = { column: string; descending: boolean }
@@ -383,6 +390,66 @@ function PhoneProfits({ ways }: { ways: TwoWays }) {
   )
 }
 
+/** What to do with a craft, in words: post it (how many, in what stacks, at what price) or sell it another way;
+ * and under it what that rests on. */
+function craftWhat(r: RankResult, items: ItemMap): { action: ReactNode; basis: string | null } {
+  const item = items[r.output_item_id]
+  if (r.likely_exit === 'ah' && r.post_price != null && r.post_units) {
+    const stack = r.post_stack && r.post_stack > 1 ? `, in stacks of ${r.post_stack}` : ''
+    const sold = item?.sold_7d ? `~${Math.round(item.sold_7d / 7)} sold a day` : 'no sales seen yet'
+    const listed = item?.ah_quantity ? `${item.ah_quantity} listed` : 'none listed'
+    return {
+      action: (
+        <>
+          Post {r.post_units}
+          {stack} at <Money copper={r.post_price} />
+        </>
+      ),
+      basis: `${sold} · ${listed}`,
+    }
+  }
+  const verb: Readonly<Record<string, string>> = {
+    vendor: 'Vendor them',
+    disenchant: 'Disenchant them',
+    skill: 'Cast for the skill point',
+    ah: 'Post them',
+  }
+  return {
+    action: verb[r.likely_exit] ?? exitLabel(r.likely_exit),
+    basis: r.group === 'waiting' ? "AH: not proven here yet" : r.group === 'full' ? 'AH: more listed than sells a day' : null,
+  }
+}
+
+/** A Craft and sell row's two cells: what to do, and what a craft likely makes (with a day's posts under it). */
+function CraftCells({ result: r, items }: { result: RankResult; items: ItemMap }) {
+  const { action, basis } = craftWhat(r, items)
+  return (
+    <>
+      <Table.Td>
+        <Text size="sm">{action}</Text>
+        {basis && (
+          <Text size="xs" c="dimmed">
+            {basis}
+          </Text>
+        )}
+      </Table.Td>
+      <Table.Td ta="right" ff="monospace" c={r.likely_each < 0 ? 'red' : 'teal'}>
+        <Money copper={r.likely_each} padded />
+        {r.post_units ? (
+          <Text size="xs" c="dimmed">
+            x{r.post_units} = <Money copper={r.per_day} />
+          </Text>
+        ) : null}
+        {r.deposit_est ? (
+          <Text size="xs" c="dimmed" title="Estimated until the deposit is checked in game">
+            less <Money copper={r.deposit_est} /> deposit
+          </Text>
+        ) : null}
+      </Table.Td>
+    </>
+  )
+}
+
 /** How a recipe is learned, in a word: known, or where the climber learns it (and who already knows it). */
 function learnLabel(r: RankResult, learn: Learn | undefined): string {
   if (!r.crafter || r.crafters.includes(r.crafter) || needsNoRecipe(r)) return 'known'
@@ -559,6 +626,7 @@ export function ResultsTable({
   const shownSort: Sort | null = sort ?? (rankBy ? RANK_COLUMN[rankBy] : null)
   const gold = rankBy === 'gold'
   const skill = rankBy === 'skill'
+  const craft = rankBy === 'craft'
   const sortBy = (column: string) =>
     setSort(
       shownSort?.column === column
@@ -576,7 +644,12 @@ export function ResultsTable({
     () => Object.assign({}, rankItems, ...Object.values(evaluations).map((e) => e.data?.items ?? {})) as ItemMap,
     [rankItems, evaluations],
   )
-  const rows = useMemo(() => sorted(current, sort, favorites), [current, sort, favorites])
+  const rows = useMemo(
+    () => (rankBy === 'craft' ? byGroup(sorted(current, null, favorites)) : sorted(current, sort, favorites)),
+    [current, sort, favorites, rankBy],
+  )
+  // Craft and sell's groups: what pays is open, the rest folded until asked for.
+  const [openGroups, setOpenGroups] = useState<ReadonlySet<CraftGroup>>(() => new Set(['paying']))
   const editing = (id: number): PlanEditing => {
     const evaluation = evaluations[id]
     return {
@@ -700,10 +773,37 @@ export function ResultsTable({
                       <PhoneProfits ways={ways} />
                     </>
                   )}
+                  {craft && <RecipeLine result={r} />}
                 </Table.Td>
               )
+              const groupStart = craft && (index === 0 || rows[index - 1]?.group !== r.group)
+              const folded = craft && !openGroups.has(r.group)
               return (
                 <Fragment key={r.recipe_id}>
+                  {groupStart && (
+                    <Table.Tr className={classes.groupHeading}>
+                      <Table.Td colSpan={columns}>
+                        <UnstyledButton
+                          aria-expanded={!folded}
+                          onClick={() =>
+                            setOpenGroups((prev) => {
+                              const next = new Set(prev)
+                              if (next.has(r.group)) next.delete(r.group)
+                              else next.add(r.group)
+                              return next
+                            })
+                          }
+                        >
+                          <Text span size="sm" fw={500}>
+                            {folded ? '▸' : '▾'} {CRAFT_GROUP_LABELS[r.group]} (
+                            {rows.filter((x) => x.group === r.group).length})
+                          </Text>
+                        </UnstyledButton>
+                      </Table.Td>
+                    </Table.Tr>
+                  )}
+                  {!folded && (
+                  <>
                   <MotionTr
                     {...reorder}
                     onClick={() => (onOpen ? onOpen(r) : toggle(r.recipe_id))}
@@ -752,6 +852,11 @@ export function ResultsTable({
                             ⚠
                           </Flag>
                         )}
+                        {craft && r.no_vendor_floor && (
+                          <Flag color="orange" label="No vendor floor" why="A vendor pays nothing for it: unsold, it is worth nothing">
+                            !
+                          </Flag>
+                        )}
                         {r.short > 0 && (
                           <Flag color="orange" label="Not enough listed" why={shortTitle(r.short)}>
                             ◔
@@ -769,6 +874,11 @@ export function ResultsTable({
                         {recipeCell}
                         <GoldCells ways={ways} result={r} items={items} />
                       </>
+                    ) : craft ? (
+                      <>
+                        {recipeCell}
+                        <CraftCells result={r} items={items} />
+                      </>
                     ) : skill ? (
                       <>
                         {recipeCell}
@@ -785,8 +895,8 @@ export function ResultsTable({
                         <Table.Td c={r.roi < 0 ? 'red' : undefined}>{formatRoi(r.roi)}</Table.Td>
                       </>
                     )}
-                    {!skill && !gold && recipeCell}
-                    {gold ? null : rankBy === 'skill' ? (
+                    {!skill && !gold && !craft && recipeCell}
+                    {gold || craft ? null : rankBy === 'skill' ? (
                       <Table.Td className={COLUMN_HIDDEN.Learn}>
                         {learn[r.recipe_id] && !r.crafters.includes(r.crafter) ? (
                           <LearnTooltip learn={learn[r.recipe_id]}>{learnLabel(r, learn[r.recipe_id])}</LearnTooltip>
@@ -820,7 +930,7 @@ export function ResultsTable({
                         )}
                       </Table.Td>
                     )}
-                    {rankBy !== 'skill' && !gold && (
+                    {rankBy !== 'skill' && !gold && !craft && (
                       <Table.Td className={COLUMN_HIDDEN['Sell via']}>{exitLabel(r.best_exit)}</Table.Td>
                     )}
                     {actions && (
@@ -848,7 +958,7 @@ export function ResultsTable({
                               editing={editing(r.recipe_id)}
                               params={params}
                               choices={choices[r.recipe_id]}
-                              market={gold}
+                              market={gold || craft}
                               watchedHours={watchedHours}
                             />
                           </motion.div>
@@ -856,6 +966,8 @@ export function ResultsTable({
                       </MotionTr>
                     )}
                   </AnimatePresence>
+                  </>
+                  )}
                 </Fragment>
               )
             })}

@@ -1,14 +1,16 @@
 import contextlib
+import gzip
 import random
 import zlib
 from datetime import date
 
 import pytest
 
-from altarmy_site import altarmy, auctionator, book, paste
+from altarmy_site import altarmy, auctionator, book, paste, snapshots
 from altarmy_site.auctionator import DayStats, ItemPrice
 
 from .addon_fixtures import AUCTION_BOOK, PROFIT_EXPORT
+from .snapshot_fixtures import auction, body
 from .test_altarmy import ALTARMY_SV
 
 FOREVER = "forever"  # (conftest imports this module, so it can't import conftest's)
@@ -146,6 +148,15 @@ def test_mangled_files_only_raise_value_error() -> None:
     export = PROFIT_EXPORT.read_bytes().strip()
     export_lines = b"V|2|20506|x\nC|R|N|Horde|MAGE|70|Player-1-A\nP|Tailoring|375|375|1,2,3\nC|R|M||PRIEST|1|"
     scans = AUCTION_BOOK.read_bytes()
+    feed = body(auction(1, 2589, unit=50, qty=20, bid=800), auction(2, 2589, bid=10, left="SHORT"))
+    state = snapshots.encode_state(
+        snapshots.diff(
+            None,
+            snapshots.parse_blizzard(feed, t=1, realm="R", faction="Horde"),
+            {"LONG": (0, 9), "SHORT": (0, 1)},
+            9,
+        ).state
+    )
     for _ in range(1500):
         with contextlib.suppress(ValueError):
             book.read(_mangled([scans], rng))
@@ -158,6 +169,13 @@ def test_mangled_files_only_raise_value_error() -> None:
             paste.decode(_mangled([export], rng).decode("latin-1"))
         with contextlib.suppress(ValueError):
             paste.decode(_deflated(_mangled([export_lines], rng)))
+        # the hourly auction snapshots, and the auction state stored between them
+        with contextlib.suppress(ValueError):
+            snapshots.parse_blizzard(_mangled([feed], rng), t=1, realm="R", faction="Horde")
+        with contextlib.suppress(ValueError):
+            snapshots.decode_state(_mangled([state], rng))
+        with contextlib.suppress(ValueError):
+            snapshots.decode_state(gzip.compress(_mangled([gzip.decompress(state)], rng)))
 
 
 def _deflated(lines: bytes) -> str:

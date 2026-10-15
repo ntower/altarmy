@@ -12,6 +12,9 @@ const house = (realm: string, faction: string, prices = 10): Coverage => ({
   scans_7d: 0,
   watched_hours: 0,
   uploaders_7d: 0,
+  open: true,
+  feed: false,
+  launch: false,
 })
 const group = (realm: string, faction: string, n = 1): CharacterGroup => ({
   realm,

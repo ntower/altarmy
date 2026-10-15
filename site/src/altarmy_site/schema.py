@@ -19,6 +19,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    LargeBinary,
     MetaData,
     PrimaryKeyConstraint,
     String,
@@ -436,6 +437,7 @@ price_snapshots = Table(
     Column("received_at", DateTime(timezone=True), nullable=False),
     Column("item_count", Integer, nullable=False),  # items in the scan (observations hold only news)
     Column("status", String(16), nullable=False, default="accepted"),
+    Column("build", String(32)),  # the game build it was taken under (revision 0026); NULL: unknown
     CheckConstraint(f"source IN ({_in(PRICE_SOURCES)})", name="source"),
     CheckConstraint(f"status IN ({_in(SNAPSHOT_STATUSES)})", name="status"),
 )
@@ -487,6 +489,22 @@ price_current = Table(
     Column("sale_price", BigInteger),  # what units sold for over the last week (the merge); NULL: too few
     Column("sale_rate", Float),  # units sold a day over the last week (the merge)
     Column("sold_pairs_7d", Integer),  # the pairs of scans those sales were seen in (the merge); NULL: none
+    # Revision 0027. The time-weighted market price over 24 and 72 hours, kept up by every scan and
+    # snapshot (`prices.ewma`), and when it was last moved
+    Column("ewma_24h", BigInteger),
+    Column("ewma_72h", BigInteger),
+    Column("ewma_at", DateTime(timezone=True)),
+    # From the hourly snapshots (the merge): the hours by which half the auctions sell (`ttl_hours`), the
+    # share that sold rather than ran out (`sell_through`), per stack size `stack:sold/expired,...`
+    # (`stacks`), and the auctions that ended (sold, won or ran out) over the last two days and the days
+    # of the last week with RESOLVED_MIN of them: what opens the item's auction figures (`gate`: normal,
+    # launch; NULL: not yet)
+    Column("ttl_hours", Float),
+    Column("sell_through", Float),
+    Column("stacks", Text),
+    Column("resolved_2d", Integer),
+    Column("resolved_days", Integer),
+    Column("gate", String(8)),
 )
 
 # The last price table AHledger served per market. Unused since revision 0014, which emptied it; dropped
@@ -524,7 +542,65 @@ price_daily = Table(
     Column("median", BigInteger),  # filled by the Phase 6 aggregation
     Column("high", BigInteger, nullable=False),
     Column("available", Integer),  # most seen that day
+    Column("open", BigInteger),  # the market price in the day's first and last hour (revision 0026)
+    Column("close", BigInteger),
     PrimaryKeyConstraint("auction_house_id", "item_id", "day"),
+)
+
+# Each item's price per hour of a day, from every scan and snapshot (`prices.pack_hours`: per hour
+# `low*market*units*auctions`, "" for an hour with none). Kept 14 days; the merge rolls it into price_daily.
+price_hourly = Table(
+    "price_hourly",
+    metadata,
+    Column(
+        "auction_house_id",
+        Integer,
+        ForeignKey("auction_houses.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("item_id", Integer, nullable=False),
+    Column("day", Date, nullable=False),
+    Column("hours", Text, nullable=False),
+    PrimaryKeyConstraint("auction_house_id", "item_id", "day"),
+)
+
+# The auctions live on a house after its newest hourly snapshot (`snapshots.encode_state`, gzipped), what
+# the next snapshot is told apart against. One row per house.
+auction_state = Table(
+    "auction_state",
+    metadata,
+    Column(
+        "auction_house_id",
+        Integer,
+        ForeignKey("auction_houses.id", ondelete="CASCADE"),
+        primary_key=True,
+        autoincrement=False,
+    ),
+    Column("snapshot_id", Integer),  # the price_snapshots row it is from (no key: snapshots are pruned)
+    Column("t", DateTime(timezone=True), nullable=False),
+    Column("auctions", Integer, nullable=False),
+    Column("body", LargeBinary, nullable=False),
+)
+
+# How the auctions that ended between hourly snapshots ended, by stack size and whole hours up
+# (`snapshots.end_counts`), per house, item and UTC day: what time to sell is worked out from. Kept 14 days.
+auction_ends_daily = Table(
+    "auction_ends_daily",
+    metadata,
+    Column(
+        "auction_house_id",
+        Integer,
+        ForeignKey("auction_houses.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("item_id", Integer, nullable=False),
+    Column("day", Date, nullable=False),
+    Column("stack", Integer, nullable=False),
+    Column("age_h", Integer, nullable=False),
+    Column("outcome", String(16), nullable=False),  # snapshots.Outcome
+    Column("auctions", Integer, nullable=False),
+    Column("units", Integer, nullable=False),
+    PrimaryKeyConstraint("auction_house_id", "item_id", "day", "stack", "age_h", "outcome"),
 )
 
 # What sold, inferred from the units gone off the cheap end between two Alt Army scans
@@ -545,6 +621,14 @@ price_sales_daily = Table(
     Column("cancelled", Integer, nullable=False),  # gone from behind cheaper listings
     # the pairs of scans units were seen bought in: one buyer's sweep is one pair, a market is several
     Column("pairs", Integer, nullable=False, default=0, server_default="0"),
+    # Auctions, from the hourly snapshots (`snapshots.flows`; revision 0026): bought out, won by a bid,
+    # run out, posted, taken down and posted again alike, and gone without telling how
+    Column("auctions_sold", Integer, nullable=False, default=0, server_default="0"),
+    Column("bid_sold", Integer, nullable=False, default=0, server_default="0"),
+    Column("expired", Integer, nullable=False, default=0, server_default="0"),
+    Column("posted", Integer, nullable=False, default=0, server_default="0"),
+    Column("relisted", Integer, nullable=False, default=0, server_default="0"),
+    Column("ambiguous", Integer, nullable=False, default=0, server_default="0"),
     PrimaryKeyConstraint("auction_house_id", "item_id", "day"),
 )
 

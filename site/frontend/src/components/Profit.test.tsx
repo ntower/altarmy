@@ -15,6 +15,8 @@ vi.mock('../lib/features', () => ({
   get MAKE_GOLD() {
     return features.makeGold
   },
+  STRATEGY_PICKER: false,
+  PROCESSING: false,
 }))
 afterEach(() => {
   features.makeGold = true
@@ -113,6 +115,15 @@ describe('ProfitPage', () => {
     act(() => navigate('/profit/gold'))
     await waitFor(() => expect(window.location.pathname).toBe('/profit'))
     expect(paths(fetch, '/api/rank')).toEqual([])
+  })
+
+  it('without the strategy pages, a strategy path goes back to the gold list, and an old one to its filter', async () => {
+    mockApi({ '/api/status': status(), '/api/characters': characters, '/api/rank': noResults })
+    window.history.replaceState(null, '', '/profit/gold/craft')
+    renderWithProviders(<ProfitPage />)
+    await waitFor(() => expect(window.location.pathname).toBe('/profit/gold'))
+    act(() => navigate('/profit/gold/disenchant'))
+    await waitFor(() => expect(`${window.location.pathname}${window.location.search}`).toBe('/profit/gold'))
   })
 
   it('skilling up goes on to which profession, at its own path', async () => {

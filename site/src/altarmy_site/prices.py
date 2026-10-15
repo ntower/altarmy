@@ -28,7 +28,7 @@ from typing import Literal
 
 from sqlalchemy import ColumnElement, Connection, bindparam, case, delete, func, select, update
 
-from . import book, db, schema
+from . import book, db, schema, versions
 from .auctionator import ItemPrice
 
 KEEP_DAYS = 180  # observations older than this are pruned (price_daily is kept)
@@ -36,8 +36,22 @@ AUCTIONATOR = "auctionator"
 HAND_SET = ("manual", "csv")  # sources whose price is used as it is, never capped by the 7-day median
 THIN_UNITS = 5  # fewer units listed than this: a sale there rests on a thin market
 ALTARMY = "altarmy"  # the Alt Army addon's full scans (`record_book`)
-FIRST_PARTY = (ALTARMY, *HAND_SET)  # the sources read where prices are first-party
+BLIZZARD = "blizzard_api"  # the hourly auction snapshots (`feed.record_auction_snapshot`)
+SCANNED = (ALTARMY, BLIZZARD)  # the sources that list a whole auction house: ladders, sales
+FIRST_PARTY = (*SCANNED, *HAND_SET)  # the sources read where prices are first-party
 SALES_GAP = timedelta(minutes=30)  # scans further apart than this say nothing of what sold between them
+# snapshots further apart than this say nothing (`versions.GameVersion.snapshot_gap`, the same everywhere)
+FEED_GAP = timedelta(minutes=75)
+FEED_LIVE = timedelta(hours=3)  # a house with a snapshot this recent has a live feed: it counts the sales
+HOURLY_DAYS = 14  # price_hourly and auction_ends_daily keep this many days
+LAUNCH_DAYS = 14  # a house's first days after its first scan or snapshot: prices settle (`in_launch`)
+# the half-lives of the time-weighted market price (`ewma`): a day's, and three days' for the trend
+EWMA_SHORT = timedelta(hours=24)
+EWMA_LONG = timedelta(hours=72)
+# An ask counts at most this far over what the item sold for, else over what a vendor pays (`trusted_ask`):
+# Copper Ore sells near 35x its vendor price, a troll lists grey skins at 99,999,990,000c
+ASK_OVER_SALE = 2.0
+ASK_OVER_VENDOR = 100
 SALES_DAYS = 7  # the calendar days whose inferred sales count (the merge's `sale_rate`, `confidence`)
 MIN_SALES = 5  # fewer units sold than this say nothing of a price
 # Price confidence (`confidence`): an item's median from fewer days than this is a guess, and this many
@@ -166,10 +180,28 @@ class Coverage:
     scans_7d: int  # accepted scans in the last 7 days
     uploaders_7d: int  # distinct users who sent them
     watched_hours: float = 0.0  # how long its sales were watched lately (`watched_hours`)
+    realm_key: str | None = None  # the fixed realm it is a house of (`GameVersion.realms`)
+    open: bool = True  # False for a fixed realm not open yet
+    feed: bool = False  # it has a live feed of hourly snapshots (`feed_live`)
+    launch: bool = False  # it is in its first LAUNCH_DAYS days (`in_launch`)
+
+
+def in_launch(conn: Connection, auction_house_id: int, today: date) -> bool:
+    """Whether the house's first accepted scan or snapshot was within LAUNCH_DAYS of `today`."""
+    snap = schema.price_snapshots
+    first = conn.execute(
+        select(func.min(snap.c.scanned_at)).where(
+            snap.c.auction_house_id == auction_house_id,
+            snap.c.source.in_(SCANNED),
+            snap.c.status == "accepted",
+        )
+    ).scalar_one_or_none()
+    return first is not None and (today - db.utc(first).date()).days < LAUNCH_DAYS
 
 
 def coverage(conn: Connection, game_version: str, now: datetime | None = None) -> list[Coverage]:
-    """Every named auction house of the version, by realm then faction."""
+    """Every named auction house of the version: the fixed realms' first, in their order (`GameVersion.
+    realms`; they always exist), then the rest by realm and faction."""
     now = db.utc(now or db.utcnow())
     since = now - timedelta(days=7)
     t, pc, snap = schema.auction_houses, schema.price_current, schema.price_snapshots
@@ -204,6 +236,8 @@ def coverage(conn: Connection, game_version: str, now: datetime | None = None) -
             )
         )
     }
+    version = versions.VERSIONS.get(game_version)
+    fixed = {spec.name: (i, spec) for i, spec in enumerate(version.realms if version else ())}
     out = []
     for r in conn.execute(
         select(t.c.id, t.c.realm, t.c.faction)
@@ -212,6 +246,7 @@ def coverage(conn: Connection, game_version: str, now: datetime | None = None) -
     ):
         scan, items = last.get(r.id, (None, 0))
         scans, uploaders = recent.get(r.id, (0, 0))
+        spec = fixed.get(r.realm, (0, None))[1]
         out.append(
             Coverage(
                 r.id,
@@ -223,9 +258,13 @@ def coverage(conn: Connection, game_version: str, now: datetime | None = None) -
                 scans,
                 uploaders,
                 round(watched_hours(conn, r.id, now), 1),
+                None if spec is None else spec.key,
+                True if spec is None else spec.open,
+                feed_live(conn, r.id, now),
+                in_launch(conn, r.id, now.date()),
             )
         )
-    return out
+    return sorted(out, key=lambda c: (fixed.get(c.realm, (len(fixed), None))[0], c.realm, c.faction))
 
 
 def freshest_auction_house(conn: Connection, game_version: str) -> tuple[str, str] | None:
@@ -301,6 +340,7 @@ def _insert_snapshot(
     received_at: datetime | None,
     uploader_uid: str | None,
     status: str,
+    build: str | None = None,
 ) -> int:
     snap = schema.price_snapshots
     snapshot_id: int = conn.execute(
@@ -313,6 +353,7 @@ def _insert_snapshot(
             received_at=db.utc(received_at or db.utcnow()),
             item_count=item_count,
             status=status,
+            build=build,
         )
         .returning(snap.c.id)
     ).scalar_one()
@@ -540,34 +581,113 @@ class _BookRow:
     ladder: book.Ladder  # () unless the row is a scan's and listed
     listed: bool
     market_price: int | None
+    ewma_24h: int | None = None
+    ewma_72h: int | None = None
+    ewma_at: datetime | None = None
+    sale_price: int | None = None
 
 
 def _book_rows(conn: Connection, auction_house_id: int) -> dict[int, _BookRow]:
     pc, snap = schema.price_current, schema.price_snapshots
     rows = conn.execute(
         select(pc.c.item_id, pc.c.price, pc.c.seen_at, pc.c.ladder, pc.c.listed, pc.c.market_price)
-        .add_columns(snap.c.source)
+        .add_columns(snap.c.source, pc.c.ewma_24h, pc.c.ewma_72h, pc.c.ewma_at, pc.c.sale_price)
         .join(snap, snap.c.id == pc.c.snapshot_id)
         .where(pc.c.auction_house_id == auction_house_id)
     )
     out = {}
     for r in rows:
-        listed = r.source == ALTARMY and bool(r.listed)
+        listed = r.source in SCANNED and bool(r.listed)
         ladder = book.decode(r.ladder) if listed and r.ladder else ()
-        out[r.item_id] = _BookRow(r.price, db.utc(r.seen_at), r.source, ladder, listed, r.market_price)
+        out[r.item_id] = _BookRow(
+            r.price,
+            db.utc(r.seen_at),
+            r.source,
+            ladder,
+            listed,
+            r.market_price,
+            r.ewma_24h,
+            r.ewma_72h,
+            None if r.ewma_at is None else db.utc(r.ewma_at),
+            r.sale_price,
+        )
     return out
 
 
-def _newest_book(conn: Connection, auction_house_id: int) -> datetime | None:
+def trusted_ask(ask: int, sale_price: int | None, vendor: int | None) -> int:
+    """An asking price as far as it can be trusted: at most ASK_OVER_SALE times what the item sold for,
+    else (no sales known) ASK_OVER_VENDOR times what a vendor pays, else as it is. What the time-weighted
+    price and the day's figures are fed, so a lone troll listing moves neither."""
+    if sale_price is not None:
+        return min(ask, round(sale_price * ASK_OVER_SALE))
+    if vendor:
+        return min(ask, vendor * ASK_OVER_VENDOR)
+    return ask
+
+
+def vendor_prices(conn: Connection, auction_house_id: int, item_ids: Sequence[int]) -> dict[int, int]:
+    """{item_id: what a vendor pays} for the house's game version, items a vendor buys only."""
+    if not item_ids:
+        return {}
+    ah, items = schema.auction_houses, schema.items
+    rows = conn.execute(
+        select(items.c.id, items.c.sell_price)
+        .join(ah, ah.c.game_version == items.c.game_version)
+        .where(ah.c.id == auction_house_id, items.c.sell_price > 0, items.c.id.in_(sorted(item_ids)))
+    )
+    return {r.id: r.sell_price for r in rows}
+
+
+def ewma(prev: int | None, prev_at: datetime | None, x: int, at: datetime, half_life: timedelta) -> int:
+    """The time-weighted price after seeing `x` at `at`: the one before decays by half every `half_life`
+    since `prev_at`, so scans an hour apart and a day apart each weigh for the time they stand for."""
+    if prev is None or prev_at is None:
+        return x
+    if at <= prev_at:
+        return prev
+    keep: float = 0.5 ** ((at - prev_at) / half_life)
+    return round(prev * keep + x * (1 - keep))
+
+
+def ewma_columns(row: _BookRow | None, market: int | None, at: datetime) -> dict[str, object]:
+    """`price_current`'s time-weighted columns after a scan or snapshot at `at` priced the item at
+    `market` (None: it isn't listed, so they stay)."""
+    if market is None:
+        if row is None:
+            return {"ewma_24h": None, "ewma_72h": None, "ewma_at": None}
+        return {"ewma_24h": row.ewma_24h, "ewma_72h": row.ewma_72h, "ewma_at": row.ewma_at}
+    prev_at = None if row is None else row.ewma_at
+    return {
+        "ewma_24h": ewma(None if row is None else row.ewma_24h, prev_at, market, at, EWMA_SHORT),
+        "ewma_72h": ewma(None if row is None else row.ewma_72h, prev_at, market, at, EWMA_LONG),
+        "ewma_at": at,
+    }
+
+
+BOOK_COLUMNS = ["price", "seen_at", "snapshot_id", "quantity", "ladder", "listed", "market_price"]
+EWMA_COLUMNS = ["ewma_24h", "ewma_72h", "ewma_at"]
+
+
+def _newest_book(
+    conn: Connection, auction_house_id: int, sources: Sequence[str] = SCANNED
+) -> datetime | None:
+    """When the house's newest accepted scan or snapshot of `sources` was taken."""
     snap = schema.price_snapshots
     found = conn.execute(
         select(func.max(snap.c.scanned_at)).where(
             snap.c.auction_house_id == auction_house_id,
-            snap.c.source == ALTARMY,
+            snap.c.source.in_(sources),
             snap.c.status == "accepted",
         )
     ).scalar_one_or_none()
     return None if found is None else db.utc(found)
+
+
+def feed_live(conn: Connection, auction_house_id: int, at: datetime) -> bool:
+    """Whether the house had an hourly snapshot within FEED_LIVE of `at`: then the snapshots count its
+    sales, and an addon scan in between must not count them again."""
+    newest = _newest_book(conn, auction_house_id, (BLIZZARD,))
+    return newest is not None and abs(db.utc(at) - newest) <= FEED_LIVE
 
 
 def _breaks_off(rows: Mapping[int, _BookRow], scan: book.Scan) -> bool | None:
@@ -599,7 +719,8 @@ def record_book(
     Every item's ladder replaces the one before, its levels aged; an item the scan no longer has is
     unlisted. An item is news (an observation, and the price version moves) when its cheapest or its
     market price changed or it was listed or unlisted. Units gone since a scan at most SALES_GAP before
-    are added to the day's sales. An item with a newer price (set by hand since) is left alone."""
+    are added to the day's sales, unless the house has a live feed (`feed_live`), whose snapshots count
+    them. An item with a newer price (set by hand, or a newer snapshot) is left alone."""
     at = db.utc(scanned_at or datetime.fromtimestamp(scan.t, db.utcnow().tzinfo))
     newest = _newest_book(conn, auction_house_id)
     if newest is not None and at <= newest:
@@ -628,6 +749,7 @@ def record_book(
     news: list[dict[str, object]] = []
     daily_rows = []
     sales: dict[int, book.Sold] = {}
+    vendor = vendor_prices(conn, auction_house_id, list(scan.items))
     for item_id, ladder in sorted(scan.items.items()):
         row = rows.get(item_id)
         if not ladder or (row is not None and row.seen_at > at):
@@ -636,6 +758,7 @@ def record_book(
         if follows and before:
             sales[item_id] = book.sold_between(before, ladder)
         units, market = book.quantity(ladder), markets[item_id]
+        trusted = trusted_ask(market, None if row is None else row.sale_price, vendor.get(item_id))
         current.append(
             {
                 "item_id": item_id,
@@ -644,9 +767,10 @@ def record_book(
                 "ladder": book.encode(book.aged(before, ladder)),
                 "listed": True,
                 "market_price": market,
+                **ewma_columns(row, trusted, at),
             }
         )
-        daily_rows.append(Observation(item_id, market, at, units))
+        daily_rows.append(Observation(item_id, trusted, at, units))
         was = None if row is None or not row.listed else (row.price, row.market_price)
         if was != (ladder[0].price, market):
             news.append(
@@ -673,6 +797,7 @@ def record_book(
                 "ladder": "",
                 "listed": False,
                 "market_price": row.market_price,
+                **ewma_columns(row, None, at),
             }
         )
         gone += 1
@@ -683,12 +808,14 @@ def record_book(
         schema.price_current,
         [{**shared, **r} for r in current],
         ["auction_house_id", "item_id"],
-        ["price", "seen_at", "snapshot_id", "quantity", "ladder", "listed", "market_price"],
+        [*BOOK_COLUMNS, *EWMA_COLUMNS],
     )
     if news:
         conn.execute(schema.price_observations.insert(), news)
     record_daily_observations(conn, auction_house_id, daily_rows)
-    _add_sales(conn, auction_house_id, at.date(), sales)
+    record_hours(conn, auction_house_id, at, {i: hour_of(ld) for i, ld in scan.items.items() if ld})
+    if not feed_live(conn, auction_house_id, at):
+        _add_sales(conn, auction_house_id, at.date(), sales)
     moved = len(news) + gone
     if moved:
         bump_price_version(conn, auction_house_id)
@@ -744,7 +871,7 @@ def load_books(
         .join(snap, snap.c.id == pc.c.snapshot_id)
         .where(
             pc.c.auction_house_id == auction_house_id,
-            snap.c.source == ALTARMY,
+            snap.c.source.in_(SCANNED),
             pc.c.listed.is_(True),
             pc.c.ladder != "",
         )
@@ -766,11 +893,15 @@ def load_books(
     return out
 
 
-def book_sell_price(market: int, listed: bool, reference: int | None, sale_price: int | None) -> int:
+def book_sell_price(
+    market: int, listed: bool, reference: int | None, sale_price: int | None, recent: int | None = None
+) -> int:
     """What a sale counts as where prices are first-party: the lower of what is asked (the market price,
-    while listed) and what the item goes for (what it sold for lately, else its 7-day median). Without
-    either, the last market price."""
-    usual = sale_price if sale_price is not None else reference
+    while listed) and what the item goes for: what it sold for lately, else the lower of its time-weighted
+    price over the last day (`recent`, from trusted asks: what a house in its first days has) and its 7-day
+    median. Without any, the last market price."""
+    known = [p for p in (recent, reference) if p is not None]
+    usual = sale_price if sale_price is not None else min(known, default=None)
     asked = [market] if listed else []
     return min([*asked, *([usual] if usual is not None else [])], default=market)
 
@@ -814,14 +945,90 @@ def _most(a: int | None, b: int | None) -> int | None:
     return max((x for x in (a, b) if x is not None), default=None)
 
 
+# --- the price per hour ----------------------------------------------------------------------------
+@dataclass(frozen=True)
+class Hour:
+    """An item's book in one hour: its cheapest price, market price, units and listings."""
+
+    low: int
+    market: int
+    units: int
+    auctions: int
+
+
+def hour_of(ladder: book.Ladder) -> Hour:
+    """The hour's figures of a non-empty ladder."""
+    return Hour(
+        ladder[0].price,
+        book.market_price(ladder) or ladder[0].price,
+        book.quantity(ladder),
+        sum(lv.listings for lv in ladder),
+    )
+
+
+def pack_hours(hours: Mapping[int, Hour]) -> str:
+    """A day's hours as `price_hourly.hours`: 24 slots by UTC hour, `low*market*units*auctions` or ""."""
+    return ";".join(
+        f"{hours[h].low}*{hours[h].market}*{hours[h].units}*{hours[h].auctions}" if h in hours else ""
+        for h in range(24)
+    )
+
+
+def unpack_hours(text: str) -> dict[int, Hour]:
+    """The hours `pack_hours` wrote; ValueError otherwise."""
+    slots = text.split(";")
+    if len(slots) != 24:
+        raise ValueError(f"price_hourly holds {len(slots)} hours")
+    out = {}
+    for h, slot in enumerate(slots):
+        if slot:
+            low, market, units, auctions = (int(n) for n in slot.split("*"))
+            out[h] = Hour(low, market, units, auctions)
+    return out
+
+
+def record_hours(conn: Connection, auction_house_id: int, at: datetime, hours: Mapping[int, Hour]) -> None:
+    """Set each item's slot for the UTC hour of `at` in `price_hourly` (the newest scan of an hour wins)."""
+    if not hours:
+        return
+    at = db.utc(at)
+    t = schema.price_hourly
+    stored = {
+        r.item_id: r.hours
+        for r in conn.execute(
+            select(t.c.item_id, t.c.hours).where(
+                t.c.auction_house_id == auction_house_id,
+                t.c.day == at.date(),
+                t.c.item_id.in_(sorted(hours)),
+            )
+        )
+    }
+    rows = []
+    for item_id, hour in sorted(hours.items()):
+        day = unpack_hours(stored[item_id]) if item_id in stored else {}
+        day[at.hour] = hour
+        rows.append(
+            {
+                "auction_house_id": auction_house_id,
+                "item_id": item_id,
+                "day": at.date(),
+                "hours": pack_hours(day),
+            }
+        )
+    db.upsert(conn, t, rows, ["auction_house_id", "item_id", "day"], ["hours"])
+
+
 def prune(conn: Connection, now: datetime | None = None, keep_days: int = KEEP_DAYS) -> None:
     """Drop observations of snapshots older than `keep_days`, and those snapshots unless `price_current`
-    still points at them."""
+    still points at them; and the hourly rows older than HOURLY_DAYS (the merge has rolled them up)."""
     cutoff = db.utc(now or db.utcnow()) - timedelta(days=keep_days)
     snap, obs, pc = schema.price_snapshots, schema.price_observations, schema.price_current
     old = select(snap.c.id).where(snap.c.scanned_at < cutoff)
     conn.execute(delete(obs).where(obs.c.snapshot_id.in_(old)))
     conn.execute(delete(snap).where(snap.c.scanned_at < cutoff, snap.c.id.not_in(select(pc.c.snapshot_id))))
+    recent = db.utc(now or db.utcnow()).date() - timedelta(days=HOURLY_DAYS)
+    for t in (schema.price_hourly, schema.auction_ends_daily):
+        conn.execute(delete(t).where(t.c.day < recent))
 
 
 # --- reading ---------------------------------------------------------------------------------------
@@ -832,6 +1039,24 @@ def load_current(conn: Connection, auction_house_id: int | None) -> dict[int, in
     pc = schema.price_current
     rows = conn.execute(select(pc.c.item_id, pc.c.price).where(pc.c.auction_house_id == auction_house_id))
     return {r.item_id: r.price for r in rows}
+
+
+def gated(conn: Connection, auction_house_id: int | None) -> frozenset[int]:
+    """The items whose AH sale counts on the house: those whose ended auctions opened a gate (`merge`),
+    and those priced by hand (whoever set the price meant it)."""
+    if auction_house_id is None:
+        return frozenset()
+    pc, snap = schema.price_current, schema.price_snapshots
+    return frozenset(
+        conn.execute(
+            select(pc.c.item_id)
+            .join(snap, snap.c.id == pc.c.snapshot_id)
+            .where(
+                pc.c.auction_house_id == auction_house_id,
+                pc.c.gate.is_not(None) | snap.c.source.in_(HAND_SET),
+            )
+        ).scalars()
+    )
 
 
 def load_buy_and_sell(
@@ -850,7 +1075,7 @@ def load_buy_and_sell(
     pc, snap = schema.price_current, schema.price_snapshots
     rows = conn.execute(
         select(pc.c.item_id, pc.c.price, pc.c.median_7d, snap.c.source)
-        .add_columns(pc.c.listed, pc.c.market_price, pc.c.sale_price)
+        .add_columns(pc.c.listed, pc.c.market_price, pc.c.sale_price, pc.c.ewma_24h)
         .join(snap, snap.c.id == pc.c.snapshot_id)
         .where(pc.c.auction_house_id == auction_house_id)
     ).all()
@@ -858,11 +1083,11 @@ def load_buy_and_sell(
     sell: dict[int, int] = {}
     books = load_books(conn, auction_house_id) if first_party else {}
     for r in rows:
-        if first_party and r.source == ALTARMY:
+        if first_party and r.source in SCANNED:
             if r.item_id in books:
                 buy[r.item_id] = books[r.item_id][0].price
             market = r.price if r.market_price is None else r.market_price
-            sell[r.item_id] = book_sell_price(market, bool(r.listed), r.median_7d, r.sale_price)
+            sell[r.item_id] = book_sell_price(market, bool(r.listed), r.median_7d, r.sale_price, r.ewma_24h)
         elif not first_party or r.source in HAND_SET:
             buy[r.item_id] = r.price
             sell[r.item_id] = sell_price(r.price, r.median_7d, r.source)
@@ -898,17 +1123,48 @@ class Listing:
         None  # what is asked: the price 15% into the units listed (`book.market_price`)
     )
     sold_pairs_7d: int | None = None  # the pairs of scans its sales were seen in lately
+    stacks: str | None = None  # per stack size `stack:sold/expired,...` (the merge, from the snapshots)
+    gate: str | None = None  # what lets its AH sale count (`merge`): normal, launch; None: not yet
+
+
+def demand(listing: Listing, days: float = SALES_DAYS) -> float | None:
+    """The units of an item seen bought over `days` at its recent rate (none seen: 0); None for a price
+    from another source than a full scan, which says nothing of what sells."""
+    if listing.source not in SCANNED:
+        return None
+    return (listing.sale_rate or 0.0) * days
+
+
+def best_stack(listing: Listing) -> int | None:
+    """The stack size that sold best: the most sold of those that sold more than ran out, else the one that
+    sold most; None before any sold (`Listing.stacks`)."""
+    sold: list[tuple[float, int, int]] = []  # (sell-through, sold, stack)
+    for part in (listing.stacks or "").split(","):
+        stack, _, counts = part.partition(":")
+        bought, _, expired = counts.partition("/")
+        if stack.isdigit() and bought.isdigit() and expired.isdigit() and int(bought):
+            n, e = int(bought), int(expired)
+            sold.append((n / (n + e), n, int(stack)))
+    if not sold:
+        return None
+    return max(sold, key=lambda s: (s[0] >= 0.5, s[1], s[0]))[2]
+
+
+def ahead(listing: Listing, price: int | None) -> int:
+    """The units listed at or under `price`: what a sale at that price waits behind."""
+    if price is None:
+        return 0
+    return sum(lv.quantity for lv in listing.ladder if lv.price <= price)
 
 
 def sale_depth(listing: Listing, sell_price: int | None) -> int | None:
-    """How many units of an item its market has shown it takes at `sell_price`: the more of those seen sold
-    over the last week and those listed at or under the price (a crude depth, until a model of what sells
-    replaces it); None for a price from another source than Alt Army's scans, which says nothing of it."""
-    if listing.source != ALTARMY:
+    """How many units of an item its market has shown it takes at `sell_price`: the more of a week's
+    `demand` and the units `ahead` of the price (a crude depth, until a model of what sells replaces it);
+    None for a price from another source than a full scan, which says nothing of it."""
+    week = demand(listing)
+    if week is None:
         return None
-    sold = round((listing.sale_rate or 0.0) * SALES_DAYS)
-    ahead = sum(lv.quantity for lv in listing.ladder if sell_price is not None and lv.price <= sell_price)
-    return max(sold, ahead)
+    return max(round(week), ahead(listing, sell_price))
 
 
 def load_listings(conn: Connection, auction_house_id: int | None) -> dict[int, Listing]:
@@ -919,7 +1175,7 @@ def load_listings(conn: Connection, auction_house_id: int | None) -> dict[int, L
     rows = conn.execute(
         select(pc.c.item_id, pc.c.price, pc.c.quantity, pc.c.ladder, pc.c.sale_rate, snap.c.source)
         .add_columns(pc.c.listed, pc.c.seen_at, pc.c.median_7d, pc.c.scans_7d, pc.c.sale_price)
-        .add_columns(pc.c.market_price, pc.c.sold_pairs_7d)
+        .add_columns(pc.c.market_price, pc.c.sold_pairs_7d, pc.c.stacks, pc.c.gate)
         .join(snap, snap.c.id == pc.c.snapshot_id)
         .where(pc.c.auction_house_id == auction_house_id)
     )
@@ -937,6 +1193,8 @@ def load_listings(conn: Connection, auction_house_id: int | None) -> dict[int, L
             r.sale_price,
             r.market_price,
             r.sold_pairs_7d,
+            r.stacks,
+            r.gate,
         )
         for r in rows
     }
@@ -944,24 +1202,29 @@ def load_listings(conn: Connection, auction_house_id: int | None) -> dict[int, L
 
 def watched_hours(conn: Connection, auction_house_id: int | None, now: datetime | None = None) -> float:
     """How long the auction house was watched over the last SALES_DAYS days: the hours between its
-    accepted Alt Army scans taken at most SALES_GAP apart, the only stretches whose sales are seen."""
+    accepted scans and snapshots taken close enough together to see what sold (an Alt Army scan at most
+    SALES_GAP after the one before, an hourly snapshot at most FEED_GAP after), the only stretches whose
+    sales are seen."""
     if auction_house_id is None:
         return 0.0
     snap = schema.price_snapshots
     now = db.utc(now or db.utcnow())
     rows = conn.execute(
-        select(snap.c.scanned_at)
+        select(snap.c.scanned_at, snap.c.source)
         .where(
             snap.c.auction_house_id == auction_house_id,
-            snap.c.source == ALTARMY,
+            snap.c.source.in_(SCANNED),
             snap.c.status == "accepted",
             snap.c.scanned_at > now - timedelta(days=SALES_DAYS),
         )
         .order_by(snap.c.scanned_at)
     )
-    times = [db.utc(r.scanned_at) for r in rows]
-    gaps = (b - a for a, b in zip(times, times[1:], strict=False))
-    return sum((g for g in gaps if g <= SALES_GAP), timedelta()) / timedelta(hours=1)
+    seen = [(db.utc(r.scanned_at), r.source) for r in rows]
+    watched = timedelta()
+    for (a, _), (b, source) in zip(seen, seen[1:], strict=False):
+        if b - a <= (FEED_GAP if source == BLIZZARD else SALES_GAP):
+            watched += b - a
+    return watched / timedelta(hours=1)
 
 
 ConfidenceLevel = Literal["high", "medium", "low"]

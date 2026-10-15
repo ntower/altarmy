@@ -35,6 +35,21 @@ export function usePath(): string {
   return useSyncExternalStore(subscribe, () => normalized(window.location.pathname))
 }
 
+/** A query string parameter of the current URL (null when absent); re-renders when it changes. */
+export function useSearchParam(name: string): string | null {
+  return useSyncExternalStore(subscribe, () => new URLSearchParams(window.location.search).get(name))
+}
+
+/** Set (or with null, drop) a query string parameter, in place of the current history entry and without scrolling:
+ * a filter's state, not a new page. */
+export function setSearchParam(name: string, value: string | null) {
+  const params = new URLSearchParams(window.location.search)
+  if (value === null) params.delete(name)
+  else params.set(name, value)
+  const search = params.toString()
+  navigate(`${window.location.pathname}${search ? `?${search}` : ''}`, { replace: true })
+}
+
 // The page shown now and the one before it (null on the first), so a page can tell where the visitor came from.
 let shown: Route = routeOf(window.location.pathname)
 let previous: Route | null = null
@@ -59,7 +74,7 @@ window.addEventListener('popstate', moved)
  * skips it), and without scrolling to the top.
  */
 export function navigate(to: string, { replace = false }: { replace?: boolean } = {}) {
-  if (window.location.pathname !== to) {
+  if (`${window.location.pathname}${window.location.search}` !== to) {
     if (replace) window.history.replaceState(null, '', to)
     else window.history.pushState(null, '', to)
   }

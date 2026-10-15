@@ -8,9 +8,10 @@ import type { CharacterGroup, Characters, UploadResult } from '../api/client'
 import { useCharacters, useTrack } from '../api/queries'
 import { CharacterList } from './CharacterList'
 import { age, parseUtc } from '../lib/age'
-import { MAKE_GOLD } from '../lib/features'
+import { MAKE_GOLD, STRATEGY_PICKER } from '../lib/features'
 import { realmLabel } from '../lib/realms'
 import { parseProfitPath, profitPath } from '../lib/profitRoute'
+import { liveStrategies } from '../lib/strategies'
 import { EASE, LAYOUT } from '../lib/motion'
 import { linkProps, navigate, previousRoute, usePath } from '../lib/router'
 import { useSession } from '../lib/session'
@@ -225,6 +226,13 @@ export function ProfitPage() {
   // A path under /profit that means nothing is the start, as is making gold while it is switched off: shown as the
   // start at once, so nothing under it mounts (and asks for a ranking) before the redirect below.
   const unknown = view === null || (view.kind === 'gold' && !MAKE_GOLD)
+  // A path kept for old links goes to its page; a way to make gold that isn't offered, back to the question.
+  const elsewhere =
+    view?.kind === 'moved'
+      ? view.to
+      : view?.kind === 'gold' && view.strategy && !(STRATEGY_PICKER && liveStrategies().some((s) => s.key === view.strategy))
+        ? '/profit/gold'
+        : null
   const atStart = view?.kind === 'start' || unknown
   const started = !atStart || groups.length > 0 || landing.browsed
   const phase: Phase = open ? 'expanded' : started ? 'collapsed' : 'choose'
@@ -236,7 +244,8 @@ export function ProfitPage() {
 
   useEffect(() => {
     if (unknown) navigate(profitPath({ kind: 'start' }), { replace: true })
-  }, [unknown])
+    else if (elsewhere) navigate(elsewhere, { replace: true })
+  }, [unknown, elsewhere])
 
   // Bring the search into view when it first appears, not when the page loads with it.
   useEffect(() => {

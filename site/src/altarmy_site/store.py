@@ -190,6 +190,7 @@ def load_market(
         books=books,
         reputation_discounts=dict(version.reputation_discounts),
         sell_depth=depth,
+        ah_open=prices.gated(conn, auction_house_id) if version.gated_prices else None,
     )
 
 

@@ -212,6 +212,9 @@ def test_0009_allows_ahledger_and_drops_forevers_shared_houses(database: db.Data
     )
     when = datetime(2026, 9, 25, tzinfo=UTC)
     with database.engine.begin() as conn:
+        fixed: set[int] = set(
+            conn.execute(select(t.c.id)).scalars()
+        )  # the fixed realms' houses (register_versions)
         command.downgrade(db.alembic_config(conn), "0008")
         houses: dict[tuple[str, str], int] = {}
         for version, realm, faction in (
@@ -255,7 +258,7 @@ def test_0009_allows_ahledger_and_drops_forevers_shared_houses(database: db.Data
         )
         command.upgrade(db.alembic_config(conn), "0009")  # 0014 deletes Forever's Auctionator prices
         kept = {houses[("forever", "")], houses[("tbc", "Dreamscythe")]}
-        assert set(conn.execute(select(t.c.id)).scalars()) == kept
+        assert set(conn.execute(select(t.c.id)).scalars()) == kept | fixed
         assert set(conn.execute(select(pc.c.auction_house_id)).scalars()) == kept
         assert conn.execute(select(func.count()).select_from(obs)).scalar_one() == 2
         assert conn.execute(select(schema.realm_aliases.c.value)).all() == []

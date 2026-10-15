@@ -96,7 +96,9 @@ def test_merge_covers_every_auction_house_of_the_version(conn: Connection) -> No
     for ah in (a, b, tbc):
         prices.record_daily(conn, ah, {1: ItemPrice(100, {TODAY: DayStats(100, 100, 1)})})
         prices.record_snapshot(conn, ah, "auctionator", NOON, [Observation(1, 100, NOON)])
-    assert merge.merge(conn, FOREVER, today=TODAY) == {a: True, b: True}
+    merged = merge.merge(conn, FOREVER, today=TODAY)
+    assert {ah: merged[ah] for ah in (a, b)} == {a: True, b: True}
+    assert not any(changed for ah, changed in merged.items() if ah not in (a, b))  # the fixed realms' houses
     assert seven_day(conn, tbc, 1) == (None, None, None)
 
 

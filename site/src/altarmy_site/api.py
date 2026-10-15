@@ -52,6 +52,7 @@ from . import (
     engine,
     jobs,
     launch,
+    merge,
     prices,
     ratelimit,
     reputation,
@@ -412,7 +413,7 @@ class RankResult(BaseModel):
     depth_units: int = 0
     excess_units: int = 0
     # the gold list's two ways to sell. Playing it safe (`service.safe_profit`): the better of a vendor and
-    # disenchanting, or an essence conversion's sale (`safe_exit` convert); None when neither is open.
+    # disenchanting; None when neither is open.
     # The auction house (`service.ah_sale`), whichever exit pays best: counting on the units its market
     # has shown it takes (`ah_depth_units`), the rest (`ah_excess_units`) at the best other exit; None when
     # it can't be sold there. `likely_profit` is the better of the two.
@@ -421,6 +422,17 @@ class RankResult(BaseModel):
     ah_profit: int | None = None
     ah_depth_units: int = 0
     ah_excess_units: int = 0
+    # Craft and sell (`service.craft_sale`): what a craft likely makes, what a day makes (per craft times the
+    # crafts the market takes a day), which group it falls in, and on the AH what to post: at what price,
+    # how many now, in which stack size, and the deposit that costs (estimated)
+    likely_each: int = 0
+    per_day: int = 0
+    group: Literal["paying", "pennies", "waiting", "full", "losing"] = "paying"
+    post_price: int | None = None
+    post_units: int | None = None
+    post_stack: int | None = None
+    deposit_est: int | None = None
+    no_vendor_floor: bool = False  # a vendor pays nothing for what it makes
     # the skill the recipe is learned at (0: a trainer's, at no skill DB2 knows) and where it turns yellow
     # and grey (green halfway between); 0 when unknown
     learn_skill: int = 0
@@ -748,6 +760,12 @@ class VersionOut(BaseModel):
     ah_cut: float  # the auction house's cut of a sale (0.05: 5%)
     # the ranks a profession trainer teaches, lowest first (`versions.ProfessionRank`)
     profession_ranks: list[ProfessionRankOut]
+    # what opens an item's auction figures (`merge`): this many ended auctions on `normal_days` days of the
+    # last week, or in a house's first `launch_days` days over the last two days
+    resolved_min: int = merge.RESOLVED_MIN
+    normal_days: int = merge.NORMAL_DAYS
+    launch_days: int = merge.LAUNCH_DAYS
+    gated_prices: bool = False  # whether this version's auction figures wait for their gates at all
 
 
 class FirebaseOut(BaseModel):
@@ -781,7 +799,11 @@ class CoverageOut(BaseModel):
     last_scan_items: int  # items in that scan
     scans_7d: int  # accepted scans in the last 7 days
     uploaders_7d: int  # how many users sent them
-    watched_hours: float = 0.0  # hours of scans at most 30 minutes apart lately: when its sales are seen
+    watched_hours: float = 0.0  # hours of snapshots close enough together lately: when its sales are seen
+    realm_key: str | None = None  # the fixed realm it is a house of (normal, pvp, rp, hardcore); None: other
+    open: bool = True  # False for a fixed realm not open yet (Hardcore, a while after launch)
+    feed: bool = False  # it has a live feed of hourly snapshots
+    launch: bool = False  # in its first 14 days: prices are still settling
 
 
 UploadKind = Literal["altarmy", "auctionator"]
@@ -1176,13 +1198,29 @@ def get_rank(
     professions: Annotated[
         list[str] | None, Query(description="only recipes of these professions (default: every one)")
     ] = None,
+    kinds: Annotated[
+        list[Literal["craft", "convert", "flip", "enchant"]] | None,
+        Query(description="only results of these kinds (default: every one)"),
+    ] = None,
     sort: Annotated[
-        Literal["profit", "rate", "skill", "likely", "all_sell", "roi", "spend", "profit_each", "safe", "ah"],
+        Literal[
+            "profit",
+            "rate",
+            "skill",
+            "likely",
+            "all_sell",
+            "roi",
+            "spend",
+            "profit_each",
+            "safe",
+            "ah",
+            "per_day",
+        ],
         Query(
             description="profit per session (the batch; all_sell is the same), per hour of play, cheapest "
-            "skill point, likely profit (`likely_profit`), ROI, least spent, profit per unit made, or the "
+            "skill point, likely profit (`likely_profit`), ROI, least spent, profit per unit made, the "
             "profit selling it all safely (a vendor or disenchanting: `safe`) or on the auction house "
-            "(`ah`), those it isn't open to last"
+            "(`ah`), those it isn't open to last, or what a day makes (`per_day`, Craft and sell)"
         ),
     ] = "profit",
     order: Annotated[
@@ -1351,6 +1389,8 @@ def get_rank(
         matches = service.by_ah(matches, s.listings, base, ascending=order == "asc")
     elif sort == "safe":
         matches = service.by_safe(matches, ascending=order == "asc")
+    elif sort == "per_day":
+        matches = service.by_per_day(matches, s.listings, base, s.version)
     elif sort in ("roi", "spend", "profit_each"):
         matches = {"roi": service.by_roi, "spend": service.by_spend, "profit_each": service.by_profit_each}[
             sort
@@ -1362,6 +1402,8 @@ def get_rank(
     if professions:
         wanted = {p.lower() for p in professions}
         matches = [r for r in matches if r.recipe.skill_name.lower() in wanted]
+    if kinds:
+        matches = [r for r in matches if r.recipe.kind in kinds]
     if s.favorites and sort != "skill":  # a climb goes cheapest point first, favorite or not
         matches = service.favorites_first(matches, s.favorites)
     results = matches[:top]
@@ -1661,7 +1703,13 @@ EVENTS = logging.getLogger("altarmy_site.events")
 # What the front end may say happened: whether Next up, the skill checklist and gathering get used decides
 # what is built next. Nothing about who: no user, realm or character.
 EventName = Literal[
-    "aim_chosen", "next_up_shown", "row_opened", "copy_steps", "gather_toggled", "coach_shown"
+    "aim_chosen",
+    "next_up_shown",
+    "row_opened",
+    "copy_steps",
+    "gather_toggled",
+    "coach_shown",
+    "strategy_chosen",
 ]
 
 
@@ -1696,6 +1744,7 @@ class Selected:
     selection: service.Selection | None = None  # the realm and faction selected; None without one
     # the version's profession ranks (`GameVersion.profession_ranks`): the rows of `RankResult.milestones`
     ranks: tuple[versions.ProfessionRank, ...] = versions.PROFESSION_RANKS
+    version: versions.GameVersion = versions.VERSIONS[versions.DEFAULT_VERSION]
 
 
 def _hypothetical(
@@ -1770,6 +1819,7 @@ def _selected(state: AppState, user: auth.User, price_version: int | None = None
         held.token,
         sel,
         state.version.profession_ranks,
+        state.version,
     )
 
 
@@ -2048,6 +2098,7 @@ def _result_out(
     likely = service.likely(r, listings, sell_price)
     safe = service.safe_profit(r)
     ah = service.ah_sale(r, listings, sell_price)
+    craft = service.craft_sale(r, listings, base, s.version)
     t = r.timing
 
     def faction(who: str, item_id: int, percent: int) -> str:
@@ -2131,6 +2182,14 @@ def _result_out(
         ah_profit=None if ah is None else ah.profit,
         ah_depth_units=0 if ah is None else ah.depth_units,
         ah_excess_units=0 if ah is None else ah.excess_units,
+        likely_each=craft.each,
+        per_day=craft.per_day,
+        group=craft.group,
+        post_price=craft.post_price,
+        post_units=craft.post_units,
+        post_stack=craft.post_stack,
+        deposit_est=craft.deposit_est,
+        no_vendor_floor=craft.no_vendor_floor,
         learn_skill=r.recipe.learn_skill,
         trivial_low=r.recipe.trivial_low,
         trivial_high=r.recipe.trivial_high,
@@ -2600,6 +2659,10 @@ def get_coverage(state: State, user: CurrentUser) -> list[CoverageOut]:
             scans_7d=c.scans_7d,
             uploaders_7d=c.uploaders_7d,
             watched_hours=c.watched_hours,
+            realm_key=c.realm_key,
+            open=c.open,
+            feed=c.feed,
+            launch=c.launch,
         )
         for c in found
     ]
@@ -2659,6 +2722,7 @@ def get_versions(request: Request) -> list[VersionOut]:
                     ProfessionRankOut(name=r.name, train_at=r.train_at, level=r.level, cap=r.cap)
                     for r in state.version.profession_ranks
                 ],
+                gated_prices=state.version.gated_prices,
             )
         )
     return out

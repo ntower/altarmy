@@ -34,7 +34,7 @@ from altarmy_site.auctionator import DayStats, ItemPrice
 from altarmy_site.versions import GameVersion
 
 from .addon_fixtures import PROFIT_EXPORT
-from .conftest import FOREVER, ME, book_scan, saved_book, scanned, set_prices, write_csv
+from .conftest import FOREVER, ME, book_scan, open_gates, saved_book, scanned, set_prices, write_csv
 from .test_altarmy import ALTARMY_SV
 from .test_auctionator import _entry, _saved_variables
 from .test_auth import FakeVerifier
@@ -1311,9 +1311,11 @@ def test_each_game_version_has_its_own_data(client: TestClient, priced: Connecti
     forever, tbc_out = client.get("/api/versions").json()
     assert {k: v for k, v in forever.items() if k != "profession_ranks"} == (
         {"key": "forever", "label": "WoW: Forever", "build": None, "recipes": 1, "ah_cut": 0.05}
+        | {"resolved_min": 20, "normal_days": 2, "launch_days": 14, "gated_prices": True}
     )
     assert {k: v for k, v in tbc_out.items() if k != "profession_ranks"} == (
         {"key": "tbc", "label": "TBC Anniversary", "build": None, "recipes": 0, "ah_cut": 0.05}
+        | {"resolved_min": 20, "normal_days": 2, "launch_days": 14, "gated_prices": False}
     )
     # the trainer's ranks, up to each version's highest skill
     assert [r["name"] for r in forever["profession_ranks"]] == [
@@ -1428,6 +1430,31 @@ def test_rank_sells_at_the_lower_of_now_and_the_seven_day_median(
     assert (r["best_exit"], r["revenue"]) == ("ah", 950)
     robe = body["items"]["3"]
     assert (robe["ah_price"], robe["ah_sell_price"]) == (3_330_000, 1000)
+
+
+def test_rank_sells_on_the_ah_only_items_whose_auctions_opened_a_gate(
+    client: TestClient, priced: Connection
+) -> None:
+    one_craft(client)
+    ah = scanned(priced, {3: [(5000, 3)]}, gate=False)  # listed, but nothing seen ending yet
+    (r,) = client.get("/api/rank").json()["results"]
+    assert r["best_exit"] != "ah"
+    assert "ah" not in {o["kind"] for o in r["sell_options"]}
+    open_gates(priced, ah, [3])
+    prices.bump_price_version(priced, ah)  # as the merge does when a gate opens
+    client.app.state.wow[FOREVER].cache.invalidate()  # type: ignore[attr-defined]  # not STAMP_TTL later
+    (r,) = client.get("/api/rank").json()["results"]
+    assert r["best_exit"] == "ah"
+
+
+def test_rank_narrows_to_kinds_and_says_how_a_craft_sells(client: TestClient, priced: Connection) -> None:
+    assert client.get("/api/rank", params={"kinds": ["flip"]}).json()["total"] == 0
+    body = client.get("/api/rank", params={"kinds": ["craft"], "sort": "per_day"}).json()
+    (r,) = body["results"]
+    assert r["kind"] == "craft"
+    assert r["group"] in ("paying", "pennies", "waiting", "full", "losing")
+    assert r["likely_each"] == r["likely_profit"] // r["crafts"]
+    assert r["post_units"] is None or r["post_units"] >= 0
 
 
 def test_rank_buys_at_the_cheapest_listing_and_says_how_many_are_listed(
@@ -1581,7 +1608,7 @@ def test_coverage_lists_each_realms_scans(client: TestClient, conn: Connection) 
     assert upload(client, "altarmy", ALTARMY_SV + saved_book(scan), FREE).is_success
     prices.unnamed_auction_house(conn, FOREVER)  # never listed
     tbc = prices.auction_house(conn, "tbc", "Dreamscythe", "Horde")
-    (row,) = client.get("/api/coverage", headers=FREE).json()
+    (row,) = [r for r in client.get("/api/coverage", headers=FREE).json() if r["realm"] == "Dreamscythe"]
     assert (row["realm"], row["faction"], row["prices"], row["last_scan_items"]) == (
         "Dreamscythe",
         "Horde",
@@ -1633,7 +1660,7 @@ def test_guests_upload_characters_and_scans(client: TestClient, conn: Connection
         "moved": 2,
         "quarantined": False,
     }
-    (covered,) = client.get("/api/coverage", headers=FREE).json()
+    (covered,) = [r for r in client.get("/api/coverage", headers=FREE).json() if r["prices"]]
     assert (covered["realm"], covered["faction"], covered["prices"]) == ("Classic Beta PvE", "Horde", 2)
     history = client.get("/api/uploads", headers=FREE).json()
     assert [(u["kind"], u["outcome"], u["via"]) for u in history] == [("altarmy", "accepted", "browser")]

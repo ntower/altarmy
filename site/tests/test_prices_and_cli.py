@@ -466,7 +466,7 @@ def test_cli_migrate_prune_and_merge(tmp_path: Path, capsys: pytest.CaptureFixtu
     cli.main(["--db", dbfile, "prune"])
     assert "Pruned" in capsys.readouterr().out
     cli.main(["--db", dbfile, "merge"])
-    assert "Merged 1 auction houses of every game version (0 changed); 1 price observations stored." in (
+    assert "Merged 9 auction houses of every game version (0 changed); 1 price observations stored." in (
         capsys.readouterr().out
     )
     database = db.Database(db.sqlite_url(dbfile))
@@ -474,7 +474,7 @@ def test_cli_migrate_prune_and_merge(tmp_path: Path, capsys: pytest.CaptureFixtu
         runs = jobs.recent(conn, FOREVER)
     database.dispose()
     assert [(r.job, r.ok) for r in runs] == [("merge", True), ("prune", True)]
-    assert runs[0].summary.startswith("Merged 1 auction houses")
+    assert runs[0].summary.startswith("Merged 9 auction houses")  # the fixed realms' 8, and the tailor's
 
 
 def test_cli_merge_warns_once_observations_need_partitioning(

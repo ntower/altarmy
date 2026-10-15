@@ -39,6 +39,22 @@ PROFESSION_RANKS = (
 
 
 @dataclass(frozen=True)
+class RealmSpec:
+    """One of a version's fixed realms. Each has an Alliance and a Horde auction house (`FACTIONS`), whose
+    rows `db.register_versions` creates. A realm name in an upload is this realm when it is `name` or one
+    of `aliases` (`canonical_realm`), the names Blizzard and the client give it."""
+
+    key: str  # normal, pvp, rp, hardcore: stable, for paths
+    label: str
+    name: str  # the auction houses' realm
+    aliases: tuple[str, ...] = ()
+    open: bool = True  # False until the realm opens (Hardcore, a couple of months after launch)
+
+
+FACTIONS = ("Alliance", "Horde")  # each fixed realm's auction houses; the neutral one is left out
+
+
+@dataclass(frozen=True)
 class GameVersion:
     key: GameVersionKey
     label: str
@@ -55,9 +71,46 @@ class GameVersion:
     mail_postage: int = MAIL_POSTAGE  # copper per attachment
     # Prices come from the Alt Army addon's full scans (and prices set by hand) alone: `prices.record_book`
     first_party_prices: bool = False
+    # An item sells on the AH only once enough of its auctions have ended (`merge`'s gate,
+    # `engine.Market.ah_open`); until then crafts sell to a vendor
+    gated_prices: bool = False
     # (standing, percent off) at a vendor for the buyer's standing with the vendor's faction (5 Friendly,
     # 6 Honored, 7 Revered, 8 Exalted; see `reputation`); standings not listed get nothing off
     reputation_discounts: tuple[tuple[int, int], ...] = ()
+    # The hourly auction snapshots (`snapshots`): each time-left bucket's (more than, at most) seconds left,
+    # Classic's until a Forever snapshot shows them; the durations an auction can be posted for, in hours;
+    # and the longest gap between two snapshots that still tells what ended in between
+    time_left_buckets: tuple[tuple[str, int, int], ...] = (
+        ("SHORT", 0, 1800),
+        ("MEDIUM", 1800, 7200),
+        ("LONG", 7200, 28800),
+        ("VERY_LONG", 28800, 86400),
+    )
+    auction_hours: tuple[int, ...] = (2, 8, 24)
+    # What posting costs: this share of what a vendor pays for the stack, per 2 hours it is up (vanilla's,
+    # until checked in game: 5% for 2 hours, 60% for 24)
+    ah_deposit_rate: float = 0.05
+    snapshot_gap: int = 4500  # seconds: an hour and a quarter, so a late snapshot still follows
+    # the fixed realms, whose auction houses always exist (empty: realms come from uploads, as on TBC)
+    realms: tuple[RealmSpec, ...] = ()
+
+    def canonical_realm(self, name: str) -> RealmSpec | None:
+        """The fixed realm a realm name stands for (its name or an alias, ignoring case and spaces)."""
+        wanted = _squash(name)
+        for spec in self.realms:
+            if wanted in {_squash(n) for n in (spec.name, *spec.aliases)}:
+                return spec
+        return None
+
+    def realm_name(self, name: str) -> str:
+        """The auction houses' realm for a realm name: the fixed realm's, else the name as it is."""
+        spec = self.canonical_realm(name)
+        return name if spec is None else spec.name
+
+    @property
+    def buckets(self) -> dict[str, tuple[int, int]]:
+        """`time_left_buckets` by name, as `snapshots.diff` takes them."""
+        return {name: (lo, hi) for name, lo, hi in self.time_left_buckets}
 
     @property
     def profession_ranks(self) -> tuple[ProfessionRank, ...]:
@@ -111,7 +164,15 @@ VERSIONS: dict[str, GameVersion] = {
         max_level=60,
         max_skill=300,
         first_party_prices=True,
+        gated_prices=True,
         reputation_discounts=((6, 10), (7, 10), (8, 10)),  # vanilla's: 10% from Honored, no more after
+        # The launch realms' own names go in their aliases on launch day
+        realms=(
+            RealmSpec("normal", "Normal", "Normal"),
+            RealmSpec("pvp", "PvP", "PvP"),
+            RealmSpec("rp", "RP", "RP"),
+            RealmSpec("hardcore", "Hardcore", "Hardcore", open=False),
+        ),
     ),
     "tbc": GameVersion(
         key="tbc",
@@ -138,3 +199,7 @@ def get(key: str) -> GameVersion:
 def version_of_build(build: str) -> GameVersionKey:
     """Which version a DB2 build belongs to: 2.x is TBC, anything else (1.60.x) is Forever."""
     return "tbc" if build.startswith("2.") else "forever"
+
+
+def _squash(name: str) -> str:
+    return "".join(name.split()).lower()

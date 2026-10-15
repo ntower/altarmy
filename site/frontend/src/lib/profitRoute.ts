@@ -7,18 +7,28 @@ import { type Holder, type ProfessionChoice, professionsOf, professionsToImagine
  * profession: a link to it opens exactly that, switching the realm) and /profit/skill/<realm>/<profession>/<skill>
  * (a character nobody uploaded skilling up one profession from that skill; the last part is all digits, which a
  * profession's never is). /profit/vendorcheck (what the selected realm's auction house lists beside the vendor
- * price) is reached only by its path: nothing links it.
+ * price) is reached only by its path: nothing links it. With the strategy picker (`STRATEGY_PICKER`),
+ * /profit/gold/<strategy> is one way to make gold (`lib/strategies.ts`); /profit/gold/disenchant, from before
+ * disenchanting became a filter, goes to /profit/gold/craft?exit=disenchant.
  */
 
 export type ProfitView =
   | { kind: 'start' }
-  | { kind: 'gold' }
+  /** without a `strategy`, the picker (or, without `STRATEGY_PICKER`, the one gold list) */
+  | { kind: 'gold'; strategy?: GoldStrategy }
   | { kind: 'skill' }
   /** `realm` and `profession` as slugs (`realmSlug`, `professionSlug`), `character` as named */
   | { kind: 'run'; realm: string; character: string; profession: string }
   /** a character nobody uploaded, with `profession` (a slug) at `skill` on `realm` (a slug) */
   | { kind: 'hypothetical'; realm: string; profession: string; skill: number }
   | { kind: 'vendorcheck' }
+  /** a path kept for old links: the page now at `to` */
+  | { kind: 'moved'; to: string }
+
+/** The ways to make gold that have a page (`lib/strategies.ts`). */
+export const GOLD_STRATEGY_KEYS = ['craft', 'process'] as const
+export type GoldStrategy = (typeof GOLD_STRATEGY_KEYS)[number]
+const isStrategy = (key: string): key is GoldStrategy => (GOLD_STRATEGY_KEYS as readonly string[]).includes(key)
 
 /** Lower-case words joined by dashes: "Classic Beta PvE" is "classic-beta-pve", "First Aid" "first-aid". */
 const slug = (text: string) =>
@@ -38,6 +48,9 @@ export function parseProfitPath(pathname: string): ProfitView | null {
   const [first, ...rest] = parts
   if (first === undefined) return { kind: 'start' }
   if (first === 'gold' && rest.length === 0) return { kind: 'gold' }
+  if (first === 'gold' && rest.length === 1 && rest[0] === 'disenchant')
+    return { kind: 'moved', to: '/profit/gold/craft?exit=disenchant' }
+  if (first === 'gold' && rest.length === 1 && isStrategy(rest[0] ?? '')) return { kind: 'gold', strategy: rest[0] as GoldStrategy }
   if (first === 'vendorcheck' && rest.length === 0) return { kind: 'vendorcheck' }
   if (first !== 'skill') return null
   if (rest.length === 0) return { kind: 'skill' }
@@ -60,7 +73,9 @@ export function profitPath(view: ProfitView): string {
     case 'start':
       return '/profit'
     case 'gold':
-      return '/profit/gold'
+      return view.strategy ? `/profit/gold/${view.strategy}` : '/profit/gold'
+    case 'moved':
+      return view.to
     case 'skill':
       return '/profit/skill'
     case 'vendorcheck':

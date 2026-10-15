@@ -466,6 +466,11 @@
             "title": "Faction",
             "type": "string"
           },
+          "feed": {
+            "default": false,
+            "title": "Feed",
+            "type": "boolean"
+          },
           "last_scan": {
             "anyOf": [
               {
@@ -481,6 +486,16 @@
             "title": "Last Scan Items",
             "type": "integer"
           },
+          "launch": {
+            "default": false,
+            "title": "Launch",
+            "type": "boolean"
+          },
+          "open": {
+            "default": true,
+            "title": "Open",
+            "type": "boolean"
+          },
           "prices": {
             "title": "Prices",
             "type": "integer"
@@ -488,6 +503,17 @@
           "realm": {
             "title": "Realm",
             "type": "string"
+          },
+          "realm_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realm Key"
           },
           "scans_7d": {
             "title": "Scans 7D",
@@ -892,7 +918,8 @@
               "row_opened",
               "copy_steps",
               "gather_toggled",
-              "coach_shown"
+              "coach_shown",
+              "strategy_chosen"
             ],
             "title": "Name",
             "type": "string"
@@ -2425,6 +2452,17 @@
             ],
             "title": "Days To Sell"
           },
+          "deposit_est": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deposit Est"
+          },
           "depth_units": {
             "default": 0,
             "title": "Depth Units",
@@ -2449,6 +2487,18 @@
             },
             "title": "Exits",
             "type": "array"
+          },
+          "group": {
+            "default": "paying",
+            "enum": [
+              "paying",
+              "pennies",
+              "waiting",
+              "full",
+              "losing"
+            ],
+            "title": "Group",
+            "type": "string"
           },
           "kind": {
             "default": "craft",
@@ -2478,6 +2528,11 @@
             "title": "Learn Skill",
             "type": "integer"
           },
+          "likely_each": {
+            "default": 0,
+            "title": "Likely Each",
+            "type": "integer"
+          },
           "likely_exit": {
             "title": "Likely Exit",
             "type": "string"
@@ -2497,6 +2552,11 @@
             },
             "title": "Milestones",
             "type": "array"
+          },
+          "no_vendor_floor": {
+            "default": false,
+            "title": "No Vendor Floor",
+            "type": "boolean"
           },
           "output_count": {
             "title": "Output Count",
@@ -2520,12 +2580,50 @@
             "title": "Overtaken By Item",
             "type": "integer"
           },
+          "per_day": {
+            "default": 0,
+            "title": "Per Day",
+            "type": "integer"
+          },
           "point_crafts": {
             "items": {
               "type": "number"
             },
             "title": "Point Crafts",
             "type": "array"
+          },
+          "post_price": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Post Price"
+          },
+          "post_stack": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Post Stack"
+          },
+          "post_units": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Post Units"
           },
           "postage": {
             "title": "Postage",
@@ -3710,6 +3808,11 @@
             ],
             "title": "Build"
           },
+          "gated_prices": {
+            "default": false,
+            "title": "Gated Prices",
+            "type": "boolean"
+          },
           "key": {
             "enum": [
               "tbc",
@@ -3722,6 +3825,16 @@
             "title": "Label",
             "type": "string"
           },
+          "launch_days": {
+            "default": 14,
+            "title": "Launch Days",
+            "type": "integer"
+          },
+          "normal_days": {
+            "default": 2,
+            "title": "Normal Days",
+            "type": "integer"
+          },
           "profession_ranks": {
             "items": {
               "$ref": "#/components/schemas/ProfessionRankOut"
@@ -3731,6 +3844,11 @@
           },
           "recipes": {
             "title": "Recipes",
+            "type": "integer"
+          },
+          "resolved_min": {
+            "default": 20,
+            "title": "Resolved Min",
             "type": "integer"
           }
         },
@@ -4875,13 +4993,40 @@
             }
           },
           {
-            "description": "profit per session (the batch; all_sell is the same), per hour of play, cheapest skill point, likely profit (`likely_profit`), ROI, least spent, profit per unit made, or the profit selling it all safely (a vendor or disenchanting: `safe`) or on the auction house (`ah`), those it isn't open to last",
+            "description": "only results of these kinds (default: every one)",
+            "in": "query",
+            "name": "kinds",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "enum": [
+                      "craft",
+                      "convert",
+                      "flip",
+                      "enchant"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "only results of these kinds (default: every one)",
+              "title": "Kinds"
+            }
+          },
+          {
+            "description": "profit per session (the batch; all_sell is the same), per hour of play, cheapest skill point, likely profit (`likely_profit`), ROI, least spent, profit per unit made, the profit selling it all safely (a vendor or disenchanting: `safe`) or on the auction house (`ah`), those it isn't open to last, or what a day makes (`per_day`, Craft and sell)",
             "in": "query",
             "name": "sort",
             "required": false,
             "schema": {
               "default": "profit",
-              "description": "profit per session (the batch; all_sell is the same), per hour of play, cheapest skill point, likely profit (`likely_profit`), ROI, least spent, profit per unit made, or the profit selling it all safely (a vendor or disenchanting: `safe`) or on the auction house (`ah`), those it isn't open to last",
+              "description": "profit per session (the batch; all_sell is the same), per hour of play, cheapest skill point, likely profit (`likely_profit`), ROI, least spent, profit per unit made, the profit selling it all safely (a vendor or disenchanting: `safe`) or on the auction house (`ah`), those it isn't open to last, or what a day makes (`per_day`, Craft and sell)",
               "enum": [
                 "profit",
                 "rate",
@@ -4892,7 +5037,8 @@
                 "spend",
                 "profit_each",
                 "safe",
-                "ah"
+                "ah",
+                "per_day"
               ],
               "title": "Sort",
               "type": "string"

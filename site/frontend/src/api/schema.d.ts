@@ -667,14 +667,31 @@ export interface components {
             auction_house_id: number;
             /** Faction */
             faction: string;
+            /**
+             * Feed
+             * @default false
+             */
+            feed: boolean;
             /** Last Scan */
             last_scan: string | null;
             /** Last Scan Items */
             last_scan_items: number;
+            /**
+             * Launch
+             * @default false
+             */
+            launch: boolean;
+            /**
+             * Open
+             * @default true
+             */
+            open: boolean;
             /** Prices */
             prices: number;
             /** Realm */
             realm: string;
+            /** Realm Key */
+            realm_key?: string | null;
             /** Scans 7D */
             scans_7d: number;
             /** Uploaders 7D */
@@ -829,7 +846,7 @@ export interface components {
              * Name
              * @enum {string}
              */
-            name: "aim_chosen" | "next_up_shown" | "row_opened" | "copy_steps" | "gather_toggled" | "coach_shown";
+            name: "aim_chosen" | "next_up_shown" | "row_opened" | "copy_steps" | "gather_toggled" | "coach_shown" | "strategy_chosen";
             /**
              * Props
              * @default {}
@@ -1468,6 +1485,8 @@ export interface components {
             crafts_p80: number;
             /** Days To Sell */
             days_to_sell: number | null;
+            /** Deposit Est */
+            deposit_est?: number | null;
             /**
              * Depth Units
              * @default 0
@@ -1486,6 +1505,12 @@ export interface components {
             /** Exits */
             exits: components["schemas"]["ExitOut"][];
             /**
+             * Group
+             * @default paying
+             * @enum {string}
+             */
+            group: "paying" | "pennies" | "waiting" | "full" | "losing";
+            /**
              * Kind
              * @default craft
              * @enum {string}
@@ -1501,6 +1526,11 @@ export interface components {
              * @default 0
              */
             learn_skill: number;
+            /**
+             * Likely Each
+             * @default 0
+             */
+            likely_each: number;
             /** Likely Exit */
             likely_exit: string;
             /** Likely Profit */
@@ -1512,6 +1542,11 @@ export interface components {
              * @default []
              */
             milestones: components["schemas"]["MilestoneOut"][];
+            /**
+             * No Vendor Floor
+             * @default false
+             */
+            no_vendor_floor: boolean;
             /** Output Count */
             output_count: number;
             /** Output Item Id */
@@ -1528,8 +1563,19 @@ export interface components {
              * @default 0
              */
             overtaken_by_item: number;
+            /**
+             * Per Day
+             * @default 0
+             */
+            per_day: number;
             /** Point Crafts */
             point_crafts?: number[];
+            /** Post Price */
+            post_price?: number | null;
+            /** Post Stack */
+            post_stack?: number | null;
+            /** Post Units */
+            post_units?: number | null;
             /** Postage */
             postage: number;
             /** Profession */
@@ -2008,16 +2054,36 @@ export interface components {
             /** Build */
             build: string | null;
             /**
+             * Gated Prices
+             * @default false
+             */
+            gated_prices: boolean;
+            /**
              * Key
              * @enum {string}
              */
             key: "tbc" | "forever";
             /** Label */
             label: string;
+            /**
+             * Launch Days
+             * @default 14
+             */
+            launch_days: number;
+            /**
+             * Normal Days
+             * @default 2
+             */
+            normal_days: number;
             /** Profession Ranks */
             profession_ranks: components["schemas"]["ProfessionRankOut"][];
             /** Recipes */
             recipes: number;
+            /**
+             * Resolved Min
+             * @default 20
+             */
+            resolved_min: number;
         };
     };
     responses: never;
@@ -2583,8 +2649,10 @@ export interface operations {
                 min_confidence?: ("high" | "medium" | "low") | null;
                 /** @description only recipes of these professions (default: every one) */
                 professions?: string[] | null;
-                /** @description profit per session (the batch; all_sell is the same), per hour of play, cheapest skill point, likely profit (`likely_profit`), ROI, least spent, profit per unit made, or the profit selling it all safely (a vendor or disenchanting: `safe`) or on the auction house (`ah`), those it isn't open to last */
-                sort?: "profit" | "rate" | "skill" | "likely" | "all_sell" | "roi" | "spend" | "profit_each" | "safe" | "ah";
+                /** @description only results of these kinds (default: every one) */
+                kinds?: ("craft" | "convert" | "flip" | "enchant")[] | null;
+                /** @description profit per session (the batch; all_sell is the same), per hour of play, cheapest skill point, likely profit (`likely_profit`), ROI, least spent, profit per unit made, the profit selling it all safely (a vendor or disenchanting: `safe`) or on the auction house (`ah`), those it isn't open to last, or what a day makes (`per_day`, Craft and sell) */
+                sort?: "profit" | "rate" | "skill" | "likely" | "all_sell" | "roi" | "spend" | "profit_each" | "safe" | "ah" | "per_day";
                 /** @description `safe` and `ah` only: best first, or worst first (those not open to it last) */
                 order?: "desc" | "asc";
                 /** @description items the user gathers: had for what selling them would make, instead of bought */

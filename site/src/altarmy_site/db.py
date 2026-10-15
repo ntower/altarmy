@@ -169,12 +169,20 @@ def current_revision(conn: Connection) -> str | None:
 
 
 def register_versions(conn: Connection) -> None:
-    """A `game_versions` row for every known version (the build is left as ingest set it)."""
+    """A `game_versions` row for every known version (the build is left as ingest set it), and the
+    auction houses of each version's fixed realms (`GameVersion.realms`)."""
     rows = [
         {"id": v.key, "wago_product": v.wago_product, "interface": v.interface}
         for v in versions.VERSIONS.values()
     ]
     upsert(conn, schema.game_versions, rows, ["id"])
+    houses = [
+        {"game_version": v.key, "realm": spec.name, "faction": faction, "price_version": 0}
+        for v in versions.VERSIONS.values()
+        for spec in v.realms
+        for faction in versions.FACTIONS
+    ]
+    upsert(conn, schema.auction_houses, houses, ["game_version", "realm", "faction"], [])
 
 
 def upsert(

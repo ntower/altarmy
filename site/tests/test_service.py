@@ -9,7 +9,20 @@ from typing import Any
 import pytest
 from sqlalchemy import Connection
 
-from altarmy_site import altarmy, book, db, engine, ingest, prices, service, store, talents, timing, users
+from altarmy_site import (
+    altarmy,
+    book,
+    db,
+    engine,
+    ingest,
+    prices,
+    service,
+    store,
+    talents,
+    timing,
+    users,
+    versions,
+)
 from altarmy_site.altarmy import Character, Profession
 from altarmy_site.engine import ALL_EXITS, Filters
 from altarmy_site.service import Selection
@@ -844,16 +857,19 @@ def test_likely_profit_is_the_better_of_playing_it_safe_and_the_auction_house() 
         assert service.likely(r, {10: listing}, 1000).profit == max(sale.profit, safe[1])
 
 
-def test_an_essence_conversion_sells_safely() -> None:
+def test_an_essence_conversion_sells_like_any_auction_sale() -> None:
     convert = engine.Recipe(1_000_000_001, "Greater Essence", 2, 1, ((1, 3),), "", kind="convert")
     assert convert.is_conversion
     sale = engine.Result(convert, 300, 1000, "ah", engine.Node(2, "Greater Essence", 1, 300))
     sale.sell_options = [engine.SellOption("ah", 700)]
+    sale.exits = [engine.Exit("ah", 950)]
+    deep = prices.Listing(1000, 0, (), 1.0, "altarmy", True, sale_price=1000)
     thin = prices.Listing(1000, 0, (), 0.0, "altarmy", True, sale_price=1000)
-    # enchanting materials sell: no depth cap, and not an auction house play
-    assert service.likely(sale, {2: thin}, 1000) == service.Likely(700, "ah", 0, 0)
-    assert service.ah_sale(sale, {2: thin}, 1000) is None
-    assert service.safe_profit(sale) == ("convert", 700)
+    # its essences sell only as fast as their market takes them, as anything else on the AH
+    assert service.ah_sale(sale, {2: deep}, 1000) == service.AhSale(700, 7, 0)
+    assert service.ah_sale(sale, {2: thin}, 1000) == service.AhSale(700 - 950, 0, 1)
+    assert service.likely(sale, {2: thin}, 1000) == service.Likely(700 - 950, "ah", 0, 1)
+    assert service.safe_profit(sale) is None  # nothing but the AH: never safe
 
 
 def test_a_gathered_material_is_worth_what_it_would_sell_for() -> None:
@@ -1488,3 +1504,63 @@ def test_later_recipes_leave_out_what_never_climbs() -> None:
     assert later(base) == ["B", "C"]
     assert later(changed("B", cooldown_ms=engine.CLIMB_COOLDOWN_MS)) == ["C"]  # an hour a craft
     assert later(changed("C", num_skill_ups=0)) == ["B"]  # gives no point
+
+
+# --- Craft and sell ---------------------------------------------------------------------------------------
+LINEN, THREAD, ROBE_ITEM = 1, 2, 3
+ROBE_RECIPE = engine.Recipe(10, "Robe", ROBE_ITEM, 1, ((LINEN, 10), (THREAD, 1)), "Tailoring")
+
+
+def robe_market(vendor: int, ah: int | None = 2000, ah_open: frozenset[int] | None = None) -> engine.Market:
+    items = {
+        LINEN: engine.Item(LINEN, "Linen"),
+        THREAD: engine.Item(THREAD, "Thread"),
+        ROBE_ITEM: engine.Item(ROBE_ITEM, "Robe", sell_price=vendor),
+    }
+    sell = {ROBE_ITEM: ah} if ah is not None else {}
+    return engine.Market(items, [ROBE_RECIPE], {LINEN: 20, THREAD: 100}, sell_prices=sell, ah_open=ah_open)
+
+
+def robe_listing(listed: int, rate: float, stacks: str | None = "1:9/1") -> prices.Listing:
+    ladder = (book.Level(2000, listed, listed),) if listed else ()
+    return prices.Listing(2000, listed, ladder, rate, prices.BLIZZARD, bool(listed), stacks=stacks)
+
+
+def sale(market: engine.Market, listing: prices.Listing, crafts: int = 10) -> service.CraftSale:
+    r = market.evaluate(ROBE_RECIPE, crafts=crafts)
+    assert r is not None
+    return service.craft_sale(r, {ROBE_ITEM: listing}, market, versions.get(FOREVER))
+
+
+def test_a_craft_posts_a_third_of_a_days_sales() -> None:
+    got = sale(robe_market(500), robe_listing(listed=5, rate=9.0))
+    each = engine.ah_net(2000) - 300
+    deposit = 500 * 3 * 0.05 * 12  # what a vendor pays, 5% a 2 hours, for a day's auction of 3
+    assert (got.group, got.post_price, got.post_units, got.post_stack) == ("paying", 2000, 3, 1)
+    assert got.each == each
+    assert got.deposit_est == deposit
+    assert got.per_day == 3 * each - deposit
+
+
+def test_a_craft_with_more_listed_under_it_than_sell_a_day_is_full() -> None:
+    assert sale(robe_market(500), robe_listing(listed=20, rate=9.0)).group == "full"
+    # nothing seen bought: it likely goes to a vendor, nothing posted
+    unsold = sale(robe_market(500), robe_listing(listed=0, rate=0.0))
+    assert (unsold.group, unsold.post_units, unsold.each) == ("paying", None, 500 - 300)
+
+
+def test_crafts_that_sell_to_a_vendor_are_grouped_by_what_they_make() -> None:
+    gone = robe_listing(listed=0, rate=0.0)
+    assert sale(robe_market(800, ah=None), gone).group == "paying"
+    assert sale(robe_market(302, ah=None), gone).group == "pennies"  # 2c a craft: under a craft's time
+    assert sale(robe_market(100, ah=None), gone).group == "losing"
+    # listed, but its AH sale doesn't count yet, and a vendor pays less than it costs: waiting
+    unproven = sale(robe_market(100, ah_open=frozenset()), robe_listing(listed=5, rate=9.0))
+    assert unproven.group == "waiting"
+    assert sale(robe_market(0), robe_listing(listed=5, rate=9.0)).no_vendor_floor
+
+
+def test_the_best_stack_is_the_one_that_sold_best() -> None:
+    listing = robe_listing(listed=1, rate=1.0, stacks="1:2/8,5:6/2,20:9/30")
+    assert prices.best_stack(listing) == 5  # 20s sold more, but mostly ran out
+    assert prices.best_stack(robe_listing(listed=1, rate=1.0, stacks=None)) is None

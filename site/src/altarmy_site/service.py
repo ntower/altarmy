@@ -7,6 +7,7 @@ Auctionator, both through uploads (`uploads.py`), or from characters made by han
 from __future__ import annotations
 
 import json
+import math
 import threading
 import time
 import weakref
@@ -19,7 +20,7 @@ from typing import Literal, TypeVar, cast
 
 from sqlalchemy import Connection
 
-from . import altarmy, db, ingest, prices, reputation, store, talents, timing, users
+from . import altarmy, db, engine, ingest, prices, reputation, store, talents, timing, users, versions
 from .altarmy import Character, Profession
 from .engine import (
     AH_CUT,
@@ -778,6 +779,7 @@ def _market(
         time=time,
         books=base.books,
         sell_depth=base.sell_depth,
+        ah_open=base.ah_open,
         reputation_discounts=base.reputation_discounts,
         arcane_salvager=arcane_salvager,
         gathered=gathered,
@@ -881,15 +883,15 @@ class AhSale:
 
 def ah_sale(r: Result, listings: Mapping[int, prices.Listing], sell_price: int | None) -> AhSale | None:
     """What `r` makes on the auction house (see `AhSale`), whichever exit pays best; None when it can't be
-    sold there, or is an essence conversion (enchanting materials sell: `safe_profit`). Its market's depth is
-    the more of the units seen sold over the last week and those listed at or under `sell_price` (a crude
-    depth, until a model of what sells replaces it); a price from another source than Alt Army's scans is
-    counted as it is."""
+    sold there. Its market's depth is the more of the units seen sold over the last week and those listed at
+    or under `sell_price` (a crude depth, until a model of what sells replaces it); a price from another
+    source than a full scan is counted as it is. An essence conversion's sale is one like any other: its
+    essences sell only as fast as their market takes them."""
     all_sold = (
         r.profit if r.best_exit == "ah" else next((o.profit for o in r.sell_options if o.kind == "ah"), None)
     )
     ah = next((e for e in r.exits if e.kind == "ah"), None)
-    if all_sold is None or ah is None or r.recipe.is_conversion:
+    if all_sold is None or ah is None:
         return None
     listing = listings.get(r.recipe.output_item_id)
     depth = prices.sale_depth(listing, sell_price) if listing is not None else None
@@ -903,11 +905,11 @@ def ah_sale(r: Result, listings: Mapping[int, prices.Listing], sell_price: int |
 
 def likely(r: Result, listings: Mapping[int, prices.Listing], sell_price: int | None) -> Likely:
     """`r`'s likely profit (see `Likely`): an AH sale of an item from Alt Army's scans counts as `ah_sale`
-    does, and when another exit then outright pays better, it is the likely one. Any other sale (an essence
-    conversion's too), or a price from another source, is what it is. It is the better of `safe_profit` and
-    `ah_sale` wherever both exist."""
+    does, and when another exit then outright pays better, it is the likely one. Any other sale, or a price
+    from another source, is what it is. It is the better of `safe_profit` and `ah_sale` wherever both
+    exist."""
     listing = listings.get(r.recipe.output_item_id)
-    if r.best_exit != "ah" or listing is None or listing.source != prices.ALTARMY:
+    if r.best_exit != "ah" or listing is None or listing.source not in prices.SCANNED:
         return Likely(r.profit, r.best_exit, 0, 0)
     sale = ah_sale(r, listings, sell_price)
     if sale is None:
@@ -922,12 +924,100 @@ SAFE_EXITS = ("vendor", "disenchant")  # the exits that never leave the user hol
 
 
 def safe_profit(r: Result) -> tuple[str, int] | None:
-    """What playing it safe makes for the session, and how: the better of a vendor and disenchanting, or an
-    essence conversion's sale (`convert`: enchanting materials sell); None when neither is open to `r`."""
+    """What playing it safe makes for the session, and how: the better of a vendor and disenchanting; None
+    when neither is open to `r` (an essence conversion sells only on the AH, which is never safe)."""
     options = [(o.kind, o.profit) for o in r.sell_options if o.kind in SAFE_EXITS]
-    if r.recipe.is_conversion:
-        options += [("convert", o.profit) for o in r.sell_options if o.kind == "ah"]
     return max(options, key=lambda o: o[1], default=None)
+
+
+CraftGroup = Literal["paying", "pennies", "waiting", "full", "losing"]
+POST_SHARE = 1 / 3  # of a day's units bought, what one crafter posts, until undercuts are measured
+POST_HOURS = 24  # the auction a post is for: a day's
+
+
+@dataclass(frozen=True)
+class CraftSale:
+    """How a craft sells, for the Craft and sell page: per craft what it likely makes (`each`), what to post
+    and at what price where it sells on the AH, what a day makes, and which group it falls in."""
+
+    each: int  # likely profit per craft
+    per_day: int  # likely profit a day: per craft, times the crafts the market takes a day (AH), or a session
+    group: CraftGroup
+    post_price: int | None = None  # the price the AH sale counts on
+    post_units: int | None = None  # units to post now: a share of a day's sales near the price
+    post_stack: int | None = None  # the stack size that sold best; None: not known yet
+    deposit_est: int | None = None  # what posting them costs, estimated (`GameVersion.ah_deposit_rate`)
+    no_vendor_floor: bool = False  # a vendor pays nothing for it: unsold, it is worth nothing
+
+
+def craft_sale(
+    r: Result, listings: Mapping[int, prices.Listing], market: Market, version: GameVersion
+) -> CraftSale:
+    """`r` as the Craft and sell page shows it (see `CraftSale`). An AH sale posts at most `POST_SHARE` of
+    a day's units seen bought (`prices.demand`), and `full` when the units listed at or under its price
+    already outnumber them; a craft whose AH sale doesn't count yet (`Market.ah_open`) and that nothing
+    else pays for is `waiting`; one that makes less than a craft's time is worth (`engine.craft_value`) is
+    `pennies`; one that loses is `losing`."""
+    output = r.recipe.output_item_id
+    item = market.items.get(output)
+    sell_price = market.sell_prices.get(output)
+    made = likely(r, listings, sell_price)
+    crafts = max(1, r.crafts)
+    each = made.profit // crafts
+    no_floor = item is not None and item.sell_price <= 0 and not r.recipe.is_enchant
+    listing = listings.get(output)
+    unproven = (
+        market.ah_open is not None
+        and output not in market.ah_open
+        and listing is not None
+        and bool(listing.listed)
+    )
+    if made.exit != "ah" or listing is None:
+        group: CraftGroup = (
+            "waiting"
+            if made.profit <= 0 and unproven
+            else "losing"
+            if made.profit < 0
+            else "pennies"
+            if each < engine.craft_value(r.recipe, engine.TIME_VALUE)
+            else "paying"
+        )
+        return CraftSale(each, made.profit, group, no_vendor_floor=no_floor)
+    per_unit = each / max(1, r.recipe.output_count)
+    a_day = prices.demand(listing, days=1) or 0.0
+    stack = prices.best_stack(listing)
+    units = r.recipe.output_count * crafts
+    post = min(units, int(a_day * POST_SHARE))
+    ahead = prices.ahead(listing, sell_price)
+    deposit = None
+    if item is not None and item.sell_price > 0 and post:
+        deposit = math.ceil(item.sell_price * post * version.ah_deposit_rate * POST_HOURS / 2)
+    group = (
+        "losing"
+        if made.profit < 0
+        else "full"
+        if post <= 0 or ahead >= a_day
+        else "pennies"
+        if each < engine.craft_value(r.recipe, engine.TIME_VALUE)
+        else "paying"
+    )
+    return CraftSale(
+        each,
+        round(per_unit * post) - (deposit or 0),
+        group,
+        sell_price,
+        post,
+        None if stack is None or item is None else min(stack, item.stack_size),
+        deposit,
+        no_floor,
+    )
+
+
+def by_per_day(
+    results: Iterable[Result], listings: Mapping[int, prices.Listing], market: Market, version: GameVersion
+) -> list[Result]:
+    """Best first by what a day makes (`craft_sale`)."""
+    return sorted(results, key=lambda r: -craft_sale(r, listings, market, version).per_day)
 
 
 def by_likely(
@@ -1634,7 +1724,8 @@ def auction_house_of(conn: Connection, game_version: str, sel: Selection | None)
     One named after an Auctionator key (its scan came before the characters) is found by that alias."""
     if sel is None:
         return prices.find_auction_house(conn, game_version, "", "")
-    found = prices.find_auction_house(conn, game_version, sel.realm, sel.faction)
+    realm = versions.get(game_version).realm_name(sel.realm)  # a fixed realm's other names: its house
+    found = prices.find_auction_house(conn, game_version, realm, sel.faction)
     if found is None:
         found = prices.find_auction_house_by_alias(conn, game_version, sel.realm, sel.faction)
     return found

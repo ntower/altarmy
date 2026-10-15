@@ -59,6 +59,7 @@ def make_market(
     time: TimeModel | None = None,
     reputation_discounts: dict[int, int] | None = None,
     sell_depth: dict[int, int] | None = None,
+    ah_open: frozenset[int] | None = None,
 ) -> Market:
     items = {
         LINEN: Item(LINEN, "Linen Cloth"),
@@ -87,6 +88,7 @@ def make_market(
         time=time,
         reputation_discounts=reputation_discounts,
         sell_depth=sell_depth,
+        ah_open=ah_open,
     )
 
 
@@ -543,6 +545,41 @@ def test_disenchanting_counts_on_no_more_materials_than_the_market_takes() -> No
     # the exit's value per unit (the hover) is still the AH's
     de = next(e for e in sold(shallow, 12).exits if e.kind == "disenchant")
     assert de.value == ah_net(1000)
+
+
+def test_only_items_whose_ah_sale_counts_sell_there() -> None:
+    both = crafter("Both", ("Enchanting", 10), ("Tailoring", 50), known=frozenset({900}))
+    dust = Item(DUST, "Strange Dust", sell_price=3)
+    shut = make_market(
+        DE_PRICES | {GREEN: 2000},
+        [ROBE],
+        disenchant=DE_ROWS,
+        crafters=[both],
+        extra_items=[dust],
+        ah_open=frozenset(),
+    )
+    res = must_evaluate(shut, ROBE)
+    assert {o.kind for o in res.sell_options} == {"vendor", "disenchant"}  # no AH sale for the robe
+    de = next(e for e in res.exits if e.kind == "disenchant")
+    assert de.value == 3  # its dust at what a vendor pays
+    assert res.best_exit == "vendor"
+    # the reagents are still bought on the AH
+    assert res.cost == 10 * 20 + 100
+    opened = make_market(
+        DE_PRICES | {GREEN: 2000},
+        [ROBE],
+        disenchant=DE_ROWS,
+        crafters=[both],
+        extra_items=[dust],
+        ah_open=frozenset({GREEN, DUST}),
+    )
+    assert must_evaluate(opened, ROBE).best_exit == "ah"
+    assert must_evaluate(opened, ROBE) == must_evaluate(
+        make_market(
+            DE_PRICES | {GREEN: 2000}, [ROBE], disenchant=DE_ROWS, crafters=[both], extra_items=[dust]
+        ),
+        ROBE,
+    )
 
 
 def test_materials_past_what_the_market_takes_are_valued_at_a_vendor() -> None:
@@ -2789,3 +2826,18 @@ def test_a_market_of_a_professions_closure_plans_its_recipes_as_the_whole_game_d
                             seed,
                             r,
                         )
+
+
+def test_a_long_cooldown_is_one_cast_a_session() -> None:
+    transmute = Recipe(
+        40, "Transmute: Linen", BOLT, 1, ((LINEN, 2),), "Alchemy", cooldown_ms=engine.CLIMB_COOLDOWN_MS
+    )
+    m = make_market({LINEN: 20, BOLT: 500}, [transmute])
+    res = m.evaluate(transmute, crafts=10)
+    assert res is not None and res.crafts == 1 and res.cost == 2 * 20
+    # a chain needing two casts can't craft it: it buys instead
+    robe = Recipe(41, "Robe", GREEN, 1, ((BOLT, 2),), "Tailoring")
+    chained = make_market({LINEN: 20, BOLT: 500}, [transmute, robe])
+    plan = must_evaluate(chained, robe)
+    (bolt,) = plan.tree.inputs
+    assert bolt.option == "ah" and all(not o.key.startswith("craft:") for o in bolt.options)

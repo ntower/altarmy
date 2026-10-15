@@ -35,6 +35,9 @@ const house = (realm: string, faction: string, prices = 10) => ({
   last_scan_items: prices,
   scans_7d: 1,
   uploaders_7d: 1,
+  open: true,
+  feed: false,
+  launch: false,
 })
 
 function urls(fetch: ReturnType<typeof mockApi>, pathname: string) {
@@ -1074,30 +1077,20 @@ describe('SearchTab: making gold', () => {
     await waitFor(() => expect(urls(fetch, '/api/rank').at(-1)?.searchParams.get('unlearned')).toBe('train'))
   })
 
-  it("asks for a scan where nobody has made one, and says when sales aren't watched", async () => {
-    const never = { ...scanned(0), last_scan: null }
-    mockApi({
-      '/api/status': status(),
-      '/api/characters': characters,
-      '/api/coverage': [never],
-      '/api/rank': noResults,
-    })
-    const { unmount } = renderWithProviders(<SearchTab />)
-    expect(await screen.findByText("Nobody has scanned this realm's auction house yet")).toBeInTheDocument()
-    expect(screen.queryByText(/Sales aren't watched here yet/)).not.toBeInTheDocument()
-    unmount()
-
-    mockApi({
-      '/api/status': status(),
-      '/api/characters': characters,
-      '/api/coverage': [scanned(0.3)],
-      '/api/rank': noResults,
-    })
-    renderWithProviders(<SearchTab />)
-    expect(await screen.findByText("Sales aren't watched here yet (0.3 h this week)")).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
-    expect(screen.queryByText(/Sales aren't watched here yet/)).not.toBeInTheDocument()
-    expect(localStorage.getItem('altarmy.notice.unwatched.1')).toBe('true')
+  it('asks nobody to scan, and says when an item sells on the auction house', async () => {
+    for (const house of [{ ...scanned(0), last_scan: null }, scanned(0.3)]) {
+      mockApi({
+        '/api/status': status(),
+        '/api/characters': characters,
+        '/api/coverage': [house],
+        '/api/rank': noResults,
+      })
+      const { unmount } = renderWithProviders(<SearchTab />)
+      expect(await screen.findByText(/sells on the auction house here once enough of its auctions/)).toBeInTheDocument()
+      expect(screen.queryByText(/Nobody has scanned/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Sales aren't watched here yet/)).not.toBeInTheDocument()
+      unmount()
+    }
   })
 })
 

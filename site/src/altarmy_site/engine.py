@@ -1550,6 +1550,7 @@ class Market:
         flips: Sequence[Recipe] | None = None,
         climbs: ClimbStore | None = None,
         sell_depth: Mapping[int, int] | None = None,
+        ah_open: frozenset[int] | None = None,
     ):
         """`crafters` are the characters who craft and disenchant, mailing items between them; without
         them one unnamed character does everything. When nobody has learned a recipe, `unlearned` says who
@@ -1570,6 +1571,9 @@ class Market:
         counted at its highest price and reported (`Node.short`). Branches of one plan buying the same
         item share its ladder (`_share_books`). A disenchant material in `sell_depth` sells on the AH only
         as many units as its market has shown it takes (`_disenchant_shortfall`); the rest go to a vendor.
+        With `ah_open` only the items in it sell on the AH, the ones whose sales have been seen enough
+        (`merge`'s gate): any other has no AH exit, and as a disenchant material counts at what a vendor
+        pays. They can still be bought there. None: every priced item sells there.
 
         `reputation_discounts` is the game version's percent off at a vendor by the buyer's standing with
         the vendor's faction (standing -> percent). It needs the `time` model's city, which says whose
@@ -1596,6 +1600,7 @@ class Market:
         self.prices = prices
         self.books = books or {}
         self.sell_depth = sell_depth or {}
+        self.ah_open = ah_open
         self.sell_prices = prices if sell_prices is None else sell_prices
         self.disenchant = disenchant or []
         self.arcane_salvager = arcane_salvager
@@ -1670,8 +1675,17 @@ class Market:
         rolls = 1 + ARCANE_SALVAGER_BONUS if self.arcane_salvager else 1
         return rolls * d.chance * (d.min_count + d.max_count) / 2
 
+    def _sells_on_ah(self, item_id: int) -> bool:
+        """Whether the item's AH sale counts (`ah_open`)."""
+        return self.ah_open is None or item_id in self.ah_open
+
     def _expected(self, d: DisenchantRow) -> float | None:
-        """Expected net AH copper from one disenchant row; None if its result is unpriced."""
+        """Expected net AH copper from one disenchant row; None if its result is unpriced. A result whose
+        AH sale doesn't count yet is worth what a vendor pays for it."""
+        if not self._sells_on_ah(d.result_item_id):
+            material = self.items.get(d.result_item_id)
+            vendor = material.sell_price if material is not None else 0
+            return self._units(d) * vendor if vendor else None
         price = self.sell_prices.get(d.result_item_id)
         if price is None:
             return None
@@ -1707,7 +1721,7 @@ class Market:
             depth = self.sell_depth.get(d.result_item_id)
             price = self.sell_prices.get(d.result_item_id)
             made = units * self._units(d)
-            if depth is None or price is None or made <= depth:
+            if depth is None or price is None or made <= depth or not self._sells_on_ah(d.result_item_id):
                 continue
             material = self.items.get(d.result_item_id)
             vendor = material.sell_price if material is not None else 0
@@ -1726,7 +1740,12 @@ class Market:
         out: list[Exit] = []
         if item.sell_price > 0:
             out.append(Exit("vendor", item.sell_price))
-        if item_id in self.sell_prices and item_id not in self.no_ah and item.tradable:
+        if (
+            item_id in self.sell_prices
+            and item_id not in self.no_ah
+            and item.tradable
+            and self._sells_on_ah(item_id)
+        ):
             out.append(Exit("ah", ah_net(self.sell_prices[item_id], self.ah_cut)))
         de = self.disenchant_value(item)
         if de:
@@ -2041,6 +2060,8 @@ class Market:
                 if any(i == item_id for i, _ in r.reagents):
                     continue  # a recipe that consumes what it makes is no way to get it
                 runs = -(-qty // r.output_count)
+                if r.slow_cooldown and runs > 1:
+                    continue  # its cooldown allows one cast a session
                 crafted: list[Node] = []
                 for who in sorted(self._who(r), key=lambda w: w != at):
                     if who != at and not tradable:
@@ -2138,6 +2159,8 @@ class Market:
             crafts = min(crafts, self._listed(recipe.output_item_id))
             if crafts <= 0:
                 return None
+        if recipe.slow_cooldown:  # a transmute, Mooncloth: one cast a session, whatever the batch
+            crafts = min(crafts, 1)
         allowed = self._sell_kinds(recipe)
         # an enchant makes nothing: its one exit is worth nothing, and nothing is mailed to be sold
         found = [Exit(SKILL_EXIT, 0)] if recipe.is_enchant else self.exits_for(recipe.output_item_id)

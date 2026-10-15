@@ -7,6 +7,7 @@ import {
   Group,
   Loader,
   NumberInput,
+  SegmentedControl,
   SimpleGrid,
   Stack,
   Text,
@@ -37,8 +38,10 @@ import {
   skillCrafters,
 } from '../lib/setup'
 import { BUILT_IN_SOURCES } from '../lib/skill'
+import type { GoldStrategy } from '../lib/profitRoute'
+import { setSearchParam, useSearchParam } from '../lib/router'
 import { useStoredState } from '../lib/storage'
-import { HOW_TO_SCAN } from './PriceFreshness'
+import { parseSellVia, SELL_VIA, SELL_VIA_LABELS, sellViaExits, sellViaKinds } from '../lib/strategies'
 import { ProfessionIcon } from './ProfessionIcon'
 import classes from './SearchTab.module.css'
 import { type GoldSort, ResultsTable, type SortOrder } from './ResultsTable'
@@ -96,8 +99,6 @@ type Filters = Omit<RankParams, 'top'>
  * least spent, profit each) reads as that default. */
 const goldSortSchema = z.enum(['likely', 'safe', 'ah'])
 const sortOrderSchema = z.enum(['desc', 'asc'])
-/** Under this many hours of back-to-back scans this week, a house's sales are barely seen. */
-const WATCHED_ENOUGH_HOURS = 3
 
 /**
  * `value` once it has stopped changing for `wait` ms (typing a bound re-ranks once, not per key), except that a new
@@ -175,7 +176,7 @@ const Results = memo(function Results({
         onSetAhBlocked={(itemId, blocked) => setAhBlocked({ itemId, blocked })}
         favorites={favorites}
         onSetFavorite={(recipeId, favorite) => setFavorite({ recipeId, favorite })}
-        rankBy={filters.sort === 'skill' ? 'skill' : 'gold'}
+        rankBy={filters.sort === 'skill' ? 'skill' : filters.sort === 'per_day' ? 'craft' : 'gold'}
         goldSort={filters.sort}
         goldOrder={filters.order}
         onGoldSort={onGoldSort}
@@ -260,10 +261,8 @@ export function AimSearch({
   noPrices,
   salvagerDefault,
   flush,
-  onUpload,
   lastScan,
-  watchedHours,
-  houseId,
+  strategy,
 }: {
   setup: SetupAnswers
   /** the selected realm's professions, with who has them */
@@ -276,16 +275,15 @@ export function AimSearch({
   salvagerDefault: boolean
   /** changes once the characters load, so the first request already has their defaults */
   flush: number
-  /** open the realm card's Upload your scan */
-  onUpload: () => void
   /** the auction house's newest scan; null: never scanned; undefined: unknown yet */
   lastScan?: string | null | undefined
-  /** hours of back-to-back scans of it this week (sales are seen only then); undefined: unknown */
-  watchedHours?: number | undefined
-  houseId?: number | null
+  /** making gold one way (`STRATEGY_PICKER`): Craft and sell ranks by what a day makes, in its groups, with Sell via */
+  strategy?: GoldStrategy | undefined
 }) {
   const { aim } = setup
   const skill = aim === 'skill'
+  const craft = !skill && strategy === 'craft'
+  const sellVia = parseSellVia(useSearchParam('exit'))
   // Stored as strings: sections that no longer exist (the old Characters and Time assumptions ones) are dropped,
   // not an error.
   const [stored, setOpen] = useFilter(aim, 'open', z.array(z.string()), NONE_OPEN)
@@ -304,12 +302,6 @@ export function AimSearch({
   const [goldSort, setGoldSort] = useFilter<RankSort>(aim, 'sort', goldSortSchema, 'likely')
   const [goldOrder, setGoldOrder] = useFilter<SortOrder>(aim, 'order', sortOrderSchema, 'desc')
   const [learnable, setLearnable] = useFilter(aim, 'learnable', z.boolean(), false)
-  // The newest scan's notice, dismissed per auction house.
-  const [dismissed, setDismissed] = useStoredState(
-    `altarmy.notice.unwatched.${houseId ?? 0}`,
-    z.boolean(),
-    false,
-  )
   // By value, not the stored object: a new but equal setup must not count as new filters (that resets paging).
   const sort = skill ? rankSort(setup) : goldSort
   const [profession = null] = rankProfessions(setup)
@@ -354,8 +346,10 @@ export function AimSearch({
             lookAhead: 0,
             sources: BUILT_IN_SOURCES,
             includeTrivial: true,
-            // every way to sell, side by side: the list shows playing it safe and the auction house apart
-            exits: [...ALL_EXITS],
+            // every way to sell, side by side: the list shows playing it safe and the auction house apart; Craft and
+            // sell, only those Sell via allows
+            exits: craft ? sellViaExits(sellVia) : [...ALL_EXITS],
+            ...(craft ? { kinds: sellViaKinds(sellVia) } : {}),
             arcaneSalvager,
             minCost: scaled(minCost, goldToCopper),
             maxCost: scaled(maxCost, goldToCopper),
@@ -366,7 +360,7 @@ export function AimSearch({
             minConfidence: null,
             professions: [],
             skillCrafters: [],
-            sort,
+            sort: craft ? 'per_day' : sort,
             order: goldOrder,
             runs: false,
           },
@@ -383,6 +377,8 @@ export function AimSearch({
       learnable,
       sort,
       goldOrder,
+      craft,
+      sellVia,
       profession,
       skilled,
       climberSkill,
@@ -408,6 +404,18 @@ export function AimSearch({
 
   return (
     <>
+      {craft && (
+        <Group gap="sm">
+          <Text size="sm">Sell via</Text>
+          <SegmentedControl
+            size="xs"
+            aria-label="Sell via"
+            value={sellVia}
+            onChange={(v) => setSearchParam('exit', v === 'all' ? null : v)}
+            data={SELL_VIA.map((v) => ({ value: v, label: SELL_VIA_LABELS[v] }))}
+          />
+        </Group>
+      )}
       {!skill && (
         <Options label="Filters">
           <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xl">
@@ -424,26 +432,11 @@ export function AimSearch({
           </SimpleGrid>
         </Options>
       )}
-      {!skill && lastScan === null && (
-        <Alert color="yellow" title="Nobody has scanned this realm's auction house yet">
-          <Group justify="space-between" gap="sm">
-            <Text size="sm">Until someone does, only vendor and disenchant values are known. {HOW_TO_SCAN}</Text>
-            <Button size="xs" variant="light" onClick={onUpload}>
-              Upload your scan
-            </Button>
-          </Group>
-        </Alert>
-      )}
-      {!skill && lastScan && watchedHours !== undefined && watchedHours < WATCHED_ENOUGH_HOURS && !dismissed && (
-        <Alert
-          color="blue"
-          withCloseButton
-          closeButtonLabel="Dismiss"
-          onClose={() => setDismissed(true)}
-          title={`Sales aren't watched here yet (${watchedHours} h this week)`}
-        >
-          Two scans 15–30 minutes apart, any time, let everyone here see what sells.
-        </Alert>
+      {!skill && lastScan !== undefined && (
+        <Text size="sm" c="dimmed">
+          An item sells on the auction house here once enough of its auctions have ended; until then it counts what a
+          vendor pays.
+        </Text>
       )}
       {noEnchanter && (
         <Alert color="yellow" title="You do not have a disenchanter">

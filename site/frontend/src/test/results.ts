@@ -71,6 +71,10 @@ export const robeResult: RankResult = {
   ah_profit: null,
   ah_depth_units: 0,
   ah_excess_units: 0,
+  likely_each: 20,
+  per_day: 200,
+  group: 'paying',
+  no_vendor_floor: false,
   // learned from a pattern at 50; yellow from 30, green from 45, grey from 60
   learn_skill: 50,
   trivial_low: 30,

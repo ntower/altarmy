@@ -168,6 +168,9 @@ export type RankParams = {
   minConfidence: Confidence | null
   /** only recipes of these professions; empty for every one */
   professions: string[]
+  /** only results of these kinds (a craft, an essence conversion, a buy-and-disenchant flip, an enchant cast for the
+   * point); unset for every one */
+  kinds?: RankKind[]
   /** best profit per session first, cheapest expected skill point, or a gold list's order (the better of playing it safe
    * and the auction house, either one, ROI, least spent); the API's `rate`, per hour of play, is not used */
   sort: RankSort
@@ -202,7 +205,10 @@ export type RankParams = {
 /** The skill workspace's strategies: the recommended climb, the cheapest in gold, or one without patterns. */
 export type Strategy = StrategyOut['key']
 
+export type RankKind = 'craft' | 'convert' | 'flip' | 'enchant'
+
 export type RankSort =
+  | 'per_day'
   | 'profit'
   | 'skill'
   | 'likely'
@@ -261,6 +267,7 @@ export function useRank(
               max_roi: orUndefined(params.maxRoi),
               min_confidence: orUndefined(params.minConfidence),
               professions: params.professions.length ? params.professions : undefined,
+              kinds: params.kinds?.length ? params.kinds : undefined,
               sort: params.sort === 'profit' ? undefined : params.sort,
               order: params.order === 'asc' && (params.sort === 'safe' || params.sort === 'ah') ? 'asc' : undefined,
               runs: params.runs || undefined,
@@ -457,7 +464,14 @@ export function usePrefetchSessionPlans(
 }
 
 /** What the front end may say happened (`POST /api/events`): anonymous, a log line each. */
-export type EventName = 'aim_chosen' | 'next_up_shown' | 'row_opened' | 'copy_steps' | 'gather_toggled' | 'coach_shown'
+export type EventName =
+  | 'aim_chosen'
+  | 'next_up_shown'
+  | 'row_opened'
+  | 'copy_steps'
+  | 'gather_toggled'
+  | 'coach_shown'
+  | 'strategy_chosen'
 
 /** Say that something happened, with a few words of context (never anything about the user). Fire and forget: a
  * failure is ignored. */

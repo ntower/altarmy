@@ -174,8 +174,10 @@ def _record_books(
 ) -> tuple[RealmPrices, ...]:
     """Record the scans, oldest first; those passed over as stale are left out."""
     recorded = []
+    version = versions.get(game_version)
     for scan in scans:
-        ah = prices.auction_house(conn, game_version, scan.realm, scan.faction)
+        # a fixed realm's other names land on its auction house
+        ah = prices.auction_house(conn, game_version, version.realm_name(scan.realm), scan.faction)
         at = scan_time(datetime.fromtimestamp(scan.t, now.tzinfo), now)
         trust = users.trust(conn, user_uid)
         got = prices.record_book(conn, ah, scan, scanned_at=at, uploader_uid=user_uid, trust=trust)

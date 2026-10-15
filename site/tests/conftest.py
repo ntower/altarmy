@@ -5,7 +5,7 @@ import csv
 import json
 import os
 import shutil
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -111,12 +111,27 @@ def scanned(
     realm: str = "Classic Beta PvE",
     faction: str = "Horde",
     game_version: str = FOREVER,
+    *,
+    gate: bool = True,
 ) -> int:
-    """Record an Alt Army scan (default: taken now); returns the auction house."""
+    """Record an Alt Army scan (default: taken now); returns the auction house. With `gate` the scanned
+    items' AH sales count, as a merge opens them once enough of their auctions ended (`open_gates`)."""
     ah = prices.auction_house(conn, game_version, realm, faction)
     at = at or db.utcnow()
     prices.record_book(conn, ah, book_scan(items, at, realm, faction), scanned_at=at)
+    if gate:
+        open_gates(conn, ah, items)
     return ah
+
+
+def open_gates(conn: Connection, auction_house_id: int, items: Iterable[int]) -> None:
+    """Let the items' AH sales count on the house, as the merge does once enough auctions ended."""
+    pc = schema.price_current
+    conn.execute(
+        pc.update()
+        .where(pc.c.auction_house_id == auction_house_id, pc.c.item_id.in_(list(items)))
+        .values(gate="normal")
+    )
 
 
 def saved_book(*scans: book.Scan) -> bytes:

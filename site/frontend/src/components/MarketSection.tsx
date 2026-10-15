@@ -506,8 +506,9 @@ function HowWeCount({ item }: { item: ItemInfo }) {
         counts days, not scans, and says nothing until there are 3.
       </Text>
       <Text size="sm">
-        <b>Sales seen</b> are the units gone off the cheap end between two scans at most 30 minutes apart: a lower bound,
-        since sales are only seen while someone scans back to back.
+        <b>Sales seen</b> are the auctions gone off the cheap end between two snapshots of the auction house taken close
+        together (an hour apart, or addon scans 30 minutes apart). A buyout and a seller taking an auction down look alike, so
+        it is an estimate.
       </Text>
       {gear && (
         <Text size="sm">
@@ -559,7 +560,7 @@ function MoreAbout({
                 </Text>
               )}
               <Text size="xs" c="dimmed">
-                A day with no sales seen may mean nobody scanned twice within 30 minutes, not that nothing sold.
+                A day with no sales seen may mean the auction house wasn't watched that day, not that nothing sold.
               </Text>
             </Stack>
           </Tabs.Panel>

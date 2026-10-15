@@ -33,7 +33,7 @@ export function confidenceWhy(c: PriceConfidence): string {
     case 'thin':
       return `Rests on ${units(c.listed ?? 0)} listed${plan}`
     case 'unwatched':
-      return 'Sales unknown: they are seen only between scans taken within 30 minutes of each other'
+      return 'Sales unknown: they are seen only between snapshots of the auction house taken close together'
   }
 }
 

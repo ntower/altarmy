@@ -275,7 +275,7 @@ export function headerSummary(
 
 /** What the market's sales tell, in words: how many were seen sold, over how long it was watched. */
 export function seenSold(sold: number, watched: number, pairs: number | null): string {
-  if (watched <= 0) return "Sales here aren't watched yet: nobody has scanned twice within 30 minutes lately"
+  if (watched <= 0) return "Sales here aren't watched yet: no snapshots of this auction house close enough together lately"
   const hours = `${formatHours(watched)} watched`
   if (sold === 0) return `None seen sold in ${hours}`
   if ((pairs ?? 0) <= 1) return `${sold} seen sold in ${hours}, all between one pair of scans: maybe a single buyer`
