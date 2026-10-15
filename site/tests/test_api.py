@@ -2475,3 +2475,26 @@ def test_holdings_say_what_to_do_with_what_the_characters_hold(
     assert next(h for h in tailor["held"] if h["item_id"] == 1)["why"] == "kept"
     assert body["kept"] == [1]
     assert client.delete("/api/kept/1").json() == []
+
+
+def test_copying_a_crafts_steps_is_counted_at_the_house(client: TestClient, priced: Connection) -> None:
+    (r,) = client.get("/api/rank").json()["results"]
+    assert r["copied"] == 0
+    event = {"name": "copy_steps", "props": {"recipe_id": r["recipe_id"], "aim": "gold"}}
+    assert client.post("/api/events", json=event).status_code == 204
+    assert client.post("/api/events", json=event).status_code == 204
+    ah = prices.find_auction_house(priced, FOREVER, "Classic Beta PvE", "Horde")
+    assert prices.copies(priced, ah) == {r["recipe_id"]: 2}
+    # pruned after COPY_DAYS
+    prices.prune(priced, now=db.utcnow() + timedelta(days=prices.COPY_DAYS + 1))
+    assert prices.copies(priced, ah, now=db.utcnow() + timedelta(days=prices.COPY_DAYS + 1)) == {}
+
+
+def test_an_items_market_history_comes_from_its_scans(client: TestClient, priced: Connection) -> None:
+    now = db.utcnow()
+    scanned(priced, {1: [(20, 5)]}, now - timedelta(minutes=20))
+    scanned(priced, {1: [(22, 3)]}, now)
+    body = client.get("/api/items/1/market").json()
+    assert [p["low"] for p in body["hours"]][-1] == 22  # the hour's newest scan wins
+    assert body["days"] == [] or body["days"][-1]["low"] <= 22
+    assert client.get("/api/items/999/market").json() == {"days": [], "hours": [], "flows": []}

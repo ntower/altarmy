@@ -38,10 +38,12 @@ describe('the strategy pages', () => {
     const fetch = mockApi({
       '/api/status': status(),
       '/api/characters': characters,
-      '/api/rank': ranked({ ...robeResult, group: 'paying', likely_each: 20, per_day: 200 }),
+      '/api/rank': ranked({ ...robeResult, group: 'paying', likely_each: 20, per_day: 200, launch_prices: true, copied: 2 }),
     })
     renderWithProviders(<SearchTab />)
     await screen.findByText('What to do')
+    expect(screen.getByLabelText('Launch prices')).toBeInTheDocument()
+    expect(screen.getByLabelText('Others copied this')).toBeInTheDocument()
     expect(rankParams(fetch)?.get('sort')).toBe('per_day')
     expect(rankParams(fetch)?.getAll('kinds')).toEqual(['craft'])
     expect(rankParams(fetch)?.getAll('exits')).toEqual(['vendor', 'disenchant', 'ah'])

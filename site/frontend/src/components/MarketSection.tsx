@@ -25,6 +25,7 @@ import { Icon } from './ItemTooltip'
 import tooltipClasses from './ItemTooltip.module.css'
 import { DepthChart, LadderTable, ProfitChart, type Rule } from './MarketCharts'
 import classes from './MarketSection.module.css'
+import { HistoryChart } from './HistoryChart'
 import { Earned, Money } from './Money'
 
 /** Tiles the strip shows before "+N more". */
@@ -534,7 +535,13 @@ function MoreAbout({
   const item = items[m.itemId]
   const tabs = [
     ...(m.group === 'sell' ? [{ value: 'ways', label: 'Ways to sell' }] : []),
-    ...(item ? [{ value: 'sales', label: 'Sales seen' }, { value: 'how', label: 'How we count' }] : []),
+    ...(item
+      ? [
+          { value: 'sales', label: 'Sales seen' },
+          { value: 'history', label: 'History' },
+          { value: 'how', label: 'How we count' },
+        ]
+      : []),
   ]
   if (!tabs.length) return null
   return (
@@ -563,6 +570,9 @@ function MoreAbout({
                 A day with no sales seen may mean the auction house wasn't watched that day, not that nothing sold.
               </Text>
             </Stack>
+          </Tabs.Panel>
+          <Tabs.Panel value="history" pt="xs">
+            <HistoryChart itemId={m.itemId} name={item.name} />
           </Tabs.Panel>
           <Tabs.Panel value="how" pt="xs">
             <HowWeCount item={item} />

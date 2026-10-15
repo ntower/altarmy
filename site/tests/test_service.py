@@ -1710,3 +1710,27 @@ def test_what_a_character_holds_goes_where_it_brings_most() -> None:
     assert verdict(BLADE, 1, False, market, {}).why == "nothing"
     # an AH sale that doesn't count yet: a vendor
     assert verdict(ORE, 10, False, smelt_market(ah_open=frozenset()), {}).kind == "vendor"
+
+
+def test_a_launch_price_posts_a_third_of_what_ended_lately() -> None:
+    listing = replace(robe_listing(listed=5, rate=30.0), gate="launch", resolved_2d=6)
+    got = sale(robe_market(500), listing)
+    assert (got.launch_prices, got.post_units) == (True, 2)  # a third of 6, not of 30 a day
+    assert not sale(robe_market(500), robe_listing(listed=5, rate=30.0)).launch_prices
+
+
+def test_others_copying_a_craft_share_its_posts() -> None:
+    got = sale(robe_market(500), robe_listing(listed=5, rate=9.0))
+    shared = service.craft_sale(
+        must(robe_market(500).evaluate(ROBE_RECIPE, crafts=10)),
+        {ROBE_ITEM: robe_listing(listed=5, rate=9.0)},
+        robe_market(500),
+        versions.get(FOREVER),
+        copied=2,
+    )
+    assert (got.post_units, shared.post_units, shared.copied) == (3, 1, 2)  # 3 among three of us
+
+
+def must(r: engine.Result | None) -> engine.Result:
+    assert r is not None
+    return r

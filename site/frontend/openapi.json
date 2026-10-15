@@ -542,6 +542,65 @@
         "title": "CoverageOut",
         "type": "object"
       },
+      "DayPointOut": {
+        "properties": {
+          "close": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Close"
+          },
+          "day": {
+            "title": "Day",
+            "type": "string"
+          },
+          "high": {
+            "title": "High",
+            "type": "integer"
+          },
+          "low": {
+            "title": "Low",
+            "type": "integer"
+          },
+          "median": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median"
+          },
+          "open": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open"
+          }
+        },
+        "required": [
+          "day",
+          "low",
+          "median",
+          "high",
+          "open",
+          "close"
+        ],
+        "title": "DayPointOut",
+        "type": "object"
+      },
       "DetailOut": {
         "description": "One line of a session spelled out.",
         "properties": {
@@ -1202,6 +1261,39 @@
         "title": "FirebaseOut",
         "type": "object"
       },
+      "FlowDayOut": {
+        "properties": {
+          "cancelled": {
+            "title": "Cancelled",
+            "type": "integer"
+          },
+          "day": {
+            "title": "Day",
+            "type": "string"
+          },
+          "expired": {
+            "title": "Expired",
+            "type": "integer"
+          },
+          "posted": {
+            "title": "Posted",
+            "type": "integer"
+          },
+          "sold": {
+            "title": "Sold",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "day",
+          "sold",
+          "cancelled",
+          "expired",
+          "posted"
+        ],
+        "title": "FlowDayOut",
+        "type": "object"
+      },
       "GroupCount": {
         "properties": {
           "characters": {
@@ -1399,6 +1491,34 @@
           "items"
         ],
         "title": "Holdings",
+        "type": "object"
+      },
+      "HourPointOut": {
+        "properties": {
+          "at": {
+            "title": "At",
+            "type": "string"
+          },
+          "low": {
+            "title": "Low",
+            "type": "integer"
+          },
+          "market": {
+            "title": "Market",
+            "type": "integer"
+          },
+          "units": {
+            "title": "Units",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "at",
+          "low",
+          "market",
+          "units"
+        ],
+        "title": "HourPointOut",
         "type": "object"
       },
       "IngestionOut": {
@@ -2145,6 +2265,39 @@
         "title": "LocationOut",
         "type": "object"
       },
+      "MarketHistory": {
+        "description": "An item's price history at the selected auction house (`prices.history`): the Market section's\nHistory tab.",
+        "properties": {
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/DayPointOut"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "flows": {
+            "items": {
+              "$ref": "#/components/schemas/FlowDayOut"
+            },
+            "title": "Flows",
+            "type": "array"
+          },
+          "hours": {
+            "items": {
+              "$ref": "#/components/schemas/HourPointOut"
+            },
+            "title": "Hours",
+            "type": "array"
+          }
+        },
+        "required": [
+          "days",
+          "hours",
+          "flows"
+        ],
+        "title": "MarketHistory",
+        "type": "object"
+      },
       "MaterialOut": {
         "description": "One possible disenchant result.",
         "properties": {
@@ -2856,6 +3009,11 @@
               }
             ]
           },
+          "copied": {
+            "default": 0,
+            "title": "Copied",
+            "type": "integer"
+          },
           "cost": {
             "title": "Cost",
             "type": "integer"
@@ -2951,6 +3109,11 @@
             ],
             "title": "Kind",
             "type": "string"
+          },
+          "launch_prices": {
+            "default": false,
+            "title": "Launch Prices",
+            "type": "boolean"
           },
           "learn_cost": {
             "anyOf": [
@@ -5471,6 +5634,66 @@
           }
         ],
         "summary": "Get Holdings"
+      }
+    },
+    "/api/items/{item_id}/market": {
+      "get": {
+        "description": "What an item went for at the selected realm's auction house: daily over the last month, hourly over\nthe last two weeks, and what was bought, pulled, ran out and was posted each day.",
+        "operationId": "get_item_market_api_items__item_id__market_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "which game's data: tbc or forever",
+            "in": "query",
+            "name": "game_version",
+            "required": true,
+            "schema": {
+              "description": "which game's data: tbc or forever",
+              "enum": [
+                "tbc",
+                "forever"
+              ],
+              "title": "Game Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketHistory"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Item Market"
       }
     },
     "/api/kept/{item_id}": {

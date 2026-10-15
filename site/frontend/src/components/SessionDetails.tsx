@@ -235,7 +235,8 @@ function StepsPanel({ result, items, editing }: { result: RankResult; items: Ite
     const details = detailed ? result.details : []
     const text = stepsText(heading, result.steps, details, (id) => items[id]?.name ?? `item ${id}`)
     void navigator.clipboard?.writeText(text).then(() => setCopied(result))
-    track('copy_steps', { profession: result.profession, aim: 'gold' })
+    // the recipe counts the copy at the house, so Craft and sell shares its posts among those following it
+    track('copy_steps', { profession: result.profession, aim: 'gold', recipe_id: result.recipe_id })
   }
   return (
     <Stack gap="xs">

@@ -961,16 +961,24 @@ class CraftSale:
     post_stack: int | None = None  # the stack size that sold best; None: not known yet
     deposit_est: int | None = None  # what posting them costs, estimated (`GameVersion.ah_deposit_rate`)
     no_vendor_floor: bool = False  # a vendor pays nothing for it: unsold, it is worth nothing
+    launch_prices: bool = False  # its AH sale counts on a house's first days' sales (`merge`'s launch gate)
+    copied: int = 0  # others who copied its steps here in the last day (`prices.copies`)
 
 
 def craft_sale(
-    r: Result, listings: Mapping[int, prices.Listing], market: Market, version: GameVersion
+    r: Result,
+    listings: Mapping[int, prices.Listing],
+    market: Market,
+    version: GameVersion,
+    copied: int = 0,
 ) -> CraftSale:
     """`r` as the Craft and sell page shows it (see `CraftSale`). An AH sale posts at most `POST_SHARE` of
     a day's units seen bought (`prices.demand`), and `full` when the units listed at or under its price
     already outnumber them; a craft whose AH sale doesn't count yet (`Market.ah_open`) and that nothing
     else pays for is `waiting`; one that makes less than a craft's time is worth (`engine.craft_value`) is
-    `pennies`; one that loses is `losing`."""
+    `pennies`; one that loses is `losing`. While its AH sale counts on a launch gate (a house's first
+    days), it posts at most `POST_SHARE` of the auctions that ended over the last two: `launch_prices`. What
+    it posts is shared with the `copied` others who copied its steps lately."""
     output = r.recipe.output_item_id
     item = market.items.get(output)
     sell_price = market.sell_prices.get(output)
@@ -1003,6 +1011,10 @@ def craft_sale(
     stack = prices.best_stack(listing)
     units = r.recipe.output_count * crafts
     post = min(units, int(a_day * POST_SHARE))
+    launch = listing.gate == "launch"
+    if launch:
+        post = min(post, int((listing.resolved_2d or 0) * POST_SHARE))
+    post //= 1 + copied
     ahead = prices.ahead(listing, sell_price)
     deposit = None
     if item is not None and item.sell_price > 0 and post:
@@ -1025,6 +1037,8 @@ def craft_sale(
         None if stack is None or item is None else min(stack, item.stack_size),
         deposit,
         no_floor,
+        launch,
+        copied,
     )
 
 
@@ -1271,10 +1285,18 @@ def known_reagents(recipes: Iterable[engine.Recipe], chars: Iterable[Character])
 
 
 def by_per_day(
-    results: Iterable[Result], listings: Mapping[int, prices.Listing], market: Market, version: GameVersion
+    results: Iterable[Result],
+    listings: Mapping[int, prices.Listing],
+    market: Market,
+    version: GameVersion,
+    copied: Mapping[int, int] | None = None,
 ) -> list[Result]:
-    """Best first by what a day makes (`craft_sale`)."""
-    return sorted(results, key=lambda r: -craft_sale(r, listings, market, version).per_day)
+    """Best first by what a day makes (`craft_sale`, with each recipe's `copied`)."""
+    copied = copied or {}
+    return sorted(
+        results,
+        key=lambda r: -craft_sale(r, listings, market, version, copied.get(r.recipe.id, 0)).per_day,
+    )
 
 
 def by_likely(

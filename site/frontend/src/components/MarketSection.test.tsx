@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { ItemMap, RankResult } from '../api/client'
 import { linen, robe, thread } from '../test/items'
 import { robeResult } from '../test/results'
+import { status } from '../test/status'
 import { mockApi, renderWithProviders } from '../test/utils'
 import { useMarket } from '../lib/marketFocus'
 import { MarketSection } from './MarketSection'
@@ -165,8 +166,32 @@ describe('MarketSection', () => {
     mockApi({})
     renderWithProviders(<Harness result={posted} />)
     await userEvent.click(screen.getByRole('button', { name: 'More about Green Robe' }))
-    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Ways to sell', 'Sales seen', 'How we count'])
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
+      'Ways to sell',
+      'Sales seen',
+      'History',
+      'How we count',
+    ])
     await userEvent.click(screen.getByRole('tab', { name: 'Sales seen' }))
     expect(screen.getByText(/^Sales here aren't watched yet/)).toBeInTheDocument()
+  })
+
+  it("draws what the item went for, or says there isn't enough yet", async () => {
+    mockApi({
+      '/api/status': status(),
+      '/api/items/3/market': {
+        days: [
+          { day: '2026-10-01', low: 900, median: 950, high: 1000, open: 940, close: 960 },
+          { day: '2026-10-02', low: 910, median: 970, high: 1010, open: 960, close: 980 },
+        ],
+        hours: [],
+        flows: [{ day: '2026-10-02', sold: 4, cancelled: 1, expired: 0, posted: 0 }],
+      },
+    })
+    renderWithProviders(<Harness result={posted} />)
+    await userEvent.click(screen.getByRole('button', { name: 'More about Green Robe' }))
+    await userEvent.click(screen.getByRole('tab', { name: 'History' }))
+    expect(await screen.findByRole('img', { name: 'Price history of Green Robe' })).toBeInTheDocument()
+    expect(screen.getByText(/4 bought over the month/)).toBeInTheDocument()
   })
 })

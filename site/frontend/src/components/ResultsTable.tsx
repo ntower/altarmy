@@ -934,6 +934,24 @@ export function ResultsTable({
                             ⚠
                           </Flag>
                         )}
+                        {craft && r.launch_prices && (
+                          <Flag
+                            color="blue"
+                            label="Launch prices"
+                            why="Priced on this auction house's first days: posts are kept small until a week of sales says more"
+                          >
+                            L
+                          </Flag>
+                        )}
+                        {craft && r.copied > 0 && (
+                          <Flag
+                            color="blue"
+                            label="Others copied this"
+                            why={`${r.copied} ${r.copied === 1 ? 'other copied' : 'others copied'} this today: what to post is shared with them`}
+                          >
+                            ⇉
+                          </Flag>
+                        )}
                         {craft && r.no_vendor_floor && (
                           <Flag color="orange" label="No vendor floor" why="A vendor pays nothing for it: unsold, it is worth nothing">
                             !

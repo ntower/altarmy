@@ -128,6 +128,21 @@ export function useVendorRuns() {
   })
 }
 
+/** An item's price history at the selected auction house (the Market section's History tab). */
+export function useItemMarket(itemId: number) {
+  const version = useDataVersion()
+  return useQuery({
+    queryKey: ['item-market', GAME_VERSION, version, itemId],
+    queryFn: () =>
+      call(
+        client.GET('/api/items/{item_id}/market', {
+          params: { path: { item_id: itemId }, query: { game_version: GAME_VERSION } },
+        }),
+      ),
+    enabled: version !== undefined,
+  })
+}
+
 /** Every profession that has recipes in this game version, by name (game data: it changes only with an update). */
 export function useProfessions() {
   return useQuery({

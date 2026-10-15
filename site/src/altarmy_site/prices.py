@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal
 
 from sqlalchemy import ColumnElement, Connection, bindparam, case, delete, func, select, update
@@ -1029,6 +1029,45 @@ def prune(conn: Connection, now: datetime | None = None, keep_days: int = KEEP_D
     recent = db.utc(now or db.utcnow()).date() - timedelta(days=HOURLY_DAYS)
     for t in (schema.price_hourly, schema.auction_ends_daily):
         conn.execute(delete(t).where(t.c.day < recent))
+    cc = schema.copy_counts
+    conn.execute(delete(cc).where(cc.c.hour < db.utc(now or db.utcnow()) - timedelta(days=COPY_DAYS)))
+
+
+COPY_DAYS = 2  # how long copy counts are kept
+COPY_HOURS = 24  # the copies Craft and sell divides its posts among: those of the last day
+
+
+def record_copy(conn: Connection, auction_house_id: int, recipe_id: int, now: datetime | None = None) -> None:
+    """Count one copy of a recipe's steps at the auction house, in the hour's row."""
+    at = db.utc(now or db.utcnow()).replace(minute=0, second=0, microsecond=0)
+    cc = schema.copy_counts
+    done = conn.execute(
+        update(cc)
+        .where(cc.c.auction_house_id == auction_house_id, cc.c.recipe_id == recipe_id, cc.c.hour == at)
+        .values(copies=cc.c.copies + 1)
+    )
+    if not done.rowcount:
+        db.upsert(
+            conn,
+            cc,
+            [{"auction_house_id": auction_house_id, "recipe_id": recipe_id, "hour": at, "copies": 1}],
+            ["auction_house_id", "recipe_id", "hour"],
+            ["copies"],
+        )
+
+
+def copies(conn: Connection, auction_house_id: int | None, now: datetime | None = None) -> dict[int, int]:
+    """{recipe id: its steps' copies at the auction house over the last COPY_HOURS}."""
+    if auction_house_id is None:
+        return {}
+    cc = schema.copy_counts
+    since = db.utc(now or db.utcnow()) - timedelta(hours=COPY_HOURS)
+    rows = conn.execute(
+        select(cc.c.recipe_id, func.sum(cc.c.copies))
+        .where(cc.c.auction_house_id == auction_house_id, cc.c.hour >= since)
+        .group_by(cc.c.recipe_id)
+    )
+    return {int(r[0]): int(r[1]) for r in rows}
 
 
 # --- reading ---------------------------------------------------------------------------------------
@@ -1125,6 +1164,7 @@ class Listing:
     sold_pairs_7d: int | None = None  # the pairs of scans its sales were seen in lately
     stacks: str | None = None  # per stack size `stack:sold/expired,...` (the merge, from the snapshots)
     gate: str | None = None  # what lets its AH sale count (`merge`): normal, launch; None: not yet
+    resolved_2d: int | None = None  # auctions that ended over today and yesterday (`merge`)
 
 
 def demand(listing: Listing, days: float = SALES_DAYS) -> float | None:
@@ -1175,7 +1215,7 @@ def load_listings(conn: Connection, auction_house_id: int | None) -> dict[int, L
     rows = conn.execute(
         select(pc.c.item_id, pc.c.price, pc.c.quantity, pc.c.ladder, pc.c.sale_rate, snap.c.source)
         .add_columns(pc.c.listed, pc.c.seen_at, pc.c.median_7d, pc.c.scans_7d, pc.c.sale_price)
-        .add_columns(pc.c.market_price, pc.c.sold_pairs_7d, pc.c.stacks, pc.c.gate)
+        .add_columns(pc.c.market_price, pc.c.sold_pairs_7d, pc.c.stacks, pc.c.gate, pc.c.resolved_2d)
         .join(snap, snap.c.id == pc.c.snapshot_id)
         .where(pc.c.auction_house_id == auction_house_id)
     )
@@ -1195,6 +1235,7 @@ def load_listings(conn: Connection, auction_house_id: int | None) -> dict[int, L
             r.sold_pairs_7d,
             r.stacks,
             r.gate,
+            r.resolved_2d,
         )
         for r in rows
     }
@@ -1397,3 +1438,84 @@ def set_price(
     """One price, seen now."""
     now = db.utcnow()
     record_snapshot(conn, auction_house_id, source, now, [Observation(item_id, price, now)])
+
+
+HISTORY_DAYS = 30  # the days of daily figures an item's history shows
+
+
+@dataclass(frozen=True)
+class DayPoint:
+    day: date
+    low: int
+    median: int | None
+    high: int
+    open: int | None
+    close: int | None
+
+
+@dataclass(frozen=True)
+class HourPoint:
+    at: datetime  # the hour's start, UTC
+    low: int
+    market: int
+    units: int
+
+
+@dataclass(frozen=True)
+class FlowDay:
+    day: date
+    sold: int  # units bought (and won by a bid)
+    cancelled: int  # units pulled
+    expired: int  # auctions run out (the snapshots')
+    posted: int  # auctions posted (the snapshots')
+
+
+@dataclass(frozen=True)
+class History:
+    days: list[DayPoint]  # the last HISTORY_DAYS, oldest first
+    hours: list[HourPoint]  # the last HOURLY_DAYS, oldest first
+    flows: list[FlowDay]  # oldest first
+
+
+def history(
+    conn: Connection, auction_house_id: int | None, item_id: int, now: datetime | None = None
+) -> History:
+    """An item's price history at the auction house: its daily low, median, high, open and close, its hourly
+    low and market price, and what went each day (`price_daily`, `price_hourly`, `price_sales_daily`)."""
+    if auction_house_id is None:
+        return History([], [], [])
+    today = db.utc(now or db.utcnow()).date()
+    pd, ph, ps = schema.price_daily, schema.price_hourly, schema.price_sales_daily
+    mine = (pd.c.auction_house_id == auction_house_id, pd.c.item_id == item_id)
+    days = [
+        DayPoint(r.day, r.low, r.median, r.high, r.open, r.close)
+        for r in conn.execute(
+            select(pd).where(*mine, pd.c.day >= today - timedelta(days=HISTORY_DAYS)).order_by(pd.c.day)
+        )
+    ]
+    hours = []
+    for r in conn.execute(
+        select(ph.c.day, ph.c.hours)
+        .where(
+            ph.c.auction_house_id == auction_house_id,
+            ph.c.item_id == item_id,
+            ph.c.day >= today - timedelta(days=HOURLY_DAYS),
+        )
+        .order_by(ph.c.day)
+    ):
+        start = datetime.combine(r.day, time(), tzinfo=UTC)
+        for h, hour in sorted(unpack_hours(r.hours).items()):
+            hours.append(HourPoint(start + timedelta(hours=h), hour.low, hour.market, hour.units))
+    flows = [
+        FlowDay(r.day, r.units, r.cancelled, r.expired, r.posted)
+        for r in conn.execute(
+            select(ps)
+            .where(
+                ps.c.auction_house_id == auction_house_id,
+                ps.c.item_id == item_id,
+                ps.c.day >= today - timedelta(days=HISTORY_DAYS),
+            )
+            .order_by(ps.c.day)
+        )
+    ]
+    return History(days, hours, flows)

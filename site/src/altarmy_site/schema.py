@@ -287,6 +287,19 @@ local_sync = Table(
     Column("auctionator_for", Text),  # the selection the prices were recorded for: realm, a tab, faction
 )
 
+# How many times a recipe's steps were copied at an auction house, per hour (never by whom): Craft and sell
+# divides what it says to post among them, so a list many follow doesn't flood its own market.
+copy_counts = Table(
+    "copy_counts",
+    metadata,
+    Column(
+        "auction_house_id", Integer, ForeignKey("auction_houses.id", ondelete="CASCADE"), primary_key=True
+    ),
+    Column("recipe_id", Integer, primary_key=True, autoincrement=False),
+    Column("hour", DateTime(timezone=True), primary_key=True),  # the hour's start, UTC
+    Column("copies", Integer, nullable=False),
+)
+
 # Characters from the Alt Army addon's SavedVariables, replaced wholesale on every import.
 characters = Table(
     "characters",

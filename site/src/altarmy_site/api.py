@@ -18,7 +18,7 @@ import json
 import logging
 from collections.abc import Awaitable, Callable, Collection, Hashable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path, PurePath
@@ -456,6 +456,8 @@ class RankResult(BaseModel):
     post_stack: int | None = None
     deposit_est: int | None = None
     no_vendor_floor: bool = False  # a vendor pays nothing for what it makes
+    launch_prices: bool = False  # its AH sale counts on the house's first days' sales: a launch price
+    copied: int = 0  # others who copied its steps at this house in the last day: its posts are shared
     # Craft and sell's Disenchant budget (`/api/rank` with only the disenchant exit, `disenchant_budget`):
     # the casts whose materials the market takes within `sell_days`, what an item bought to disenchant is
     # worth paying at most, and the Enchanting skill its disenchant needs when the enchanter lacks it
@@ -1482,7 +1484,7 @@ def get_rank(
     elif sort == "safe":
         matches = service.by_safe(matches, ascending=order == "asc")
     elif sort == "per_day":
-        matches = service.by_per_day(matches, s.listings, base, s.version)
+        matches = service.by_per_day(matches, s.listings, base, s.version, s.copies)
     elif sort in ("roi", "spend", "profit_each"):
         matches = {"roi": service.by_roi, "spend": service.by_spend, "profit_each": service.by_profit_each}[
             sort
@@ -1870,6 +1872,14 @@ def post_event(state: State, user: CurrentUser, body: EventIn) -> None:
     """Note that something happened in the front end: one JSON log line, anonymous."""
     props = {k: v[:64] if isinstance(v, str) else v for k, v in body.props.items()}
     EVENTS.info(json.dumps({**props, "event": body.name, "game_version": state.key}))
+    recipe = props.get("recipe_id")
+    if body.name == "copy_steps" and isinstance(recipe, int) and not isinstance(recipe, bool):
+        # counted per auction house (never by whom), so Craft and sell shares its posts out
+        with _connect(state) as conn:
+            sel, _ = service.selected_characters(conn, user.uid, state.key)
+            ah = service.auction_house_of(conn, state.key, sel)
+            if ah is not None:
+                prices.record_copy(conn, ah, recipe)
 
 
 @dataclass(frozen=True)
@@ -1891,6 +1901,8 @@ class Selected:
     # the version's profession ranks (`GameVersion.profession_ranks`): the rows of `RankResult.milestones`
     ranks: tuple[versions.ProfessionRank, ...] = versions.PROFESSION_RANKS
     version: versions.GameVersion = versions.VERSIONS[versions.DEFAULT_VERSION]
+    # recipe id -> its steps' copies at the auction house lately (`prices.copies`): Craft and sell's posts
+    copies: Mapping[int, int] = field(default_factory=dict)
 
 
 def _hypothetical(
@@ -1950,6 +1962,7 @@ def _selected(state: AppState, user: auth.User, price_version: int | None = None
         favorites = frozenset(i for i, _ in store.load_favorites(conn, user.uid, state.key))
         faction = sel.faction if sel else ""
         model = service.time_model(conn, user.uid, state.key, state.cities, faction)
+        copies = prices.copies(conn, ah)
     held = state.cache.get_held(ah, at_least=price_version)
     priced = held.priced
     return Selected(
@@ -1966,6 +1979,7 @@ def _selected(state: AppState, user: auth.User, price_version: int | None = None
         sel,
         state.version.profession_ranks,
         state.version,
+        copies,
     )
 
 
@@ -2249,7 +2263,7 @@ def _result_out(
     likely = service.likely(r, listings, sell_price)
     safe = service.safe_profit(r)
     ah = service.ah_sale(r, listings, sell_price)
-    craft = service.craft_sale(r, listings, base, s.version)
+    craft = service.craft_sale(r, listings, base, s.version, s.copies.get(r.recipe.id, 0))
     t = r.timing
 
     def faction(who: str, item_id: int, percent: int) -> str:
@@ -2341,6 +2355,8 @@ def _result_out(
         post_stack=craft.post_stack,
         deposit_est=craft.deposit_est,
         no_vendor_floor=craft.no_vendor_floor,
+        launch_prices=craft.launch_prices,
+        copied=craft.copied,
         learn_skill=r.recipe.learn_skill,
         trivial_low=r.recipe.trivial_low,
         trivial_high=r.recipe.trivial_high,
@@ -2699,6 +2715,63 @@ def unkeep_item(state: State, user: CurrentUser, item_id: int) -> list[int]:
     with _connect(state) as conn:
         store.set_kept(conn, user.uid, state.key, item_id, False)
         return sorted(i for i, _ in store.load_kept(conn, user.uid, state.key))
+
+
+class DayPointOut(BaseModel):
+    day: str  # YYYY-MM-DD, UTC
+    low: int
+    median: int | None
+    high: int
+    open: int | None
+    close: int | None
+
+
+class HourPointOut(BaseModel):
+    at: str  # the hour's start, ISO 8601 UTC
+    low: int
+    market: int
+    units: int
+
+
+class FlowDayOut(BaseModel):
+    day: str
+    sold: int
+    cancelled: int
+    expired: int
+    posted: int
+
+
+class MarketHistory(BaseModel):
+    """An item's price history at the selected auction house (`prices.history`): the Market section's
+    History tab."""
+
+    days: list[DayPointOut]
+    hours: list[HourPointOut]
+    flows: list[FlowDayOut]
+
+
+@router.get("/items/{item_id}/market")
+def get_item_market(state: State, user: CurrentUser, item_id: int) -> MarketHistory:
+    """What an item went for at the selected realm's auction house: daily over the last month, hourly over
+    the last two weeks, and what was bought, pulled, ran out and was posted each day."""
+    with _connect(state) as conn:
+        ah = service.selected_auction_house(conn, user.uid, state.key)
+        h = prices.history(conn, ah, item_id)
+    return MarketHistory(
+        days=[
+            DayPointOut(
+                day=d.day.isoformat(), low=d.low, median=d.median, high=d.high, open=d.open, close=d.close
+            )
+            for d in h.days
+        ],
+        hours=[HourPointOut(at=p.at.isoformat(), low=p.low, market=p.market, units=p.units) for p in h.hours],
+        flows=[
+            FlowDayOut(
+                day=f.day.isoformat(), sold=f.sold, cancelled=f.cancelled, expired=f.expired, posted=f.posted
+            )
+            for f in h.flows
+        ],
+    )
 
 
 @router.get("/ah-blocked")

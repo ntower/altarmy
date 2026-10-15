@@ -293,6 +293,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/items/{item_id}/market": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Item Market
+         * @description What an item went for at the selected realm's auction house: daily over the last month, hourly over
+         *     the last two weeks, and what was bought, pulled, ran out and was posted each day.
+         */
+        get: operations["get_item_market_api_items__item_id__market_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/kept/{item_id}": {
         parameters: {
             query?: never;
@@ -809,6 +830,21 @@ export interface components {
              */
             watched_hours: number;
         };
+        /** DayPointOut */
+        DayPointOut: {
+            /** Close */
+            close: number | null;
+            /** Day */
+            day: string;
+            /** High */
+            high: number;
+            /** Low */
+            low: number;
+            /** Median */
+            median: number | null;
+            /** Open */
+            open: number | null;
+        };
         /**
          * DetailOut
          * @description One line of a session spelled out.
@@ -1041,6 +1077,19 @@ export interface components {
             /** Project Id */
             project_id: string;
         };
+        /** FlowDayOut */
+        FlowDayOut: {
+            /** Cancelled */
+            cancelled: number;
+            /** Day */
+            day: string;
+            /** Expired */
+            expired: number;
+            /** Posted */
+            posted: number;
+            /** Sold */
+            sold: number;
+        };
         /** GroupCount */
         GroupCount: {
             /** Characters */
@@ -1116,6 +1165,17 @@ export interface components {
             };
             /** Kept */
             kept: number[];
+        };
+        /** HourPointOut */
+        HourPointOut: {
+            /** At */
+            at: string;
+            /** Low */
+            low: number;
+            /** Market */
+            market: number;
+            /** Units */
+            units: number;
         };
         /**
          * IngestionOut
@@ -1364,6 +1424,19 @@ export interface components {
             map_y: number | null;
             /** Name */
             name: string;
+        };
+        /**
+         * MarketHistory
+         * @description An item's price history at the selected auction house (`prices.history`): the Market section's
+         *     History tab.
+         */
+        MarketHistory: {
+            /** Days */
+            days: components["schemas"]["DayPointOut"][];
+            /** Flows */
+            flows: components["schemas"]["FlowDayOut"][];
+            /** Hours */
+            hours: components["schemas"]["HourPointOut"][];
         };
         /**
          * MaterialOut
@@ -1727,6 +1800,11 @@ export interface components {
              */
             climb_unknown: number;
             confidence?: components["schemas"]["ConfidenceOut"] | null;
+            /**
+             * Copied
+             * @default 0
+             */
+            copied: number;
             /** Cost */
             cost: number;
             /** Crafter */
@@ -1776,6 +1854,11 @@ export interface components {
              * @enum {string}
              */
             kind: "craft" | "convert" | "flip" | "enchant";
+            /**
+             * Launch Prices
+             * @default false
+             */
+            launch_prices: boolean;
             /**
              * Learn Cost
              * @default 0
@@ -2984,6 +3067,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Holdings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_item_market_api_items__item_id__market_get: {
+        parameters: {
+            query: {
+                /** @description which game's data: tbc or forever */
+                game_version: "tbc" | "forever";
+            };
+            header?: never;
+            path: {
+                item_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketHistory"];
                 };
             };
             /** @description Validation Error */
