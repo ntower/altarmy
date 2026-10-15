@@ -452,7 +452,10 @@ def test_0014_adds_the_order_book_and_drops_forevers_third_party_prices(database
         assert sorted(conn.execute(select(schema.price_observations.c.item_id)).scalars()) == [3, 4]
         assert list(conn.execute(select(schema.price_daily.c.item_id)).scalars()) == [4]
         assert conn.execute(select(func.count()).select_from(schema.feed_tables)).scalar_one() == 0
-        versions = {r.game_version: r.price_version for r in conn.execute(select(ah))}
+        versions = {
+            r.game_version: r.price_version
+            for r in conn.execute(select(ah).where(ah.c.id.in_(houses.values())))
+        }
         assert versions == {"forever": 4, "tbc": 3}
         conn.execute(
             snap.insert().values(

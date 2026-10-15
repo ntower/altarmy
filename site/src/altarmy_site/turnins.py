@@ -78,7 +78,7 @@ def _read(conn: Connection, game_version: str) -> dict[int, tuple[TurnIn, ...]]:
                 out[ids[0]].append(TurnIn("crate", r.name, int(m.group(1))))
     recipes = schema.recipes
     made: dict[str, set[int]] = defaultdict(set)
-    for r in conn.execute(
+    for m_row in conn.execute(
         select(items.c.id, items.c.name)
         .join(
             recipes,
@@ -86,7 +86,7 @@ def _read(conn: Connection, game_version: str) -> dict[int, tuple[TurnIn, ...]]:
         )
         .where(items.c.game_version == game_version)
     ):
-        made[_normal(r.name)].add(r.id)
+        made[_normal(m_row.name)].add(m_row.id)
     for r in rows:
         if r.name.startswith(WRIT):
             for item_id in made.get(_normal(r.name[len(WRIT) :]), ()):
