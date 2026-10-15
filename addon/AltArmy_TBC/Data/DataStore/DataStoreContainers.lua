@@ -1,3 +1,4 @@
+-- luacheck: globals GetServerTime
 -- AltArmy TBC — DataStore module: containers (bags + bank).
 -- Requires DataStore.lua (core) and DataStoreCurrencies.lua (for ScanCurrencies) loaded before events run.
 
@@ -119,10 +120,12 @@ local function GetItemLink(bagID, slot)
     return GetContainerItemLink and GetContainerItemLink(bagID, slot)
 end
 
+--- The slot's stack count, and whether this copy is soulbound (`C_Container`'s isBound; nil where the
+--- client has no C_Container: the legacy API doesn't say).
 local function GetItemInfoForSlot(bagID, slot)
     if C_Container and C_Container.GetContainerItemInfo then
         local info = C_Container.GetContainerItemInfo(bagID, slot)
-        return info and info.stackCount or 1
+        return info and info.stackCount or 1, info and info.isBound or nil
     end
     if GetContainerItemInfo then
         local _, count = GetContainerItemInfo(bagID, slot)
@@ -251,9 +254,9 @@ local function ScanContainer(char, bagID, sizeOverride)
         local link = GetItemLink(bagID, slot)
         if link then
             local itemID = tonumber(link:match("item:(%d+)"))
-            local count = GetItemInfoForSlot(bagID, slot)
+            local count, bound = GetItemInfoForSlot(bagID, slot)
             bag.links[slot] = link
-            bag.items[slot] = { itemID = itemID, count = count }
+            bag.items[slot] = { itemID = itemID, count = count, bound = bound or nil }
         end
     end
     if IsEquippableBagSlot(bagID) then
@@ -292,6 +295,7 @@ function DS:ScanBags()
         end
     end
     char.bagInfo = { totalSlots = totalSlots, freeSlots = freeSlots }
+    char.bagsScannedAt = GetServerTime and GetServerTime() or time()
     char.dataVersions = char.dataVersions or {}
     char.dataVersions.containers = DATA_VERSIONS.containers
     if self.ScanCurrencies then self:ScanCurrencies() end
@@ -327,6 +331,7 @@ function DS:ScanBank()
         end
     end
     char.bankInfo = { totalSlots = totalSlots, freeSlots = freeSlots }
+    char.bankScannedAt = GetServerTime and GetServerTime() or time()
     char.dataVersions = char.dataVersions or {}
     char.dataVersions.containers = DATA_VERSIONS.containers
     if self.ScanCurrencies then self:ScanCurrencies() end

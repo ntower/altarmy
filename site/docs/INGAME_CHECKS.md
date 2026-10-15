@@ -13,6 +13,9 @@ What the site assumes until someone checks it in game, and where the answer goes
   says no skill is needed (`docs/SKILL_UP_RESEARCH.md`); vanilla asked for one by item level. Craft and sell's
   Disenchant budget says "needs Enchanting N" by vanilla's table (`engine.DISENCHANT_SKILL`): empty it if
   Forever asks for none, fix it if Forever's differs.
+- [ ] **Soulbound copies.** With the addon built from `strategy-pages`, open bags and bank, `/reload`, and check
+  `AltArmyTBC_Data`: a soulbound item's slot says `bound = true` (`C_Container.GetContainerItemInfo`'s `isBound`)
+  and a bind-on-equip one not yet equipped doesn't. What I hold sells only unbound copies.
 - [ ] **Wands.** What a vendor pays for Lesser and Greater Magic Wand on the current build (DB2 has moved
   between 1c and 2s).
 - [ ] **Transmutes.** The cooldowns of Iron to Gold and Mithril to Truesilver (DB2 says 1 hour), and whether

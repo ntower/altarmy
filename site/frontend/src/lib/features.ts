@@ -14,3 +14,6 @@ export const PROCESSING = true
 /** The Vendor runs strategy: what the auction house lists under what a vendor pays, and what vendors sell for less
  * than it pays. */
 export const VENDOR_RUNS = true
+
+/** The What I hold strategy: what the characters' bags and bank hold, and what to do with it. */
+export const WHAT_I_HOLD = true

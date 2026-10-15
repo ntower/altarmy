@@ -4,8 +4,8 @@ import { parseProfitPath, profitPath } from './profitRoute'
 import { byGroup, byProcessGroup, liveStrategies, parseSellVia, sellViaExits, sellViaKinds } from './strategies'
 
 describe('strategies', () => {
-  it('offers Craft and sell, Process trade goods and Vendor runs', () => {
-    expect(liveStrategies().map((s) => s.key)).toEqual(['craft', 'process', 'vendor'])
+  it('offers every strategy built', () => {
+    expect(liveStrategies().map((s) => s.key)).toEqual(['craft', 'process', 'vendor', 'held'])
   })
 
   it('shows processing results in their groups, those of none last', () => {

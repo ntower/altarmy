@@ -1696,3 +1696,17 @@ def test_an_item_bought_to_disenchant_is_worth_its_worst_roll_at_most() -> None:
     (got,) = service.disenchant_budget([r], {}, market, days=1, enchanting=300).values()
     assert got.pay_at_most == engine.ah_net(100)  # one dust: the worst roll, under 3/4 of two
     assert service.craft_sale(r, {}, market, versions.get(FOREVER)).group == "buy_to_disenchant"
+
+
+# --- What I hold ------------------------------------------------------------------------------------------
+def test_what_a_character_holds_goes_where_it_brings_most() -> None:
+    market = smelt_market()  # ore: a vendor pays 5, the AH 60; bar: 10 and 200
+    verdict = service.held_verdict
+    assert verdict(ORE, 10, False, market, {}) == service.HeldVerdict("auction", 10 * engine.ah_net(60), "")
+    assert verdict(ORE, 10, True, market, {}) == service.HeldVerdict("vendor", 50, "")  # soulbound: no AH
+    assert verdict(ORE, 10, False, market, {}, kept=frozenset({ORE})).why == "kept"
+    assert verdict(ORE, 10, False, market, {}, reagents=frozenset({ORE})).why == "reagent"
+    # an item nothing pays for is kept
+    assert verdict(BLADE, 1, False, market, {}).why == "nothing"
+    # an AH sale that doesn't count yet: a vendor
+    assert verdict(ORE, 10, False, smelt_market(ah_open=frozenset()), {}).kind == "vendor"

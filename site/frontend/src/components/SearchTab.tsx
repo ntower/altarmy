@@ -16,6 +16,7 @@ import { STRATEGY_PICKER } from '../lib/features'
 import { navigate, usePath } from '../lib/router'
 import { StrategyBar, StrategyPicker } from './StrategyPicker'
 import { VendorRuns } from './VendorRuns'
+import { WhatIHold } from './WhatIHold'
 import { useSession } from '../lib/session'
 import {
   CLIMBER_NAME,
@@ -296,6 +297,8 @@ export function SearchTab({
         {strategy && <StrategyBar current={strategy} />}
         {strategy === 'vendor' ? (
           <VendorRuns />
+        ) : strategy === 'held' ? (
+          <WhatIHold />
         ) : (
         <AimSearch
           key={`${setup.aim}-${strategy ?? ''}`}

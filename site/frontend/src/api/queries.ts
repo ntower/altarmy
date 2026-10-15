@@ -731,6 +731,29 @@ export function useSetAhBlocked() {
   })
 }
 
+/** What the selected realm's characters hold, and what to do with it (What I hold). */
+export function useHoldings() {
+  const version = useDataVersion()
+  return useQuery({
+    queryKey: ['holdings', GAME_VERSION, version],
+    queryFn: () => call(client.GET('/api/holdings', GV)),
+    enabled: version !== undefined,
+  })
+}
+
+/** Keep an item whatever it would sell for, or no longer; What I hold is fetched again. */
+export function useSetKept() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ itemId, kept }: { itemId: number; kept: boolean }) => {
+      const params = { params: { path: { item_id: itemId }, query: { game_version: GAME_VERSION } } }
+      return call(kept ? client.PUT('/api/kept/{item_id}', params) : client.DELETE('/api/kept/{item_id}', params))
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['holdings', GAME_VERSION] }),
+    onError: showError('Could not update the items you keep'),
+  })
+}
+
 /** The user's favorite recipes: searches list them first. */
 export function useFavorites() {
   return useQuery({

@@ -1,6 +1,6 @@
 import type { Exit, RankKind } from '../api/queries'
 import type { RankResult } from '../api/client'
-import { PROCESSING, VENDOR_RUNS } from './features'
+import { PROCESSING, VENDOR_RUNS, WHAT_I_HOLD } from './features'
 import type { GoldStrategy } from './profitRoute'
 import { ALL_EXITS } from './setup'
 
@@ -41,6 +41,13 @@ export const GOLD_STRATEGIES: readonly StrategySpec[] = [
     blurb: 'Buy what is listed under what a vendor pays, or buy from vendors what the auction house pays more for.',
     errand: "You'll buy on the auction house or from vendors, then sell the other way",
     live: VENDOR_RUNS,
+  },
+  {
+    key: 'held',
+    title: 'What I hold',
+    blurb: "What your characters' bags and banks hold, and what each thing is worth: vendor it, post it or keep it.",
+    errand: "You'll clear out your bags and bank",
+    live: WHAT_I_HOLD,
   },
 ]
 

@@ -2457,3 +2457,21 @@ def test_vendor_runs_list_what_is_listed_under_a_vendor(
     assert (u["item_id"], u["units"], u["profit"]) == (3, 2, 200)
     assert body["items"]["3"]["name"] == "Green Robe"
     assert body["runs"] == []  # the fixture's game data has no vendor offers to resell
+
+
+def test_holdings_say_what_to_do_with_what_the_characters_hold(
+    client: TestClient, priced: Connection
+) -> None:
+    body = client.get("/api/holdings").json()
+    (tailor,) = [c for c in body["characters"] if c["name"] == "Tailor Guy"]
+    # linen and thread are the robe's reagents, and the tailor knows the robe
+    assert {(h["item_id"], h["count"], h["verdict"], h["why"]) for h in tailor["held"]} == {
+        (1, 20, "keep", "reagent"),
+        (2, 5, "keep", "reagent"),
+    }
+    assert client.put("/api/kept/1").json() == [1]
+    body = client.get("/api/holdings").json()
+    (tailor,) = [c for c in body["characters"] if c["name"] == "Tailor Guy"]
+    assert next(h for h in tailor["held"] if h["item_id"] == 1)["why"] == "kept"
+    assert body["kept"] == [1]
+    assert client.delete("/api/kept/1").json() == []

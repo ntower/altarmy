@@ -1217,6 +1217,59 @@ def disenchant_budget(
     return out
 
 
+HeldVerdictKind = Literal["vendor", "auction", "disenchant", "keep"]
+
+
+@dataclass(frozen=True)
+class HeldVerdict:
+    """What to do with something a character holds (What I hold), what it brings, and why."""
+
+    kind: HeldVerdictKind
+    value: int  # copper the units bring that way (0 when kept)
+    why: str  # kept | bound | reagent | nothing (when kept); "" otherwise
+
+
+def held_verdict(
+    item_id: int,
+    count: int,
+    bound: bool,
+    market: Market,
+    listings: Mapping[int, prices.Listing],
+    *,
+    kept: frozenset[int] = frozenset(),
+    reagents: frozenset[int] = frozenset(),
+    enchanter: bool = False,
+) -> HeldVerdict:
+    """What to do with `count` of an item (see `HeldVerdict`): kept when the user keeps it (`kept`), it is a
+    reagent of a recipe one of their characters knows (`reagents`), or nothing pays for it; else the best of
+    a vendor, the auction house (`sell_value`: as many as its market takes, the rest at a vendor; not a
+    soulbound copy) and, with an `enchanter` among the characters, disenchanting (not a soulbound copy:
+    only its holder could, and that is not modelled)."""
+    item = market.items.get(item_id)
+    if item_id in kept:
+        return HeldVerdict("keep", 0, "kept")
+    vendor = (item.sell_price if item is not None else 0) * count
+    if bound:
+        return HeldVerdict("vendor", vendor, "") if vendor > 0 else HeldVerdict("keep", 0, "bound")
+    if item_id in reagents:
+        return HeldVerdict("keep", 0, "reagent")
+    ways: list[tuple[HeldVerdictKind, int]] = [("vendor", vendor)]
+    if item is not None and item.tradable:
+        ways.append(("auction", sell_value(item_id, count, listings, market)))
+    if enchanter and item is not None and item.tradable:
+        ways.append(("disenchant", (market.disenchant_value(item) or 0) * count))
+    kind, value = max(ways, key=lambda w: w[1])  # ties go to the first: a vendor
+    if value <= 0:
+        return HeldVerdict("keep", 0, "nothing")
+    return HeldVerdict(kind, value, "")
+
+
+def known_reagents(recipes: Iterable[engine.Recipe], chars: Iterable[Character]) -> frozenset[int]:
+    """The items some recipe one of `chars` knows takes."""
+    known = frozenset().union(*(c.known_recipes for c in chars))
+    return frozenset(i for r in recipes if r.spell_id in known and r.kind == "craft" for i, _ in r.reagents)
+
+
 def by_per_day(
     results: Iterable[Result], listings: Mapping[int, prices.Listing], market: Market, version: GameVersion
 ) -> list[Result]:
@@ -1895,11 +1948,16 @@ def select(conn: Connection, user_uid: str, game_version: str, realm: str, facti
 
 
 def replace_characters(
-    conn: Connection, user_uid: str, game_version: str, chars: Sequence[Character]
+    conn: Connection,
+    user_uid: str,
+    game_version: str,
+    chars: Sequence[Character],
+    keep_holdings: bool = False,
 ) -> None:
-    """Store an import's characters in place of the user's. A selected realm none of them is on is
-    forgotten, so the new characters' biggest group is selected."""
-    store.save_characters(conn, user_uid, game_version, chars)
+    """Store an import's characters in place of the user's (with `keep_holdings`, keeping what each held:
+    see `store.save_characters`). A selected realm none of them is on is forgotten, so the new characters'
+    biggest group is selected."""
+    store.save_characters(conn, user_uid, game_version, chars, keep_holdings)
     saved = users.get_settings(conn, user_uid, game_version)
     wanted = (saved.selected_realm, saved.selected_faction)
     if not any((g.realm, g.faction) == wanted for g in altarmy.groups(chars)):

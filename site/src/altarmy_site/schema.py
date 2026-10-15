@@ -299,6 +299,9 @@ characters = Table(
     Column("faction", String(16), nullable=False),  # Horde | Alliance | "" (never scanned)
     Column("class_file", String(32), nullable=False),  # e.g. PALADIN
     Column("level", Integer, nullable=False),
+    # when the addon last scanned their bags and bank (the game server's Unix time); None if it didn't say
+    Column("bags_at", BigInteger),
+    Column("bank_at", BigInteger),
     UniqueConstraint("user_uid", "game_version", "realm", "name"),
 )
 
@@ -335,6 +338,28 @@ character_reputations = Table(
     Column("character_id", Integer, ForeignKey("characters.id", ondelete="CASCADE"), primary_key=True),
     Column("faction_id", Integer, primary_key=True, autoincrement=False),  # DB2 Faction
     Column("standing", Integer, nullable=False),  # 1 Hated .. 8 Exalted
+)
+
+# What a character holds in their bags and bank (`altarmy.Holding`): What I hold.
+character_items = Table(
+    "character_items",
+    metadata,
+    Column("character_id", Integer, ForeignKey("characters.id", ondelete="CASCADE"), primary_key=True),
+    Column("item_id", Integer, primary_key=True, autoincrement=False),
+    Column("place", String(8), primary_key=True),  # bags | bank
+    Column("bound", Boolean, primary_key=True),
+    Column("count", Integer, nullable=False),
+)
+
+# Items the user keeps whatever they would sell for: What I hold never says to sell them. Ingest leaves them
+# alone.
+kept_items = Table(
+    "kept_items",
+    metadata,
+    _owner(),
+    _version(),
+    Column("item_id", Integer, primary_key=True, autoincrement=False),
+    Column("added_at", DateTime(timezone=True), nullable=False),
 )
 
 # Items the user never wants sold on the AH (only vendor or disenchant). Ingest leaves them alone.

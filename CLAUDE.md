@@ -31,7 +31,9 @@ The addon writes what the site reads, and the golden files live with the addon:
   it; `addon/spec/fixtures/profit_export_v2.txt` is the golden string both test against.
 - `addon/AltArmy_TBC/Data/Auctions/AuctionScan.lua` and `AuctionBook.lua` write `AltArmyTBC_AuctionBook`;
   `site/src/altarmy_site/book.py` reads it; `addon/spec/fixtures/auction_book_v1.lua` is the golden file.
-- `AltArmy_TBC.lua` (the addon's main SavedVariable) is read by `site/src/altarmy_site/altarmy.py`.
+- `AltArmy_TBC.lua` (the addon's main SavedVariable) is read by `site/src/altarmy_site/altarmy.py`. Its bags and
+  bank (`addon/AltArmy_TBC/Data/DataStore/DataStoreContainers.lua`, containers v4: a soulbound copy's slot says
+  `bound`, and `bagsScannedAt`/`bankScannedAt`) have the golden `addon/spec/fixtures/holdings_v1.lua`.
 - `site/tests/addon_fixtures.py` names the golden files for the site's tests, so a format change is one commit
   that changes the writer, the reader and the fixture, and `site-check` fails if they disagree. `site-check` also
   runs on commits touching only those addon files (the fixtures, the writers, the TOC), so such a commit redeploys

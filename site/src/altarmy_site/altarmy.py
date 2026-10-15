@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Literal
 
 from .luasv import LuaTable, LuaValue, parse_assignments
 from .reputation import city_standings
@@ -34,6 +35,25 @@ class Profession:
     rank: int
     max_rank: int
     recipe_ids: frozenset[int]
+
+
+Place = Literal["bags", "bank"]
+
+# container ids by where they are (the addon's `DS._BuildBagRoles`; keyrings are left out): WoW: Forever's
+# retail ids, and the Classic ones
+RETAIL_BAGS = (frozenset(range(0, 6)), frozenset(range(6, 15)))
+CLASSIC_BAGS = (frozenset(range(0, 5)), frozenset({-1, *range(5, 12)}))
+
+
+@dataclass(frozen=True, order=True)
+class Holding:
+    """Units of an item a character holds in one place, soulbound or not (the addon's containers v4 say
+    which copies are; older data reads every copy as unbound)."""
+
+    item_id: int
+    count: int
+    place: Place
+    bound: bool = False
 
 
 @dataclass(frozen=True)
@@ -50,6 +70,11 @@ class Character:
     # standings with the city factions as (faction id, standing 1 Hated .. 8 Exalted), sorted by faction id;
     # a faction not listed is Neutral, or was never seen (see `reputation`)
     reputations: tuple[tuple[int, int], ...] = ()
+    # what they hold in their bags and bank, by item, place and bound, sorted (see `Holding`), and when each
+    # was last scanned (the game server's Unix time; None when the addon didn't say)
+    holdings: tuple[Holding, ...] = ()
+    bags_at: int | None = None
+    bank_at: int | None = None
 
     @property
     def known_recipes(self) -> frozenset[int]:
@@ -83,8 +108,9 @@ def crafters(chars: Iterable[Character]) -> dict[int, list[str]]:
     return out
 
 
-def parse_characters(data: bytes) -> list[Character]:
-    """All characters in the file, sorted by realm then name."""
+def parse_characters(data: bytes, retail_bags: bool = True) -> list[Character]:
+    """All characters in the file, sorted by realm then name; their holdings read with the container ids of
+    a retail client (`retail_bags`: WoW: Forever's) or a Classic one."""
     root = parse_assignments(data).get("AltArmyTBC_Data")
     if not isinstance(root, dict):
         raise ValueError("no AltArmyTBC_Data in file (is this Alt Army's AltArmy_TBC.lua?)")
@@ -113,6 +139,11 @@ def parse_characters(data: bytes) -> list[Character]:
                     talents=_talents(_table(c.get("legacyTalents"))),
                     guid=_str(c.get("guid")),
                     reputations=_reputations(_table(c.get("Reputations"))),
+                    holdings=_holdings(
+                        _table(c.get("Containers")), RETAIL_BAGS if retail_bags else CLASSIC_BAGS
+                    ),
+                    bags_at=_time(c.get("bagsScannedAt")),
+                    bank_at=_time(c.get("bankScannedAt")),
                 )
             )
     return sorted(chars, key=lambda c: (c.realm, c.name))
@@ -154,6 +185,26 @@ def _reputations(saved: LuaTable) -> tuple[tuple[int, int], ...]:
         for faction, row in saved.items()
         if isinstance(faction, int) and not isinstance(faction, bool)
     )
+
+
+def _holdings(containers: LuaTable, ids: tuple[frozenset[int], frozenset[int]]) -> tuple[Holding, ...]:
+    """`Containers[bagID].items[slot] = {itemID, count, bound}` summed per item, place and bound."""
+    got: dict[tuple[int, Place, bool], int] = {}
+    for bag_id, bag in containers.items():
+        place: Place | None = "bags" if bag_id in ids[0] else "bank" if bag_id in ids[1] else None
+        if place is None or isinstance(bag_id, bool):
+            continue
+        for slot in _table(_table(bag).get("items")).values():
+            row = _table(slot)
+            item, count = _int(row.get("itemID")), _int(row.get("count")) or 1
+            if item > 0:
+                key = (item, place, row.get("bound") is True)
+                got[key] = got.get(key, 0) + count
+    return tuple(sorted(Holding(i, n, p, b) for (i, p, b), n in got.items()))
+
+
+def _time(v: LuaValue) -> int | None:
+    return _int(v) or None
 
 
 def _profession(name: str, prof: LuaTable) -> Profession:

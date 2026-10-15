@@ -560,7 +560,7 @@ describe("DataStoreContainers", function()
       assert.are.equal(18, char.Containers[1].numSlots)
       assert.are.equal(12, char.Containers[-2].numSlots)
       assert.are.equal(16, DS:GetContainerNumSlots(char, 0))
-      assert.are.equal(3, char.dataVersions.containers)
+      assert.are.equal(4, char.dataVersions.containers)
     end)
 
     it("records 0 for an equippable bag slot that holds no bag", function()
@@ -739,6 +739,66 @@ describe("DataStoreContainers", function()
       local seen = {}
       DS:IterateEquippedBags(char, function(bagID) seen[#seen + 1] = bagID end)
       assert.are.same({ 7 }, seen)
+    end)
+  end)
+
+  -- spec/fixtures/holdings_v1.lua is the golden character these scans save. The site's tests
+  -- (site/tests/test_altarmy.py) read that same file, so its reader must read back any change here.
+  describe("holdings", function()
+    it("writes the golden holdings: bags and bank, soulbound copies marked", function()
+      local slots = {
+        [0] = {
+          [1] = { "|Hitem:2589::::::::30:::::|h[Linen Cloth]|h", 20, false },
+          [2] = { "|Hitem:2140::::::::30:::::|h[Carving Knife]|h", 1, true },
+          [4] = { "|Hitem:2589::::::::30:::::|h[Linen Cloth]|h", 5, false },
+        },
+        [-1] = { [1] = { "|Hitem:2770::::::::30:::::|h[Copper Ore]|h", 10, false } },
+      }
+      local sizes = { [0] = 4, [-1] = 2 }
+      _G.UnitName = function() return "Holder" end
+      _G.GetRealmName = function() return "Classic Beta PvE" end
+      _G.ContainerIDToInventoryID = nil
+      _G.GetInventoryItemLink = function() return nil end
+      _G.GetInventoryItemID = function() return nil end
+      _G.GetContainerNumSlots, _G.GetContainerItemLink, _G.GetContainerItemInfo = nil, nil, nil
+      _G.GetContainerNumFreeSlots = nil
+      _G.C_Container = {
+        ContainerIDToInventoryID = function() return nil end,
+        GetContainerNumSlots = function(bagID) return sizes[bagID] or 0 end,
+        GetContainerItemLink = function(bagID, slot) return slots[bagID] and slots[bagID][slot] and slots[bagID][slot][1] end,
+        GetContainerItemInfo = function(bagID, slot)
+          local s = slots[bagID] and slots[bagID][slot]
+          return s and { stackCount = s[2], isBound = s[3] }
+        end,
+        GetContainerNumFreeSlots = function() return 0 end,
+      }
+      _G.time = function() return 1 end
+      local now = 1790725000
+      _G.GetServerTime = function() return now end
+      DS.IsBankOpen = function() return true end
+
+      local char = DS:GetCurrentCharacter()
+      char.Containers = {}
+      DS:ScanBags()
+      now = 1790726000
+      DS:ScanBank()
+
+      local env = {}
+      local chunk = assert(loadfile("spec/fixtures/holdings_v1.lua"))
+      setfenv(chunk, env)
+      chunk()
+      local golden = env.AltArmyTBC_Data.Characters["Classic Beta PvE"]["Player-4395-00000001"]
+      local written = {}
+      for bagID, bag in pairs(char.Containers) do
+        if bag.numSlots and bag.numSlots > 0 then
+          written[bagID] = { numSlots = bag.numSlots, links = bag.links, items = bag.items }
+        end
+      end
+      assert.same(golden.Containers, written)
+      assert.are.equal(golden.bagsScannedAt, char.bagsScannedAt)
+      assert.are.equal(golden.bankScannedAt, char.bankScannedAt)
+      _G.GetServerTime = nil
+      _G.C_Container = nil
     end)
   end)
 end)

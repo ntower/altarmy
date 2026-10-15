@@ -670,6 +670,34 @@ class TimeSettingsIn(BaseModel):
     config: dict[str, float] = {}  # settings that differ from the defaults (the rest are reset)
 
 
+class HeldOut(BaseModel):
+    """Something a character holds, and what to do with it (`service.held_verdict`)."""
+
+    item_id: int
+    count: int
+    place: Literal["bags", "bank"]
+    bound: bool
+    verdict: Literal["vendor", "auction", "disenchant", "keep"]
+    value: int  # what the units bring that way
+    why: str  # when kept: kept | bound | reagent | nothing
+
+
+class HolderOut(BaseModel):
+    name: str
+    class_file: str
+    bags_at: int | None  # when the addon last scanned their bags (Unix time); None if never
+    bank_at: int | None
+    held: list[HeldOut]  # what pays most first
+
+
+class Holdings(BaseModel):
+    """What the selected realm and faction's characters hold, and what to do with it: What I hold."""
+
+    characters: list[HolderOut]
+    kept: list[int]  # the items the user keeps
+    items: dict[int, ItemInfo]
+
+
 class AhBlockedItem(BaseModel):
     item_id: int
     added_at: str  # "YYYY-MM-DD HH:MM:SS", UTC
@@ -2606,6 +2634,71 @@ def get_vendor_runs(state: State, user: CurrentUser) -> VendorRuns:
         ],
         items=items,
     )
+
+
+@router.get("/holdings")
+def get_holdings(state: State, user: CurrentUser) -> Holdings:
+    """What the selected realm and faction's characters hold in their bags and bank (as their last file
+    upload had it), each with what to do with it: vendor it, post it, disenchant it, or keep it."""
+    s = _selected(state, user, None)
+    with _connect(state) as conn:
+        saved = store.load_holdings(conn, user.uid, state.key)
+        kept = frozenset(i for i, _ in store.load_kept(conn, user.uid, state.key))
+        reagents = service.known_reagents(s.base.recipes, s.chars)
+        enchanter = any(c.enchanting for c in service.as_crafters(s.chars))
+        out = []
+        for c in s.chars:
+            h = saved.get((c.realm, c.name))
+            if h is None:
+                continue
+            held = []
+            for g in h.holdings:
+                v = service.held_verdict(
+                    g.item_id,
+                    g.count,
+                    g.bound,
+                    s.base,
+                    s.listings,
+                    kept=kept,
+                    reagents=reagents,
+                    enchanter=enchanter,
+                )
+                held.append(
+                    HeldOut(
+                        item_id=g.item_id,
+                        count=g.count,
+                        place=g.place,
+                        bound=g.bound,
+                        verdict=v.kind,
+                        value=v.value,
+                        why=v.why,
+                    )
+                )
+            held.sort(key=lambda x: (-x.value, x.item_id, x.place))
+            out.append(
+                HolderOut(
+                    name=c.name, class_file=c.class_file, bags_at=h.bags_at, bank_at=h.bank_at, held=held
+                )
+            )
+        priced = state.cache.get_priced(service.selected_auction_house(conn, user.uid, state.key))
+        ids = sorted({x.item_id for o in out for x in o.held})
+        return Holdings(characters=out, kept=sorted(kept), items=_item_details(state, conn, priced, ids))
+
+
+@router.put("/kept/{item_id}")
+def keep_item(state: State, user: CurrentUser, item_id: int) -> list[int]:
+    """Keep `item_id` whatever it would sell for: What I hold never says to sell it. The items kept."""
+    with _connect(state) as conn:
+        store.set_kept(conn, user.uid, state.key, item_id, True)
+        return sorted(i for i, _ in store.load_kept(conn, user.uid, state.key))
+
+
+@router.delete("/kept/{item_id}")
+def unkeep_item(state: State, user: CurrentUser, item_id: int) -> list[int]:
+    """No longer keep `item_id`. The items kept."""
+    with _connect(state) as conn:
+        store.set_kept(conn, user.uid, state.key, item_id, False)
+        return sorted(i for i, _ in store.load_kept(conn, user.uid, state.key))
 
 
 @router.get("/ah-blocked")

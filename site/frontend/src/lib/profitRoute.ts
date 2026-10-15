@@ -26,7 +26,7 @@ export type ProfitView =
   | { kind: 'moved'; to: string }
 
 /** The ways to make gold that have a page (`lib/strategies.ts`). */
-export const GOLD_STRATEGY_KEYS = ['craft', 'process', 'vendor'] as const
+export const GOLD_STRATEGY_KEYS = ['craft', 'process', 'vendor', 'held'] as const
 export type GoldStrategy = (typeof GOLD_STRATEGY_KEYS)[number]
 const isStrategy = (key: string): key is GoldStrategy => (GOLD_STRATEGY_KEYS as readonly string[]).includes(key)
 

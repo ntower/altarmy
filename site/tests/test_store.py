@@ -1,9 +1,11 @@
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 from sqlalchemy import Connection, insert, update
 
 from altarmy_site import altarmy, ingest, itemstats, schema, store
+from altarmy_site.altarmy import Character, Holding
 
 from .conftest import FOREVER, ME, scanned, set_prices
 from .test_altarmy import ALTARMY_SV
@@ -107,8 +109,10 @@ def test_load_market_keeps_spell_ids(db2_paths: dict[str, Path], conn: Connectio
 
 
 def test_characters_round_trip_and_replace(conn: Connection) -> None:
-    chars = altarmy.parse_characters(ALTARMY_SV)
-    store.save_characters(conn, ME, FOREVER, chars)
+    parsed = altarmy.parse_characters(ALTARMY_SV)
+    # holdings are saved, but loaded apart (`load_holdings`)
+    chars = [replace(c, holdings=()) for c in parsed]
+    store.save_characters(conn, ME, FOREVER, parsed)
     store.save_characters(conn, ME, "tbc", chars[:2])
     assert store.load_characters(conn, ME, FOREVER) == chars
     assert any(c.talents for c in store.load_characters(conn, ME, FOREVER))  # Legacy talents too
@@ -236,3 +240,18 @@ def test_load_cities_reads_every_preset(cities: Path, tmp_path: Path) -> None:
     (cities / "Broken.json").write_text("{", encoding="utf-8")
     with pytest.raises(ValueError, match="Broken.json"):
         store.load_cities(cities)
+
+
+def test_holdings_are_saved_apart_and_kept_through_an_export(conn: Connection) -> None:
+    held = (Holding(2589, 25, "bags"), Holding(2140, 1, "bags", bound=True))
+    holder = Character("R", "Holder", "Horde", "MAGE", 30, (), holdings=held, bags_at=100, bank_at=None)
+    store.save_characters(conn, ME, FOREVER, [holder])
+    (loaded,) = store.load_characters(conn, ME, FOREVER)
+    assert loaded.holdings == ()  # every ranking reads characters: holdings are apart
+    got = store.load_holdings(conn, ME, FOREVER)[("R", "Holder")]
+    assert (set(got.holdings), got.bags_at, got.bank_at) == (set(held), 100, None)
+    # an export (no holdings) keeps them; a file upload replaces them
+    store.save_characters(conn, ME, FOREVER, [replace(holder, holdings=(), bags_at=None)], keep_holdings=True)
+    assert store.load_holdings(conn, ME, FOREVER)[("R", "Holder")].bags_at == 100
+    store.save_characters(conn, ME, FOREVER, [replace(holder, holdings=(), bags_at=None)])
+    assert store.load_holdings(conn, ME, FOREVER)[("R", "Holder")].holdings == ()

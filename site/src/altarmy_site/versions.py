@@ -74,6 +74,9 @@ class GameVersion:
     # An item sells on the AH only once enough of its auctions have ended (`merge`'s gate,
     # `engine.Market.ah_open`); until then crafts sell to a vendor
     gated_prices: bool = False
+    # the client numbers its containers as retail does (WoW: Forever's Enum.BagIndex: bags 0-5, bank tabs
+    # 6-14), else as Classic (bags 0-4, the bank -1 and bank bags 5-11): where `altarmy` reads holdings
+    retail_bags: bool = False
     # (standing, percent off) at a vendor for the buyer's standing with the vendor's faction (5 Friendly,
     # 6 Honored, 7 Revered, 8 Exalted; see `reputation`); standings not listed get nothing off
     reputation_discounts: tuple[tuple[int, int], ...] = ()
@@ -181,6 +184,7 @@ VERSIONS: dict[str, GameVersion] = {
         max_skill=300,
         first_party_prices=True,
         gated_prices=True,
+        retail_bags=True,
         reputation_discounts=((6, 10), (7, 10), (8, 10)),  # vanilla's: 10% from Honored, no more after
         # The launch realms' own names go in their aliases on launch day
         realms=(

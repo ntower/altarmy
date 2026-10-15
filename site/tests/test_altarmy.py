@@ -1,7 +1,9 @@
 import pytest
 
 from altarmy_site import altarmy
-from altarmy_site.altarmy import Character, Profession
+from altarmy_site.altarmy import Character, Holding, Profession
+
+from .addon_fixtures import HOLDINGS
 
 # Trimmed from a real AltArmy_TBC.lua (addon 2.1.1): no indentation, one statement per global.
 ALTARMY_SV = b"""
@@ -181,6 +183,7 @@ def test_parse_characters() -> None:
             Profession("Cooking", rank=1, max_rank=75, recipe_ids=frozenset()),
             Profession("Tailoring", rank=50, max_rank=75, recipe_ids=frozenset({900})),
         ),
+        holdings=(Holding(1, 20, "bags"), Holding(2, 5, "bags")),
     )
     # Enchanting craft rows only carry a color: the key is the recipe id.
     assert ally.professions == (Profession("Enchanting", 12, 75, frozenset({7418})),)
@@ -300,3 +303,24 @@ def test_a_never_scanned_stub_is_skipped() -> None:
         + _entry("Frell", level=20, updated=1)
     )
     assert names(data) == [("Frell", 20)]
+
+
+def test_holdings_are_read_from_the_golden_containers() -> None:
+    # the addon's spec ran as a Classic client: its bank is container -1
+    (holder,) = altarmy.parse_characters(HOLDINGS.read_bytes(), retail_bags=False)
+    assert holder.holdings == (
+        Holding(2140, 1, "bags", bound=True),
+        Holding(2589, 25, "bags"),
+        Holding(2770, 10, "bank"),
+    )
+    assert (holder.bags_at, holder.bank_at) == (1790725000, 1790726000)
+    # on WoW: Forever -1 is the keyring, never counted
+    (forever,) = altarmy.parse_characters(HOLDINGS.read_bytes())
+    assert [h.place for h in forever.holdings] == ["bags", "bags"]
+
+
+def test_older_data_has_unbound_holdings_and_no_scan_times() -> None:
+    (tailor,) = [c for c in altarmy.parse_characters(ALTARMY_SV) if c.name == "Tailor Guy"]
+    assert {h.item_id: h.count for h in tailor.holdings} == {1: 20, 2: 5}
+    assert all(not h.bound for h in tailor.holdings)
+    assert tailor.bags_at is None

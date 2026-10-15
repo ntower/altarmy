@@ -1264,6 +1264,143 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HeldOut": {
+        "description": "Something a character holds, and what to do with it (`service.held_verdict`).",
+        "properties": {
+          "bound": {
+            "title": "Bound",
+            "type": "boolean"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "integer"
+          },
+          "place": {
+            "enum": [
+              "bags",
+              "bank"
+            ],
+            "title": "Place",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "integer"
+          },
+          "verdict": {
+            "enum": [
+              "vendor",
+              "auction",
+              "disenchant",
+              "keep"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          },
+          "why": {
+            "title": "Why",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "count",
+          "place",
+          "bound",
+          "verdict",
+          "value",
+          "why"
+        ],
+        "title": "HeldOut",
+        "type": "object"
+      },
+      "HolderOut": {
+        "properties": {
+          "bags_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bags At"
+          },
+          "bank_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank At"
+          },
+          "class_file": {
+            "title": "Class File",
+            "type": "string"
+          },
+          "held": {
+            "items": {
+              "$ref": "#/components/schemas/HeldOut"
+            },
+            "title": "Held",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "class_file",
+          "bags_at",
+          "bank_at",
+          "held"
+        ],
+        "title": "HolderOut",
+        "type": "object"
+      },
+      "Holdings": {
+        "description": "What the selected realm and faction's characters hold, and what to do with it: What I hold.",
+        "properties": {
+          "characters": {
+            "items": {
+              "$ref": "#/components/schemas/HolderOut"
+            },
+            "title": "Characters",
+            "type": "array"
+          },
+          "items": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ItemInfo"
+            },
+            "title": "Items",
+            "type": "object"
+          },
+          "kept": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Kept",
+            "type": "array"
+          }
+        },
+        "required": [
+          "characters",
+          "kept",
+          "items"
+        ],
+        "title": "Holdings",
+        "type": "object"
+      },
       "IngestionOut": {
         "description": "What the ingestion jobs and uploads have been doing (the Admin page).",
         "properties": {
@@ -5283,6 +5420,183 @@
           }
         ],
         "summary": "Add Favorite"
+      }
+    },
+    "/api/holdings": {
+      "get": {
+        "description": "What the selected realm and faction's characters hold in their bags and bank (as their last file\nupload had it), each with what to do with it: vendor it, post it, disenchant it, or keep it.",
+        "operationId": "get_holdings_api_holdings_get",
+        "parameters": [
+          {
+            "description": "which game's data: tbc or forever",
+            "in": "query",
+            "name": "game_version",
+            "required": true,
+            "schema": {
+              "description": "which game's data: tbc or forever",
+              "enum": [
+                "tbc",
+                "forever"
+              ],
+              "title": "Game Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Holdings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Holdings"
+      }
+    },
+    "/api/kept/{item_id}": {
+      "delete": {
+        "description": "No longer keep `item_id`. The items kept.",
+        "operationId": "unkeep_item_api_kept__item_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "which game's data: tbc or forever",
+            "in": "query",
+            "name": "game_version",
+            "required": true,
+            "schema": {
+              "description": "which game's data: tbc or forever",
+              "enum": [
+                "tbc",
+                "forever"
+              ],
+              "title": "Game Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "title": "Response Unkeep Item Api Kept  Item Id  Delete",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Unkeep Item"
+      },
+      "put": {
+        "description": "Keep `item_id` whatever it would sell for: What I hold never says to sell it. The items kept.",
+        "operationId": "keep_item_api_kept__item_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "which game's data: tbc or forever",
+            "in": "query",
+            "name": "game_version",
+            "required": true,
+            "schema": {
+              "description": "which game's data: tbc or forever",
+              "enum": [
+                "tbc",
+                "forever"
+              ],
+              "title": "Game Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "title": "Response Keep Item Api Kept  Item Id  Put",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Keep Item"
       }
     },
     "/api/me": {

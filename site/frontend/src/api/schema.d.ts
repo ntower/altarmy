@@ -272,6 +272,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/holdings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Holdings
+         * @description What the selected realm and faction's characters hold in their bags and bank (as their last file
+         *     upload had it), each with what to do with it: vendor it, post it, disenchant it, or keep it.
+         */
+        get: operations["get_holdings_api_holdings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/kept/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Keep Item
+         * @description Keep `item_id` whatever it would sell for: What I hold never says to sell it. The items kept.
+         */
+        put: operations["keep_item_api_kept__item_id__put"];
+        post?: never;
+        /**
+         * Unkeep Item
+         * @description No longer keep `item_id`. The items kept.
+         */
+        delete: operations["unkeep_item_api_kept__item_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/me": {
         parameters: {
             query?: never;
@@ -1018,6 +1063,59 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * HeldOut
+         * @description Something a character holds, and what to do with it (`service.held_verdict`).
+         */
+        HeldOut: {
+            /** Bound */
+            bound: boolean;
+            /** Count */
+            count: number;
+            /** Item Id */
+            item_id: number;
+            /**
+             * Place
+             * @enum {string}
+             */
+            place: "bags" | "bank";
+            /** Value */
+            value: number;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "vendor" | "auction" | "disenchant" | "keep";
+            /** Why */
+            why: string;
+        };
+        /** HolderOut */
+        HolderOut: {
+            /** Bags At */
+            bags_at: number | null;
+            /** Bank At */
+            bank_at: number | null;
+            /** Class File */
+            class_file: string;
+            /** Held */
+            held: components["schemas"]["HeldOut"][];
+            /** Name */
+            name: string;
+        };
+        /**
+         * Holdings
+         * @description What the selected realm and faction's characters hold, and what to do with it: What I hold.
+         */
+        Holdings: {
+            /** Characters */
+            characters: components["schemas"]["HolderOut"][];
+            /** Items */
+            items: {
+                [key: string]: components["schemas"]["ItemInfo"];
+            };
+            /** Kept */
+            kept: number[];
         };
         /**
          * IngestionOut
@@ -2854,6 +2952,106 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Favorites"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_holdings_api_holdings_get: {
+        parameters: {
+            query: {
+                /** @description which game's data: tbc or forever */
+                game_version: "tbc" | "forever";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Holdings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    keep_item_api_kept__item_id__put: {
+        parameters: {
+            query: {
+                /** @description which game's data: tbc or forever */
+                game_version: "tbc" | "forever";
+            };
+            header?: never;
+            path: {
+                item_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": number[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unkeep_item_api_kept__item_id__delete: {
+        parameters: {
+            query: {
+                /** @description which game's data: tbc or forever */
+                game_version: "tbc" | "forever";
+            };
+            header?: never;
+            path: {
+                item_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": number[];
                 };
             };
             /** @description Validation Error */

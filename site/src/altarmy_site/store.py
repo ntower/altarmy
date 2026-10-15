@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Collection, Iterable, Mapping, Sequence
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -13,7 +13,7 @@ from typing import Any, Literal
 from sqlalchemy import ColumnElement, Connection, Float, case, cast, delete, func, literal, select
 
 from . import db, itemstats, prices, schema, timing, versions
-from .altarmy import Character, Profession
+from .altarmy import Character, Holding, Profession
 from .engine import AH_CUT, MAIL_POSTAGE, DisenchantRow, Item, Market, Recipe
 
 IN_CHUNK = 900  # ids per IN (...) query, under SQLite's bound-parameter limit
@@ -455,13 +455,53 @@ def load_recipe_items(
     }
 
 
-def save_characters(conn: Connection, user_uid: str, game_version: str, chars: Sequence[Character]) -> None:
-    """Replace the user's characters of the version with `chars` (Alt Army's file is the source of truth)."""
+def save_characters(
+    conn: Connection,
+    user_uid: str,
+    game_version: str,
+    chars: Sequence[Character],
+    keep_holdings: bool = False,
+) -> None:
+    """Replace the user's characters of the version with `chars` (Alt Army's file is the source of truth).
+    With `keep_holdings` (an upload that carries none: the export), each keeps the holdings saved for a
+    character of the same realm and name."""
     c = schema.characters
+    kept = load_holdings(conn, user_uid, game_version) if keep_holdings else {}
     # professions and recipes cascade
     conn.execute(delete(c).where(c.c.user_uid == user_uid, c.c.game_version == game_version))
     for ch in chars:
+        old = kept.get((ch.realm, ch.name))
+        if old is not None and not ch.holdings and ch.bags_at is None and ch.bank_at is None:
+            ch = replace(ch, holdings=old.holdings, bags_at=old.bags_at, bank_at=old.bank_at)
         _insert_character(conn, user_uid, game_version, ch)
+
+
+@dataclass(frozen=True)
+class Held:
+    """A character's holdings as saved (see `altarmy.Holding`), and when the addon scanned them."""
+
+    holdings: tuple[Holding, ...]
+    bags_at: int | None
+    bank_at: int | None
+
+
+def load_holdings(conn: Connection, user_uid: str, game_version: str) -> dict[tuple[str, str], Held]:
+    """{(realm, name): Held} of the user's characters of the version. Apart from `load_characters`, which
+    every ranking reads: holdings are only for What I hold."""
+    c, ci = schema.characters, schema.character_items
+    rows = conn.execute(
+        select(c.c.id, c.c.realm, c.c.name, c.c.bags_at, c.c.bank_at).where(
+            c.c.user_uid == user_uid, c.c.game_version == game_version
+        )
+    ).all()
+    held: dict[int, list[Holding]] = {}
+    for r in conn.execute(
+        select(ci)
+        .where(ci.c.character_id.in_([r.id for r in rows]))
+        .order_by(ci.c.character_id, ci.c.item_id, ci.c.place, ci.c.bound)
+    ):
+        held.setdefault(r.character_id, []).append(Holding(r.item_id, r._mapping["count"], r.place, r.bound))
+    return {(r.realm, r.name): Held(tuple(sorted(held.get(r.id, ()))), r.bags_at, r.bank_at) for r in rows}
 
 
 def delete_character(conn: Connection, user_uid: str, game_version: str, realm: str, name: str) -> bool:
@@ -488,9 +528,25 @@ def _insert_character(conn: Connection, user_uid: str, game_version: str, ch: Ch
             faction=ch.faction,
             class_file=ch.class_file,
             level=ch.level,
+            bags_at=ch.bags_at,
+            bank_at=ch.bank_at,
         )
         .returning(c.c.id)
     ).scalar_one()
+    if ch.holdings:
+        conn.execute(
+            schema.character_items.insert(),
+            [
+                {
+                    "character_id": char_id,
+                    "item_id": h.item_id,
+                    "place": h.place,
+                    "bound": h.bound,
+                    "count": h.count,
+                }
+                for h in ch.holdings
+            ],
+        )
     for p in ch.professions:
         conn.execute(
             schema.character_professions.insert().values(
@@ -659,3 +715,34 @@ def buy_prices(conn: Connection, game_version: str, item_ids: Iterable[int]) -> 
         )
         if r.id in wanted
     }
+
+
+def load_kept(conn: Connection, user_uid: str, game_version: str) -> list[tuple[int, str]]:
+    """Items the user keeps (What I hold never says to sell them) as (item id, when added as UTC text),
+    newest first."""
+    t = schema.kept_items
+    rows = conn.execute(
+        select(t.c.item_id, t.c.added_at)
+        .where(t.c.user_uid == user_uid, t.c.game_version == game_version)
+        .order_by(t.c.added_at.desc(), t.c.item_id)
+    )
+    return [(r.item_id, db.timestamp_text(r.added_at) or "") for r in rows]
+
+
+def set_kept(conn: Connection, user_uid: str, game_version: str, item_id: int, kept: bool) -> None:
+    """Keep `item_id` whatever it would sell for, or no longer."""
+    t = schema.kept_items
+    if kept:
+        row = {
+            "user_uid": user_uid,
+            "game_version": game_version,
+            "item_id": item_id,
+            "added_at": db.utcnow(),
+        }
+        db.upsert(conn, t, [row], ["user_uid", "game_version", "item_id"], update=[])
+    else:
+        conn.execute(
+            delete(t).where(
+                t.c.user_uid == user_uid, t.c.game_version == game_version, t.c.item_id == item_id
+            )
+        )

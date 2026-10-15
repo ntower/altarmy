@@ -9,7 +9,7 @@ import { setSearchParam } from '../lib/router'
 import { SearchTab } from './SearchTab'
 
 // The strategy pages, switched on
-vi.mock('../lib/features', () => ({ MAKE_GOLD: true, STRATEGY_PICKER: true, PROCESSING: true, VENDOR_RUNS: true }))
+vi.mock('../lib/features', () => ({ MAKE_GOLD: true, STRATEGY_PICKER: true, PROCESSING: true, VENDOR_RUNS: true, WHAT_I_HOLD: true }))
 
 const at = (path: string) => window.history.replaceState(null, '', path)
 const ranked = (r = robeResult) => ({ results: [r], total: 1, items: {}, classes: {} })
@@ -225,5 +225,38 @@ describe('the strategy pages', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Vendor to auction house (1)' }))
     expect(screen.getByRole('heading', { name: 'The Barrens' })).toBeInTheDocument()
     expect(screen.getByText(/limited, back in 1h/)).toBeInTheDocument()
+  })
+
+  it('says what each character holds and what to do with it, and keeps what is ticked', async () => {
+    at('/profit/gold/held')
+    const fetch = mockApi({
+      '/api/status': status(),
+      '/api/characters': characters,
+      '/api/holdings': {
+        characters: [
+          {
+            name: 'Tailor Guy',
+            class_file: 'MAGE',
+            bags_at: null,
+            bank_at: null,
+            held: [
+              { item_id: 1, count: 20, place: 'bags', bound: false, verdict: 'auction', value: 380, why: '' },
+              { item_id: 2, count: 1, place: 'bank', bound: false, verdict: 'keep', value: 0, why: 'reagent' },
+            ],
+          },
+        ],
+        kept: [],
+        items: { '1': linen },
+      },
+      '/api/kept/1': [1],
+    })
+    renderWithProviders(<SearchTab />)
+    expect(await screen.findByText('Post on the auction house (1)')).toBeInTheDocument()
+    expect(screen.getByText('a reagent of a recipe your characters know')).toBeInTheDocument()
+    expect(screen.getAllByText(/Bags scanned never/)).toHaveLength(1)
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Keep Linen Cloth' }))
+    await waitFor(() =>
+      expect(fetch.mock.calls.some(([r]) => r.method === 'PUT' && new URL(r.url).pathname === '/api/kept/1')).toBe(true),
+    )
   })
 })

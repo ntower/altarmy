@@ -27,7 +27,7 @@ DS.IsWowForever = (GetBuildInfo and select(4, GetBuildInfo()) == 16001) or false
 local DATA_VERSIONS = {
     character = 3,
     guildMembership = 1,
-    containers = 3,
+    containers = 4, -- v4: a soulbound copy's slot says `bound`; bagsScannedAt / bankScannedAt
     equipment = 1,
     gearScores = 1,
     professions = 1,
