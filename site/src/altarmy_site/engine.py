@@ -1538,6 +1538,7 @@ class Market:
         include_trivial: bool = True,
         skill_crafters: frozenset[str] = frozenset(),
         final_crafter: str = "",
+        disenchanter: str = "",
         mail_postage: int = MAIL_POSTAGE,
         sell_prices: dict[int, int] | None = None,
         time: TimeModel | None = None,
@@ -1559,7 +1560,9 @@ class Market:
         is only done by a character it can give a skillup (see `can_skill_up`); sub-crafts may be grey.
         `skill_crafters` names the characters being skilled up: the final craft is then done only by one of
         them, the lowest-skilled in the recipe's profession (sub-crafts still by anyone). A `final_crafter`
-        (the user's pick) does every final craft they can, whatever the other two say, and no other.
+        (the user's pick) does every final craft they can, whatever the other two say, and no other. A
+        `disenchanter` (the user's pick, an enchanter among the crafters) disenchants everything, what others
+        made mailed to them, instead of whoever enchants best.
         `mail_postage` is the copper charged per mail attachment on this game version. Reagents are bought
         at `prices`; crafts and disenchant materials are sold at `sell_prices` (default: `prices`), which
         may be more conservative than the newest listing. With a `time` model every node and result
@@ -1612,6 +1615,7 @@ class Market:
         self.include_trivial = include_trivial
         self.skill_crafters = skill_crafters
         self.final_crafter = final_crafter
+        self.disenchanter = disenchanter
         self.mail_postage = mail_postage
         self.time = time
         self._per_second = time.config.time_value / 3600 if time else 0.0  # copper a second of play is worth
@@ -1758,8 +1762,10 @@ class Market:
         """Who disenchants what `who` crafted and the postage per item to get it to them.
 
         ("", 0) if `who` enchants (or no characters are known), the best other enchanter and
-        `mail_postage` otherwise, None if nobody enchants.
+        `mail_postage` otherwise, None if nobody enchants; with a `disenchanter`, always them.
         """
+        if self.disenchanter and any(c.name == self.disenchanter and c.enchanting for c in self.crafters):
+            return ("", 0) if who == self.disenchanter else (self.disenchanter, self.mail_postage)
         if not self.crafters or any(c.name == who and c.enchanting for c in self.crafters):
             return "", 0
         enchanters = [c for c in self.crafters if c.enchanting]

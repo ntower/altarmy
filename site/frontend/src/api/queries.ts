@@ -158,6 +158,8 @@ export type RankParams = {
   exits: Exit[]
   /** disenchant at an Arcane Salvager: a 10% chance of a second disenchant's materials */
   arcaneSalvager: boolean
+  /** the enchanter who disenchants everything; unset: the best of the characters */
+  disenchanter?: string | undefined
   minCost: number | null
   maxCost: number | null
   minProfit: number | null
@@ -259,6 +261,7 @@ export function useRank(
               skill_crafters: params.skillCrafters.length ? params.skillCrafters : undefined,
               exits: params.exits,
               arcane_salvager: params.arcaneSalvager,
+              disenchanter: params.disenchanter || undefined,
               min_cost: orUndefined(params.minCost),
               max_cost: orUndefined(params.maxCost),
               min_profit: orUndefined(params.minProfit),
@@ -307,6 +310,7 @@ export type EvaluateParams = Pick<
   | 'skillCrafters'
   | 'exits'
   | 'arcaneSalvager'
+  | 'disenchanter'
   | 'climberSkill'
   | 'strategy'
   | 'timeValue'
@@ -329,13 +333,13 @@ export type EvaluationState = { data?: Evaluation; isFetching: boolean; error: E
  * previous evaluation stays in `data`. */
 export function useEvaluations(
   choices: Readonly<Record<number, Choices>>,
-  { unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, runs, gathered, version, climberSkill, strategy }: EvaluateParams,
+  { unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, disenchanter, runs, gathered, version, climberSkill, strategy }: EvaluateParams,
 ): Readonly<Record<number, EvaluationState>> {
   const ids = Object.keys(choices).map(Number)
   const priceVersion = usePriceVersion()
   return useQueries({
     queries: ids.map((id) => ({
-      queryKey: ['evaluate', GAME_VERSION, version, id, unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, runs, gathered, choices[id], climberSkill ?? null, strategy ?? null],
+      queryKey: ['evaluate', GAME_VERSION, version, id, unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, disenchanter ?? null, runs, gathered, choices[id], climberSkill ?? null, strategy ?? null],
       queryFn: () =>
         call(
           client.POST('/api/evaluate', {
@@ -349,6 +353,7 @@ export function useEvaluations(
               skill_crafters: skillCrafters,
               exits,
               arcane_salvager: arcaneSalvager,
+            disenchanter: disenchanter || undefined,
               runs: runs ?? false,
               gathered: gathered ?? [],
               choices: choices[id] ?? {},
@@ -375,7 +380,7 @@ export function useEvaluations(
  * until they move: never stale. */
 function sessionPlanQuery(
   recipeId: number,
-  { unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, runs, gathered, version, chain, climberSkill, strategy, timeValue, minChance, workingOvertime, bartering, masterChef }: EvaluateParams,
+  { unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, disenchanter, runs, gathered, version, chain, climberSkill, strategy, timeValue, minChance, workingOvertime, bartering, masterChef }: EvaluateParams,
   choices: Choices | undefined,
   copies: number | null,
   city: string | null,
@@ -384,7 +389,7 @@ function sessionPlanQuery(
 ) {
   return {
     // under 'evaluate', so whatever re-costs plans (time settings, AH blocks) re-plans sessions too
-    queryKey: ['evaluate', GAME_VERSION, version, recipeId, unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, runs, gathered, choices ?? {}, 'session', copies, city, crafter, chain ?? null, climberSkill ?? null, strategy ?? null, strategy === 'custom' ? [timeValue ?? null, minChance ?? null] : null, workingOvertime ?? null, bartering ?? null, masterChef ?? null],
+    queryKey: ['evaluate', GAME_VERSION, version, recipeId, unlearned, lookAhead, sources, includeTrivial, skillCrafters, exits, arcaneSalvager, disenchanter ?? null, runs, gathered, choices ?? {}, 'session', copies, city, crafter, chain ?? null, climberSkill ?? null, strategy ?? null, strategy === 'custom' ? [timeValue ?? null, minChance ?? null] : null, workingOvertime ?? null, bartering ?? null, masterChef ?? null],
     queryFn: () =>
       call(
         client.POST('/api/evaluate', {
@@ -398,6 +403,7 @@ function sessionPlanQuery(
             skill_crafters: skillCrafters,
             exits,
             arcane_salvager: arcaneSalvager,
+            disenchanter: disenchanter || undefined,
             runs: runs ?? false,
             gathered: gathered ?? [],
             choices: choices ?? {},

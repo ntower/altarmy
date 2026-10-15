@@ -575,6 +575,7 @@ class EvaluateRequest(BaseModel):
     crafter: str | None = None  # who does the final craft (default: as /api/rank picks)
     exits: list[ExitKind] = list(ALL_EXIT_KINDS)
     arcane_salvager: bool = False  # as /api/rank's
+    disenchanter: str | None = None  # as /api/rank's
     # tree path ("r.0", "r.0.1"; "sell" for the exit) -> option key (or exit kind); unknown keys are ignored
     choices: dict[str, str]
     # that many crafts at once; None: the user's batch, as ranked (or the run, with `runs`)
@@ -1195,6 +1196,12 @@ def get_rank(
             description="disenchant at an Arcane Salvager: a 10% chance of a second disenchant's materials"
         ),
     ] = False,
+    disenchanter: Annotated[
+        str | None,
+        Query(
+            description="the enchanter (one of the characters) who disenchants everything (default: the best)"
+        ),
+    ] = None,
     min_cost: Annotated[int | None, Query(description="copper")] = None,
     max_cost: Annotated[int | None, Query(description="copper")] = None,
     min_profit: Annotated[int | None, Query(description="copper")] = None,
@@ -1344,6 +1351,7 @@ def get_rank(
     chars = _trained_up(state, chars, skilled, skill_name, runs)
     gather = service.gather_values(base, gathered) if gathered else None
     climb_costs = _climb_learn_costs(state, s, skill_name, skilled) if run is not None else None
+    enchanter = _disenchanter(chars, disenchanter)
 
     def key_of(learning: engine.Learning, run: engine.SkillRuns | None) -> tuple[Hashable, ...]:
         return (
@@ -1359,6 +1367,7 @@ def get_rank(
             arcane_salvager,
             no_ah,
             s.time.key,
+            enchanter,
         )
 
     key = key_of(learning, run)
@@ -1381,6 +1390,7 @@ def get_rank(
             skill_run=run,
             gathered=gather,
             learn_costs=climb_costs,
+            disenchanter=enchanter,
         ),
     )
     if sort in ("rate", "skill"):
@@ -1530,6 +1540,16 @@ def get_rank(
         strategies=strategies_out,
         watched_hours=s.watched,
     )
+
+
+def _disenchanter(chars: Sequence[altarmy.Character], name: str | None) -> str:
+    """The enchanter the user picked to disenchant everything ("" for the best, as the engine picks); 400
+    for a name that is no enchanter among the characters."""
+    if not name:
+        return ""
+    if not any(c.name == name and c.enchanting for c in service.as_crafters(chars)):
+        raise HTTPException(400, f"{name} is not one of the selected characters who enchant.")
+    return name
 
 
 def _strategy(
@@ -1698,6 +1718,7 @@ def evaluate(state: State, user: CurrentUser, body: EvaluateRequest) -> Evaluate
         ),
         stretch=stretch,
         scope=body.runs and bool(skilled),  # a skill climb's run, planned as /api/rank plans it
+        disenchanter=_disenchanter(chars, body.disenchanter),
     )
     if r is None:
         raise HTTPException(404, "These characters can't craft and sell that recipe.")

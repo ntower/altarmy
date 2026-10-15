@@ -239,6 +239,30 @@ def test_rank_and_evaluate_count_the_arcane_salvager(client: TestClient, priced:
     assert value() == value(arcane_salvager=False) == 19  # not the cached ranking with the salvager
 
 
+def test_rank_and_evaluate_disenchant_with_the_chosen_enchanter(
+    client: TestClient, priced: Connection
+) -> None:
+    add_disenchant(priced, 1.0, 100, 100)  # robe -> 100 linen: disenchanting pays
+    weak = Character(
+        "Classic Beta PvE", "Weak", "Horde", "MAGE", 10, (Profession("Enchanting", 5, 75, frozenset()),)
+    )
+    with_enchanter(priced)
+    store.save_characters(priced, ME, FOREVER, [*store.load_characters(priced, ME, FOREVER), weak])
+
+    def mailed_to(**params: str) -> str:
+        r = next(
+            e for e in client.get("/api/rank", params=params).json()["results"] if e["recipe"] == "Green Robe"
+        )
+        body = {"recipe_id": r["recipe_id"], "choices": {}, **params}
+        got = client.post("/api/evaluate", json=body).json()["result"]
+        assert got["mail_to"] == r["mail_to"]
+        return str(r["mail_to"])
+
+    assert mailed_to() == "Enchy"  # the best
+    assert mailed_to(disenchanter="Weak") == "Weak"  # not the cached ranking with the best
+    assert client.get("/api/rank", params={"disenchanter": "Nobody"}).status_code == 400
+
+
 def test_characters_say_whether_anyone_can_make_an_arcane_salvager(
     client: TestClient, conn: Connection
 ) -> None:

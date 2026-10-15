@@ -23,6 +23,11 @@ vi.mock('./ResultsTable', async (importOriginal) => {
 afterEach(() => {
   table.stub = false
 })
+// These are the one gold list's tests: the strategy pages have their own (StrategyPages.test.tsx).
+vi.mock('../lib/features', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/features')>()),
+  STRATEGY_PICKER: false,
+}))
 
 const noResults = { results: [], total: 0, items: {}, classes: {} }
 

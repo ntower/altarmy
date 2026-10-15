@@ -60,6 +60,7 @@ def make_market(
     reputation_discounts: dict[int, int] | None = None,
     sell_depth: dict[int, int] | None = None,
     ah_open: frozenset[int] | None = None,
+    disenchanter: str = "",
 ) -> Market:
     items = {
         LINEN: Item(LINEN, "Linen Cloth"),
@@ -89,6 +90,7 @@ def make_market(
         reputation_discounts=reputation_discounts,
         sell_depth=sell_depth,
         ah_open=ah_open,
+        disenchanter=disenchanter,
     )
 
 
@@ -628,6 +630,25 @@ def test_disenchant_mails_to_the_best_enchanter() -> None:
     assert [s.action for s in res.steps] == ["buy", "buy", "craft", "mail", "sell"]
     assert res.steps[3] == Step("mail", GREEN, "Green Robe", 1, -MAIL_POSTAGE, via="Zed", who="Tailor")
     assert res.steps[3].paths == ("r",)  # the output's mail belongs to the recipe's craft
+
+
+def test_disenchant_goes_to_the_chosen_enchanter() -> None:
+    low = crafter("Aaron", ("Enchanting", 10))
+    high = crafter("Zed", ("Enchanting", 90))
+    both = crafter("Both", ("Enchanting", 10), ("Tailoring", 50), known=frozenset({900}))
+    picked = make_market(
+        DE_PRICES, [ROBE], disenchant=DE_ROWS, crafters=[TAILOR, low, high], disenchanter="Aaron"
+    )
+    assert (must_evaluate(picked, ROBE).mail_to, must_evaluate(picked, ROBE).postage) == (
+        "Aaron",
+        MAIL_POSTAGE,
+    )
+    # even past a crafter who enchants: the chosen one disenchants everything
+    mailed = make_market(DE_PRICES, [ROBE], disenchant=DE_ROWS, crafters=[both, low], disenchanter="Aaron")
+    assert must_evaluate(mailed, ROBE).mail_to == "Aaron"
+    # and their own crafts cost no postage
+    own = make_market(DE_PRICES, [ROBE], disenchant=DE_ROWS, crafters=[both, low], disenchanter="Both")
+    assert (must_evaluate(own, ROBE).mail_to, must_evaluate(own, ROBE).postage) == ("", 0)
 
 
 def test_disenchant_ties_between_enchanters_go_to_the_first_name() -> None:

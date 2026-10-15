@@ -305,6 +305,8 @@ def search(
     skill_run: SkillRuns | None = None,
     gathered: Mapping[int, int] | None = None,
     learn_costs: Mapping[int, float | None] | None = None,
+    disenchanter: str = "",
+    only: frozenset[int] | None = None,
 ) -> list[Result]:
     """Rank what the characters can craft, selling only via `exits` (never items in `no_ah` on the AH),
     and keep what `filters` accepts. Chains sub-craft through any of their recipes too. Most profitable
@@ -324,7 +326,9 @@ def search(
     batch: the first run of the cheapest climb up the profession that starts with it (`engine.Climb`, over
     the recipes they can craft now and those they can learn on the way: `later_recipes`; `learn_costs` is
     what learning each costs the climber, by recipe id). `gathered` items (with what a unit is worth:
-    `gather_values`) may be gathered instead of bought.
+    `gather_values`) may be gathered instead of bought. A `disenchanter` (an enchanter among the characters)
+    disenchants everything (see `Market`). With `only`, only the recipes with those ids are ranked (Process
+    trade goods: `processing`), though chains still sub-craft through any.
     """
     crafts = 1
     if time is not None:
@@ -363,13 +367,18 @@ def search(
             later,
             learn_costs,
             scope=skill_name if skill_run is not None else None,
+            disenchanter=disenchanter,
         )
         for model in models
     ]
-    ranked = markets[0].rank(min_profit=min_profit, crafts=crafts, skill_name=skill_name, skill_run=skill_run)
+    ranked = markets[0].rank(
+        min_profit=min_profit, crafts=crafts, skill_name=skill_name, only=only, skill_run=skill_run
+    )
     if time is not None and len(markets) > 1:
         # Only recipes that can involve an item the cities price differently are planned in the others too.
         affected = recipes_using(markets[0].recipes, differ)
+        if only is not None:
+            affected &= only
         others = [
             m.rank(
                 min_profit=min_profit,
@@ -420,6 +429,7 @@ def evaluate(
     learn_costs: Mapping[int, float | None] | None = None,
     stretch: SkillRun | None = None,
     scope: bool = False,
+    disenchanter: str = "",
 ) -> Result | None:
     """One recipe with the user's `choices` of sources and exit, for `crafts` crafts at once (timed by a
     `session_model`: with `time`'s batch as `crafts` and no city, as `search` ranks it), or as a useful run
@@ -464,6 +474,7 @@ def evaluate(
             later,
             learn_costs,
             scope=recipe_skill if scoped else None,
+            disenchanter=disenchanter,
         ),
     )
     return _evaluate_in(markets, differ, time, recipe_id, choices, crafts, skill_run, stretch)
@@ -753,6 +764,7 @@ def _market(
     later: Sequence[Candidate] = (),
     learn_costs: Mapping[int, float | None] | None = None,
     scope: str | None = None,
+    disenchanter: str = "",
 ) -> Market:
     """`base` narrowed to what the characters can craft (see `search`), with them as the crafters. Without
     characters every recipe counts, crafted by one unnamed character (so nothing is mailed). With a `scope`
@@ -774,6 +786,7 @@ def _market(
         include_trivial=include_trivial,
         skill_crafters=skill_crafters,
         final_crafter=crafter,
+        disenchanter=disenchanter,
         mail_postage=base.mail_postage,
         sell_prices=base.sell_prices,
         time=time,

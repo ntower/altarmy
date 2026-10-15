@@ -720,6 +720,17 @@
             ],
             "title": "Crafter"
           },
+          "disenchanter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disenchanter"
+          },
           "exits": {
             "default": [
               "vendor",
@@ -5051,6 +5062,24 @@
               "description": "disenchant at an Arcane Salvager: a 10% chance of a second disenchant's materials",
               "title": "Arcane Salvager",
               "type": "boolean"
+            }
+          },
+          {
+            "description": "the enchanter (one of the characters) who disenchants everything (default: the best)",
+            "in": "query",
+            "name": "disenchanter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the enchanter (one of the characters) who disenchants everything (default: the best)",
+              "title": "Disenchanter"
             }
           },
           {

@@ -780,6 +780,8 @@ export interface components {
             copies?: number | null;
             /** Crafter */
             crafter?: string | null;
+            /** Disenchanter */
+            disenchanter?: string | null;
             /**
              * Exits
              * @default [
@@ -2752,6 +2754,8 @@ export interface operations {
                 exits?: ("vendor" | "ah" | "disenchant" | "skill" | "keep")[];
                 /** @description disenchant at an Arcane Salvager: a 10% chance of a second disenchant's materials */
                 arcane_salvager?: boolean;
+                /** @description the enchanter (one of the characters) who disenchants everything (default: the best) */
+                disenchanter?: string | null;
                 /** @description copper */
                 min_cost?: number | null;
                 /** @description copper */

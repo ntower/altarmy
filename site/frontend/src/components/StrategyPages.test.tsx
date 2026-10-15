@@ -2,7 +2,7 @@ import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { robeResult } from '../test/results'
-import { characters, status } from '../test/status'
+import { characters, status, withEnchanter } from '../test/status'
 import { mockApi, renderWithProviders } from '../test/utils'
 import { setSearchParam } from '../lib/router'
 import { SearchTab } from './SearchTab'
@@ -51,6 +51,55 @@ describe('the strategy pages', () => {
     expect(window.location.search).toBe('?exit=disenchant')
     act(() => setSearchParam('exit', null)) // back: All again, from the ranking already fetched
     await waitFor(() => expect(screen.getByRole('radio', { name: 'All' })).toBeChecked())
+  })
+
+  it("keeps its own filters, starting from the gold list's", async () => {
+    localStorage.setItem('altarmy.search.gold.minProfit', JSON.stringify(5))
+    at('/profit/gold/craft')
+    const fetch = mockApi({ '/api/status': status(), '/api/characters': characters, '/api/rank': ranked() })
+    const { unmount } = renderWithProviders(<SearchTab />)
+    await waitFor(() => expect(rankParams(fetch)?.get('min_profit')).toBe('50000'))
+    unmount()
+    localStorage.setItem('altarmy.search.craft.minProfit', JSON.stringify(1))
+    renderWithProviders(<SearchTab />)
+    await waitFor(() => expect(rankParams(fetch)?.get('min_profit')).toBe('10000'))
+    expect(localStorage.getItem('altarmy.search.gold.minProfit')).toBe('5')
+    localStorage.clear()
+  })
+
+  it('asks who disenchants when several characters can, and sends the pick', async () => {
+    const two = {
+      ...withEnchanter,
+      groups: withEnchanter.groups.map((g, i) =>
+        i === 0
+          ? {
+              ...g,
+              characters: [
+                ...g.characters,
+                {
+                  name: 'Weak',
+                  class_file: 'MAGE',
+                  level: 10,
+                  professions: [{ name: 'Enchanting', rank: 5, max_rank: 75, recipes: 0 }],
+                  talents: [],
+                  vendor_discounts: [],
+                },
+              ],
+            }
+          : g,
+      ),
+    }
+    at('/profit/gold/craft?exit=disenchant')
+    const fetch = mockApi({ '/api/status': status(), '/api/characters': two, '/api/rank': ranked() })
+    renderWithProviders(<SearchTab />)
+    const select = await screen.findByRole('combobox', { name: 'Disenchanted by' })
+    expect(select).toHaveValue('Enchy (Enchanting 60)') // the best
+    expect(rankParams(fetch)?.get('disenchanter')).toBeNull()
+    await userEvent.click(select)
+    await userEvent.click(await screen.findByRole('option', { name: 'Weak (Enchanting 5)' }))
+    await waitFor(() => expect(rankParams(fetch)?.get('disenchanter')).toBe('Weak'))
+    expect(localStorage.getItem('altarmy.search.craft.disenchanter')).toBe('"Weak"')
+    localStorage.clear()
   })
 
   it('folds every group but what pays', async () => {

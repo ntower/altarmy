@@ -8,6 +8,7 @@ import {
   Loader,
   NumberInput,
   SegmentedControl,
+  Select,
   SimpleGrid,
   Stack,
   Text,
@@ -27,12 +28,12 @@ import {
 import { goldToCopper } from '../lib/money'
 import {
   ALL_EXITS,
-  type Aim,
   legacySearchKey,
   type ProfessionChoice,
   rankProfessions,
   rankSort,
   searchKey,
+  type SearchScope,
   type Setup as SetupAnswers,
   SKILL_EXITS,
   skillCrafters,
@@ -235,9 +236,13 @@ function Range({ name, min, max, onMin, onMax, step }: RangeProps) {
   )
 }
 
-/** A filter of the aim's search: kept under the aim's own key, starting from where every filter used to be kept. */
-function useFilter<T>(aim: Aim, name: string, schema: z.ZodType<T>, defaultValue: T) {
-  return useStoredState(searchKey(aim, name), schema, defaultValue, legacySearchKey(name))
+/**
+ * A filter of the search: kept under the aim's own key, or a gold strategy's (`altarmy.search.craft.*`), starting from
+ * where it was kept before: the gold list's for a strategy, else where every filter used to be kept.
+ */
+function useFilter<T>(scope: SearchScope, name: string, schema: z.ZodType<T>, defaultValue: T) {
+  const legacy = scope === 'gold' || scope === 'skill' ? legacySearchKey(name) : searchKey('gold', name)
+  return useStoredState(searchKey(scope, name), schema, defaultValue, legacy)
 }
 
 
@@ -284,24 +289,36 @@ export function AimSearch({
   const skill = aim === 'skill'
   const craft = !skill && strategy === 'craft'
   const sellVia = parseSellVia(useSearchParam('exit'))
+  const scope: SearchScope = !skill && strategy ? strategy : aim
   // Stored as strings: sections that no longer exist (the old Characters and Time assumptions ones) are dropped,
   // not an error.
-  const [stored, setOpen] = useFilter(aim, 'open', z.array(z.string()), NONE_OPEN)
+  const [stored, setOpen] = useFilter(scope, 'open', z.array(z.string()), NONE_OPEN)
   const open = SECTIONS.filter((s) => stored.includes(s))
   // null until the user ticks or unticks it: then it follows whether any character can make an Arcane Salvager.
-  const [salvagerPick, setSalvagerPick] = useFilter<boolean | null>(aim, 'arcaneSalvager', z.boolean().nullable(), null)
+  const [salvagerPick, setSalvagerPick] = useFilter<boolean | null>(scope, 'arcaneSalvager', z.boolean().nullable(), null)
   const arcaneSalvager = SHOW_ARCANE_SALVAGER && (salvagerPick ?? salvagerDefault)
+  // Craft and sell's Disenchant: who disenchants, when several characters can (the best by default).
+  const enchanters = useMemo(
+    () =>
+      [...(professions.find((p) => p.name.toLowerCase() === 'enchanting')?.holders ?? [])].sort(
+        (a, b) => b.rank - a.rank || a.name.localeCompare(b.name),
+      ),
+    [professions],
+  )
+  const [enchanterPick, setEnchanterPick] = useFilter<string | null>(scope, 'disenchanter', z.string().nullable(), null)
+  const disenchanter =
+    craft && sellVia === 'disenchant' ? enchanters.find((e) => e.name === enchanterPick)?.name : undefined
   // Money in gold and ROI in percent, as typed; converted for the API below.
-  const [minCost, setMinCost] = useFilter(aim, 'minCost', bound, 0)
-  const [maxCost, setMaxCost] = useFilter(aim, 'maxCost', bound, null)
+  const [minCost, setMinCost] = useFilter(scope, 'minCost', bound, 0)
+  const [maxCost, setMaxCost] = useFilter(scope, 'maxCost', bound, null)
   // 1 copper: only profitable recipes by default.
-  const [minProfit, setMinProfit] = useFilter(aim, 'minProfit', bound, 0.0001)
-  const [maxProfit, setMaxProfit] = useFilter(aim, 'maxProfit', bound, null)
-  const [minRoi, setMinRoi] = useFilter(aim, 'minRoi', bound, 0)
-  const [maxRoi, setMaxRoi] = useFilter(aim, 'maxRoi', bound, null)
-  const [goldSort, setGoldSort] = useFilter<RankSort>(aim, 'sort', goldSortSchema, 'likely')
-  const [goldOrder, setGoldOrder] = useFilter<SortOrder>(aim, 'order', sortOrderSchema, 'desc')
-  const [learnable, setLearnable] = useFilter(aim, 'learnable', z.boolean(), false)
+  const [minProfit, setMinProfit] = useFilter(scope, 'minProfit', bound, 0.0001)
+  const [maxProfit, setMaxProfit] = useFilter(scope, 'maxProfit', bound, null)
+  const [minRoi, setMinRoi] = useFilter(scope, 'minRoi', bound, 0)
+  const [maxRoi, setMaxRoi] = useFilter(scope, 'maxRoi', bound, null)
+  const [goldSort, setGoldSort] = useFilter<RankSort>(scope, 'sort', goldSortSchema, 'likely')
+  const [goldOrder, setGoldOrder] = useFilter<SortOrder>(scope, 'order', sortOrderSchema, 'desc')
+  const [learnable, setLearnable] = useFilter(scope, 'learnable', z.boolean(), false)
   // By value, not the stored object: a new but equal setup must not count as new filters (that resets paging).
   const sort = skill ? rankSort(setup) : goldSort
   const [profession = null] = rankProfessions(setup)
@@ -351,6 +368,7 @@ export function AimSearch({
             exits: craft ? sellViaExits(sellVia) : [...ALL_EXITS],
             ...(craft ? { kinds: sellViaKinds(sellVia) } : {}),
             arcaneSalvager,
+            ...(disenchanter ? { disenchanter } : {}),
             minCost: scaled(minCost, goldToCopper),
             maxCost: scaled(maxCost, goldToCopper),
             minProfit: scaled(minProfit, goldToCopper),
@@ -379,6 +397,7 @@ export function AimSearch({
       goldOrder,
       craft,
       sellVia,
+      disenchanter,
       profession,
       skilled,
       climberSkill,
@@ -414,6 +433,17 @@ export function AimSearch({
             onChange={(v) => setSearchParam('exit', v === 'all' ? null : v)}
             data={SELL_VIA.map((v) => ({ value: v, label: SELL_VIA_LABELS[v] }))}
           />
+          {sellVia === 'disenchant' && enchanters.length > 1 && (
+            <Select
+              size="xs"
+              aria-label="Disenchanted by"
+              w={200}
+              allowDeselect={false}
+              value={disenchanter ?? enchanters[0]!.name}
+              onChange={(v) => setEnchanterPick(v)}
+              data={enchanters.map((e) => ({ value: e.name, label: `${e.name} (Enchanting ${e.rank})` }))}
+            />
+          )}
         </Group>
       )}
       {!skill && (
