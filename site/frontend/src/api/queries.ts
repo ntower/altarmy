@@ -541,6 +541,15 @@ export function useAdminIngestion(enabled: boolean) {
   })
 }
 
+/** Vendor prices that look wrong (admins): listings that sit under them, prices the newest build moved, overrides. */
+export function useVendorSuspects(enabled: boolean) {
+  return useQuery({
+    queryKey: ['admin-vendor-suspects', GAME_VERSION],
+    queryFn: () => call(client.GET('/api/admin/vendor-suspects', GV)),
+    enabled,
+  })
+}
+
 /** Start the game data ingest now (admins): the newest build, unless it is loaded already. */
 export function useRunIngest() {
   const queryClient = useQueryClient()

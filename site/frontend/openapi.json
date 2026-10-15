@@ -1451,6 +1451,14 @@
             ],
             "title": "Subclass Name"
           },
+          "turn_ins": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/TurnInOut"
+            },
+            "title": "Turn Ins",
+            "type": "array"
+          },
           "vendor_price": {
             "anyOf": [
               {
@@ -1772,6 +1780,44 @@
         "title": "LevelOut",
         "type": "object"
       },
+      "ListedUnderOut": {
+        "properties": {
+          "cheapest": {
+            "title": "Cheapest",
+            "type": "integer"
+          },
+          "houses": {
+            "title": "Houses",
+            "type": "integer"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "units": {
+            "title": "Units",
+            "type": "integer"
+          },
+          "vendor": {
+            "title": "Vendor",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item_id",
+          "name",
+          "vendor",
+          "cheapest",
+          "units",
+          "houses"
+        ],
+        "title": "ListedUnderOut",
+        "type": "object"
+      },
       "LocationOut": {
         "properties": {
           "id": {
@@ -1943,6 +1989,39 @@
         "title": "MilestoneOut",
         "type": "object"
       },
+      "MovedOut": {
+        "properties": {
+          "after": {
+            "title": "After",
+            "type": "integer"
+          },
+          "before": {
+            "title": "Before",
+            "type": "integer"
+          },
+          "build": {
+            "title": "Build",
+            "type": "string"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "name",
+          "build",
+          "before",
+          "after"
+        ],
+        "title": "MovedOut",
+        "type": "object"
+      },
       "NodeOut": {
         "description": "One item in a craft's reagent tree: bought (no inputs) or crafted from its inputs, possibly by\nanother character who then mails it on.",
         "properties": {
@@ -2110,6 +2189,29 @@
           "crafter"
         ],
         "title": "OptionOut",
+        "type": "object"
+      },
+      "OverriddenOut": {
+        "properties": {
+          "item_id": {
+            "title": "Item Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "vendor": {
+            "title": "Vendor",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item_id",
+          "name",
+          "vendor"
+        ],
+        "title": "OverriddenOut",
         "type": "object"
       },
       "PasteRequest": {
@@ -3435,6 +3537,33 @@
         "title": "TimingOut",
         "type": "object"
       },
+      "TurnInOut": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "crate",
+              "writ"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "count"
+        ],
+        "title": "TurnInOut",
+        "type": "object"
+      },
       "UploadOut": {
         "properties": {
           "detail": {
@@ -3790,6 +3919,39 @@
         "title": "VendorDiscountOut",
         "type": "object"
       },
+      "VendorSuspectsOut": {
+        "description": "Vendor prices that look wrong (`suspects.vendor_suspects`): listings that sit under what a vendor pays,\nprices the newest build moved, and the overrides in force.",
+        "properties": {
+          "listed_under": {
+            "items": {
+              "$ref": "#/components/schemas/ListedUnderOut"
+            },
+            "title": "Listed Under",
+            "type": "array"
+          },
+          "moved": {
+            "items": {
+              "$ref": "#/components/schemas/MovedOut"
+            },
+            "title": "Moved",
+            "type": "array"
+          },
+          "overridden": {
+            "items": {
+              "$ref": "#/components/schemas/OverriddenOut"
+            },
+            "title": "Overridden",
+            "type": "array"
+          }
+        },
+        "required": [
+          "listed_under",
+          "moved",
+          "overridden"
+        ],
+        "title": "VendorSuspectsOut",
+        "type": "object"
+      },
       "VersionOut": {
         "description": "A game version the app serves; pass its `key` as `game_version` to the other routes.",
         "properties": {
@@ -3978,6 +4140,57 @@
           }
         ],
         "summary": "Run Ingest Job"
+      }
+    },
+    "/api/admin/vendor-suspects": {
+      "get": {
+        "description": "The version's vendor price suspects, to check in game (admins).",
+        "operationId": "get_admin_vendor_suspects_api_admin_vendor_suspects_get",
+        "parameters": [
+          {
+            "description": "which game's data: tbc or forever",
+            "in": "query",
+            "name": "game_version",
+            "required": true,
+            "schema": {
+              "description": "which game's data: tbc or forever",
+              "enum": [
+                "tbc",
+                "forever"
+              ],
+              "title": "Game Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VendorSuspectsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Admin Vendor Suspects"
       }
     },
     "/api/ah-blocked": {

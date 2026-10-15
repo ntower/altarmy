@@ -26,6 +26,7 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    false,
     true,
 )
 
@@ -119,6 +120,8 @@ items = Table(
     Column("effects", Text, nullable=False, default="[]", server_default="[]"),  # JSON [{trigger, text}]
     # False when ItemSparse flags it NO_DISENCHANT (Enchanting's wands, PvP rank gear); true in old databases
     Column("disenchantable", Boolean, nullable=False, default=True, server_default=true()),
+    # its sell_price (and maybe buy_price) is a hand-written override of DB2's (`ingest.vendor_overrides`)
+    Column("sell_price_overridden", Boolean, nullable=False, default=False, server_default=false()),
     Index(None, "game_version", "name"),
 )
 
@@ -389,6 +392,19 @@ api_keys = Table(
 )
 
 # --- prices ----------------------------------------------------------------------------------------
+# What a vendor paid and charged for an item in each build loaded, a row where either moved (`ingest`):
+# the Admin page's vendor price suspects compare snapshots with the price in force when they were taken.
+vendor_price_history = Table(
+    "vendor_price_history",
+    metadata,
+    _version(),
+    Column("item_id", Integer, primary_key=True, autoincrement=False),
+    Column("build", String(32), primary_key=True),
+    Column("loaded_at", DateTime(timezone=True), nullable=False),
+    Column("sell_price", Integer, nullable=False),
+    Column("buy_price", Integer, nullable=False),
+)
+
 # One auction house per (version, realm, faction); faction "" is an auction house both factions share.
 auction_houses = Table(
     "auction_houses",

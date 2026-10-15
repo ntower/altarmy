@@ -36,6 +36,7 @@ export function makeItem(overrides: Partial<ItemInfo> & Pick<ItemInfo, 'id' | 'n
     listed: null,
     seen_at: null,
     stack_size: 1,
+    turn_ins: [],
     ...overrides,
   }
 }

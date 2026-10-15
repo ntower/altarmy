@@ -6,9 +6,9 @@ What the site assumes until someone checks it in game, and where the answer goes
 ## Before the beta ends
 
 - [ ] **Disenchant rows.** Disenchant about 20 items whose item level and required level fall in different
-  brackets (Hillman's Shoulders among them). Which level picks the row? Fix `data/forever/disenchant.csv`
-  (weapon greens at item level 21–30 give astral essences in vanilla) and set `disenchant_verified` in
-  `versions.py` once it matches.
+  brackets (Hillman's Shoulders among them). Which level picks the row? Fix `data/forever/disenchant.csv` if
+  needed (its green weapons at item level 21–30 give Greater Magic Essence, as Forever's own drop data has it,
+  not vanilla's astral essences: worth a look too) and set `disenchant_verified` in `versions.py` once it matches.
 - [ ] **Disenchant skill.** Can a skill-1 enchanter disenchant a high item-level green? DB2's ItemDisenchantLoot
   says no skill is needed (`docs/SKILL_UP_RESEARCH.md`); vanilla asked for one by item level.
 - [ ] **Wands.** What a vendor pays for Lesser and Greater Magic Wand on the current build (DB2 has moved

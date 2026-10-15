@@ -39,12 +39,12 @@ const items: ItemMap = {
   '3': { ...robe, ah_price: 950, ah_sell_price: 950, ah_quantity: 12, ah_levels: [level(940, 4), level(990, 8)] },
 }
 
-function Harness({ result }: { result: RankResult }) {
+function Harness({ result, shown = items }: { result: RankResult; shown?: ItemMap }) {
   const market = useMarket(result, 'gold', () => {})
   return (
     <MarketSection
       result={result}
-      items={items}
+      items={shown}
       list={market.list}
       selected={market.selected}
       onSelect={market.select}
@@ -74,6 +74,25 @@ describe('MarketSection', () => {
     expect(screen.getByText(/above the usual/)).toHaveTextContent(/about 16% above the usual 2 50/)
     await userEvent.click(tile(/^Coarse Thread/))
     expect(screen.getByText(/^Bought from a vendor/)).toBeInTheDocument()
+  })
+
+  it('says which crates and writs take the item', async () => {
+    mockApi({})
+    const turnIns: ItemMap = {
+      ...items,
+      '1': {
+        ...items['1']!,
+        turn_ins: [
+          { kind: 'crate', name: 'Waylaid Crate: Apprentice Cloth', count: 20 },
+          { kind: 'writ', name: "Craftsman's Writ: Linen Robe", count: 1 },
+        ],
+      },
+    }
+    renderWithProviders(<Harness result={posted} shown={turnIns} />)
+    await userEvent.click(tile(/Linen/))
+    expect(
+      screen.getByText(/Turn-ins: Waylaid Crate: Apprentice Cloth takes 20 · Craftsman's Writ: Linen Robe takes 1 \(assumed\)/),
+    ).toBeInTheDocument()
   })
 
   it('shows the order book a click away: what a reagent buys of each level', async () => {

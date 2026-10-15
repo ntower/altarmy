@@ -608,6 +608,15 @@ export function MarketSection({
     <Stack gap="sm">
       <RecipeStrip result={result} list={list} items={items} selected={selected} onSelect={onSelect} />
       <Headline m={m} result={result} items={items} />
+      {item && item.turn_ins.length > 0 && (
+        <Text size="sm" c="dimmed">
+          Turn-ins:{' '}
+          {item.turn_ins
+            .map((t) => (t.kind === 'writ' ? `${t.name} takes ${t.count} (assumed)` : `${t.name} takes ${t.count}`))
+            .join(' · ')}
+          . Their demand can't be told apart from other buyers'.
+        </Text>
+      )}
       <Group gap="md">
         {hasBook && (
           <Disclosure open={book} onToggle={() => setBook(!book)}>

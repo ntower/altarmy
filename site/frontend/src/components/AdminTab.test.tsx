@@ -152,6 +152,24 @@ describe('AdminTab', () => {
     expect(screen.queryByRole('button', { name: 'Run now' })).not.toBeInTheDocument()
   })
 
+  it('lists the vendor prices to check in game', async () => {
+    mockApi({
+      '/api/admin/ingestion': ingestion,
+      '/api/admin/vendor-suspects': {
+        listed_under: [{ item_id: 3, name: 'Green Robe', vendor: 500, cheapest: 300, units: 2, houses: 4 }],
+        moved: [{ item_id: 11287, name: 'Lesser Magic Wand', build: '1.60.2', before: 110, after: 1 }],
+        overridden: [{ item_id: 11288, name: 'Greater Magic Wand', vendor: 200 }],
+      },
+    })
+    renderWithProviders(<AdminTab />)
+    const under = await screen.findByRole('table', { name: 'Listed under what a vendor pays' })
+    expect(within(under).getByText('Green Robe')).toBeInTheDocument()
+    expect(within(under).getByText('4')).toBeInTheDocument()
+    const moved = screen.getByRole('table', { name: 'Moved by the newest build' })
+    expect(within(moved).getByText('Lesser Magic Wand')).toBeInTheDocument()
+    expect(screen.getByText('Overridden: Greater Magic Wand')).toBeInTheDocument()
+  })
+
   it('says what went wrong', async () => {
     mockApi({})
     renderWithProviders(<AdminTab />)

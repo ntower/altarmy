@@ -1792,6 +1792,7 @@ def update_game_data(
         version.vendor_recipes_csv,
         version.sources_csv,
         version.trainer_costs_csv,
+        version.vendor_overrides_csv,
     )
     return build, True, stats
 

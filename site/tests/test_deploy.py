@@ -33,6 +33,7 @@ def test_deploy_skips_ingest_only_when_nothing_the_fingerprint_reads_changed() -
             version.vendor_recipes_csv,
             version.sources_csv,
             version.trainer_costs_csv,
+            version.vendor_overrides_csv,
         ):
             assert _covered(SITE / csv, patterns), csv
     assert _covered(SITE / gamedata.PINS, patterns)

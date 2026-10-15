@@ -143,6 +143,11 @@ class GameVersion:
         return self.data_dir / "recipe_item_sources.csv"
 
     @property
+    def vendor_overrides_csv(self) -> Path:
+        """What vendors really pay or charge where the build's DB2 is wrong (written by hand: `ingest`)."""
+        return self.data_dir / "vendor_overrides.csv"
+
+    @property
     def trainer_costs_csv(self) -> Path:
         """What trainers charge to teach each spell (Forever: `vmangos.trainer_costs`)."""
         return self.data_dir / "trainer_costs.csv"

@@ -320,6 +320,7 @@ def test_rank_sends_reagents_and_item_details(client: TestClient, priced: Connec
         "listed": None,
         "seen_at": None,
         "stack_size": 1,
+        "turn_ins": [],
     }
 
 
@@ -2373,3 +2374,16 @@ def test_a_recipe_the_climb_took_up_before_is_not_learned_again() -> None:
     api._learned_on_the_way(1, [belt, pants, again, first_again])
     assert [(r.learn_cost, r.crafters) for r in (belt, pants)] == [(2000, []), (2000, [])]  # new to the climb
     assert [(r.learn_cost, r.crafters) for r in (again, first_again)] == [(0, ["Low"]), (0, ["Low"])]
+
+
+def test_admins_see_vendor_prices_that_look_wrong(client: TestClient, priced: Connection) -> None:
+    assert client.get("/api/admin/vendor-suspects", headers=LINKED).status_code == 403
+    # the robe vendors for 500c: one listed at 300 across three scans sits there, someone would have taken it
+    now = db.utcnow()
+    for minutes in (40, 20, 0):
+        scanned(priced, {3: [(300, 2), (900, 1)]}, now - timedelta(minutes=minutes))
+    body = client.get("/api/admin/vendor-suspects", headers=ADMIN).json()
+    assert body["listed_under"] == [
+        {"item_id": 3, "name": "Green Robe", "vendor": 500, "cheapest": 300, "units": 2, "houses": 1}
+    ]
+    assert body["moved"] == [] and body["overridden"] == []

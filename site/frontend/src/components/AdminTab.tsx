@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react'
 import { Alert, Badge, Button, Card, Group, Loader, Stack, Table, Text, Title } from '@mantine/core'
 import type { Ingestion } from '../api/client'
-import { useAdminIngestion, useRunIngest } from '../api/queries'
+import { useAdminIngestion, useRunIngest, useVendorSuspects } from '../api/queries'
 import { age, parseUtc } from '../lib/age'
+import { Money } from './Money'
 
 type Job = Ingestion['jobs'][number]
 type Run = Ingestion['runs'][number]
@@ -252,6 +253,82 @@ function SnapshotsCard({ snapshots, now }: { snapshots: Ingestion['snapshots']; 
   )
 }
 
+/** Vendor prices to check in game: a listing that sits under what a vendor pays says the price may be wrong (on a
+ * live realm someone would buy it and vendor it), as does a price the newest build moved. A row in
+ * data/<version>/vendor_overrides.csv closes one; nothing here changes a price. */
+function VendorSuspectsCard() {
+  const suspects = useVendorSuspects(true)
+  if (suspects.isPending) return <Loader aria-label="Loading vendor price suspects" />
+  if (suspects.isError) return <Alert color="red">{suspects.error.message}</Alert>
+  const { listed_under: under, moved, overridden } = suspects.data
+  return (
+    <Section
+      title="Vendor price suspects"
+      lead={`${under.length} listed under what a vendor pays, ${moved.length} moved by the newest build, ${overridden.length} overridden. Check them in game; an override in vendor_overrides.csv settles one.`}
+    >
+      {under.length > 0 && (
+        <Table aria-label="Listed under what a vendor pays">
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>Item</Table.Th>
+              <Table.Th ta="right">Vendor pays</Table.Th>
+              <Table.Th ta="right">Listed from</Table.Th>
+              <Table.Th ta="right">Units</Table.Th>
+              <Table.Th ta="right">Houses</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {under.map((s) => (
+              <Table.Tr key={s.item_id}>
+                <Table.Td>{s.name}</Table.Td>
+                <Table.Td ta="right">
+                  <Money copper={s.vendor} />
+                </Table.Td>
+                <Table.Td ta="right">
+                  <Money copper={s.cheapest} />
+                </Table.Td>
+                <Table.Td ta="right">{s.units}</Table.Td>
+                <Table.Td ta="right">{s.houses}</Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      )}
+      {moved.length > 0 && (
+        <Table aria-label="Moved by the newest build">
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>Item</Table.Th>
+              <Table.Th>Build</Table.Th>
+              <Table.Th ta="right">Before</Table.Th>
+              <Table.Th ta="right">Now</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {moved.map((s) => (
+              <Table.Tr key={s.item_id}>
+                <Table.Td>{s.name}</Table.Td>
+                <Table.Td>{s.build}</Table.Td>
+                <Table.Td ta="right">
+                  <Money copper={s.before} />
+                </Table.Td>
+                <Table.Td ta="right">
+                  <Money copper={s.after} />
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      )}
+      {overridden.length > 0 && (
+        <Text size="sm">
+          Overridden: {overridden.map((s) => s.name).join(', ')}
+        </Text>
+      )}
+    </Section>
+  )
+}
+
 /** The ingestion log and statistics: jobs, their runs, every user's uploads, snapshots per source. */
 export function AdminTab() {
   const ingestion = useAdminIngestion(true)
@@ -265,6 +342,7 @@ export function AdminTab() {
       <RunsCard runs={data.runs} now={now} />
       <UploadsCard uploads={data.uploads} now={now} />
       <SnapshotsCard snapshots={data.snapshots} now={now} />
+      <VendorSuspectsCard />
     </Stack>
   )
 }

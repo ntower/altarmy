@@ -58,8 +58,10 @@ from . import (
     reputation,
     service,
     store,
+    suspects,
     talents,
     timing,
+    turnins,
     uploads,
     users,
     versions,
@@ -252,6 +254,12 @@ class LevelOut(BaseModel):
     age: int  # the scans before the newest that already had it (0: just listed)
 
 
+class TurnInOut(BaseModel):
+    kind: Literal["crate", "writ"]
+    name: str
+    count: int
+
+
 class ItemInfo(BaseModel):
     """Everything an item tooltip shows."""
 
@@ -298,6 +306,8 @@ class ItemInfo(BaseModel):
     listed: bool | None = None
     seen_at: datetime | None = None
     stack_size: int = 1
+    # the Waylaid Crates and Craftsman's Writs that take it (`turnins`): a writ's count is assumed (one)
+    turn_ins: list[TurnInOut] = []
 
 
 class LegOut(BaseModel):
@@ -1954,6 +1964,7 @@ def _item_details(
 ) -> dict[int, ItemInfo]:
     details = store.load_item_details(conn, state.key, item_ids)
     base = priced.market
+    taken = turnins.turn_ins(conn, state.key)
     out = {}
     for i, d in details.items():
         listing = priced.listings.get(i)
@@ -1985,6 +1996,10 @@ def _item_details(
             listed=listing.listed if listing else None,
             seen_at=listing.seen_at if listing else None,
             stack_size=item.stack_size if item else 1,
+            turn_ins=[
+                TurnInOut(kind=cast(Literal["crate", "writ"], t.kind), name=t.name, count=t.count)
+                for t in taken.get(i, ())
+            ],
         )
     return out
 
@@ -2547,6 +2562,50 @@ def get_uploads(request: Request, user: CurrentUser) -> list[UploadOut]:
 # --- admin -----------------------------------------------------------------------------------------
 def _text(dt: datetime) -> str:
     return db.timestamp_text(dt) or ""
+
+
+class ListedUnderOut(BaseModel):
+    item_id: int
+    name: str
+    vendor: int  # what a vendor pays (copper)
+    cheapest: int  # the cheapest listing under it, on any house
+    units: int  # units listed under it, on every house
+    houses: int
+
+
+class MovedOut(BaseModel):
+    item_id: int
+    name: str
+    build: str
+    before: int
+    after: int
+
+
+class OverriddenOut(BaseModel):
+    item_id: int
+    name: str
+    vendor: int
+
+
+class VendorSuspectsOut(BaseModel):
+    """Vendor prices that look wrong (`suspects.vendor_suspects`): listings that sit under what a vendor pays,
+    prices the newest build moved, and the overrides in force."""
+
+    listed_under: list[ListedUnderOut]
+    moved: list[MovedOut]
+    overridden: list[OverriddenOut]
+
+
+@router.get("/admin/vendor-suspects")
+def get_admin_vendor_suspects(state: State, user: AdminUser) -> VendorSuspectsOut:
+    """The version's vendor price suspects, to check in game (admins)."""
+    with _connect(state) as conn:
+        found = suspects.vendor_suspects(conn, state.key)
+    return VendorSuspectsOut(
+        listed_under=[ListedUnderOut(**asdict(s)) for s in found.listed_under],
+        moved=[MovedOut(**asdict(s)) for s in found.moved],
+        overridden=[OverriddenOut(**asdict(s)) for s in found.overridden],
+    )
 
 
 @router.get("/admin/ingestion")

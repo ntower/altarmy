@@ -36,6 +36,9 @@ class Launcher(Protocol):
         ...
 
 
+STALE_OVERRIDES_ALERT = "stale-vendor-overrides"
+
+
 def run_ingest(database: db.Database, version: GameVersion, cache_dir: Path, *, force: bool = False) -> None:
     """The ingest job's work, recorded: load the version's pinned build unless the database already has it,
     loaded by this ingest code (`service.update_game_data`), or always with `force`."""
@@ -47,6 +50,12 @@ def run_ingest(database: db.Database, version: GameVersion, cache_dir: Path, *, 
             if updated
             else f"{version.label} build {build} already loaded."
         )
+        if updated and stats.get("vendor_overrides_stale"):
+            run.warn(
+                f"{stats['vendor_overrides_stale']} vendor price overrides of {version.label} are stale: DB2 "
+                "moved under them (data/<version>/vendor_overrides.csv)",
+                alert=STALE_OVERRIDES_ALERT,
+            )
 
 
 class InProcessJobs:

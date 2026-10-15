@@ -6,10 +6,10 @@ import csv
 import hashlib
 import json
 from collections.abc import Collection, Iterable, Iterator
-from dataclasses import asdict, replace
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
-from sqlalchemy import Connection, delete
+from sqlalchemy import Connection, delete, func, select
 
 from . import db, gamedata, itemstats, schema, spelltext, timing, versions
 
@@ -585,7 +585,34 @@ ITEM_INSERT_COLUMNS = (
     "stats",
     "effects",
     "disenchantable",
+    "sell_price_overridden",
 )
+
+
+@dataclass(frozen=True)
+class VendorOverride:
+    """What a vendor really pays (and charges) for an item where DB2 is wrong; `db2_sell_price` is what DB2
+    said when the override was written, so a build that moves it says the override may be stale."""
+
+    sell_price: int
+    buy_price: int | None
+    db2_sell_price: int | None
+    note: str
+
+
+def vendor_overrides(path: Path | None) -> dict[int, VendorOverride]:
+    """{item_id: VendorOverride} from the version's `vendor_overrides.csv` (item_id, sell_price, buy_price,
+    db2_sell_price, note; the middle two may be empty); none without the file."""
+    if path is None or not path.is_file():
+        return {}
+    out = {}
+    for r in _rows(path):
+        buy, db2 = (r.get("buy_price") or "").strip(), (r.get("db2_sell_price") or "").strip()
+        out[_int(r["item_id"])] = VendorOverride(
+            _int(r["sell_price"]), _int(buy) if buy else None, _int(db2) if db2 else None, r.get("note") or ""
+        )
+    return out
+
 
 NO_DISENCHANT = 0x8000  # ItemSparse Flags_0: ITEM_FLAG_NO_DISENCHANT
 
@@ -648,13 +675,16 @@ def build_db(
     vendor_recipes_csv: Path | None = None,
     sources_csv: Path | None = None,
     trainer_costs_csv: Path | None = None,
+    vendor_overrides_csv: Path | None = None,
 ) -> dict[str, int]:
     """Rebuild one version's items/recipes/recipe_reagents/disenchant/vendor_items/recipe_items/
     item_sources; prices, characters and other versions are left alone. `max_level` is the version's level
     cap (how ratings are shown). `vendor_recipes_csv` lists the recipe items vendors sell with limited
     stock too: with `vendor_csv`'s they count as normal recipes even when they bind on pickup
     (`learn_sources`). `sources_csv` says where recipe items come from (`item_sources`), `trainer_costs_csv`
-    what trainers charge (`recipes.train_cost`, for the recipes trainers teach)."""
+    what trainers charge (`recipes.train_cost`, for the recipes trainers teach), `vendor_overrides_csv`
+    what vendors really pay where DB2 is wrong (`vendor_overrides`; the counts say how many overrides DB2 has
+    since moved under: `vendor_overrides_stale`)."""
     for table in GAME_DATA_TABLES:
         conn.execute(delete(table).where(table.c.game_version == game_version))
 
@@ -672,9 +702,18 @@ def build_db(
     items = []
     skill_ranks: dict[int, int] = {}
     bonding: dict[int, int] = {}
+    overrides = vendor_overrides(vendor_overrides_csv)
+    stale = 0
     for r in _rows(paths["ItemSparse"]):
         iid = _int(r["ID"])
         cls, sub, icon = classes.get(iid, (0, 0, 0))
+        sell, buy = _int(r["SellPrice"]), _int(r["BuyPrice"])
+        override = overrides.get(iid)
+        if override is not None:
+            if override.db2_sell_price is not None and override.db2_sell_price != sell:
+                stale += 1
+            sell = override.sell_price
+            buy = buy if override.buy_price is None else override.buy_price
         skill_ranks[iid] = _int(r["RequiredSkillRank"])
         bonding[iid] = _int(r["Bonding"])
         tip = tooltips.get(iid, NO_TOOLTIP)
@@ -688,8 +727,8 @@ def build_db(
                 _int(r["RequiredLevel"]),
                 cls,
                 sub,
-                _int(r["SellPrice"]),
-                _int(r["BuyPrice"]),
+                sell,
+                buy,
                 _int(r["Bonding"]),
                 _int(r["InventoryType"]),
                 _int(r["ItemDelay"]),
@@ -708,6 +747,7 @@ def build_db(
                 json.dumps(list(tip.stats)),
                 json.dumps([asdict(e) for e in tip.effects]),
                 not _int(r.get("Flags_0")) & NO_DISENCHANT,
+                override is not None,
             )
         )
     conn.execute(schema.items.insert(), [dict(zip(ITEM_INSERT_COLUMNS, i, strict=True)) for i in items])
@@ -875,7 +915,14 @@ def build_db(
         db.upsert(conn, schema.vendor_items, rows, ["game_version", "item_id"])
         n_vendor = len(vendor_ids)
 
-    return {"items": len(items), "recipes": n_recipes, "disenchant_rows": n_de, "vendor_items": n_vendor}
+    return {
+        "items": len(items),
+        "recipes": n_recipes,
+        "disenchant_rows": n_de,
+        "vendor_items": n_vendor,
+        "vendor_overrides": len(overrides),
+        "vendor_overrides_stale": stale,
+    }
 
 
 def update(
@@ -888,8 +935,10 @@ def update(
     vendor_recipes_csv: Path | None = None,
     sources_csv: Path | None = None,
     trainer_costs_csv: Path | None = None,
+    vendor_overrides_csv: Path | None = None,
 ) -> dict[str, int]:
-    """Download `build` (cached per build) and rebuild the version's game data from it, keeping prices."""
+    """Download `build` (cached per build) and rebuild the version's game data from it, keeping prices, and
+    note the vendor prices that moved since the last build loaded (`record_vendor_prices`)."""
     max_level = versions.get(game_version).max_level
     stats = build_db(
         download_all(build, cache_dir),
@@ -901,10 +950,58 @@ def update(
         vendor_recipes_csv,
         sources_csv,
         trainer_costs_csv,
+        vendor_overrides_csv,
     )
-    data_files = (disenchant_csv, vendor_csv, vendor_recipes_csv, sources_csv, trainer_costs_csv)
+    stats["vendor_prices_moved"] = record_vendor_prices(conn, game_version, build)
+    data_files = (
+        disenchant_csv,
+        vendor_csv,
+        vendor_recipes_csv,
+        sources_csv,
+        trainer_costs_csv,
+        vendor_overrides_csv,
+    )
     db.set_build(conn, game_version, build, _fingerprint(data_files))
     return stats
+
+
+def record_vendor_prices(conn: Connection, game_version: str, build: str) -> int:
+    """Add a `vendor_price_history` row for `build` for each item whose vendor prices (as loaded, overrides
+    and all) differ from its newest row, or that has none; returns how many."""
+    h, items = schema.vendor_price_history, schema.items
+    newest = (
+        select(h.c.item_id, func.max(h.c.loaded_at).label("at"))
+        .where(h.c.game_version == game_version)
+        .group_by(h.c.item_id)
+        .subquery()
+    )
+    last = {
+        r.item_id: (r.sell_price, r.buy_price)
+        for r in conn.execute(
+            select(h.c.item_id, h.c.sell_price, h.c.buy_price)
+            .join(newest, (newest.c.item_id == h.c.item_id) & (newest.c.at == h.c.loaded_at))
+            .where(h.c.game_version == game_version)
+        )
+    }
+    now = db.utcnow()
+    rows = [
+        {
+            "game_version": game_version,
+            "item_id": r.id,
+            "build": build,
+            "loaded_at": now,
+            "sell_price": r.sell_price,
+            "buy_price": r.buy_price,
+        }
+        for r in conn.execute(
+            select(items.c.id, items.c.sell_price, items.c.buy_price).where(
+                items.c.game_version == game_version
+            )
+        )
+        if (r.sell_price or r.buy_price) and last.get(r.id) != (r.sell_price, r.buy_price)
+    ]
+    db.upsert(conn, h, rows, ["game_version", "item_id", "build"], ["loaded_at", "sell_price", "buy_price"])
+    return len(rows)
 
 
 def fingerprint(version: versions.GameVersion) -> str:
@@ -918,6 +1015,7 @@ def fingerprint(version: versions.GameVersion) -> str:
             version.vendor_recipes_csv,
             version.sources_csv,
             version.trainer_costs_csv,
+            version.vendor_overrides_csv,
         )
     )
 

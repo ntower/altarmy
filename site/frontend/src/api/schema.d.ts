@@ -45,6 +45,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/vendor-suspects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Admin Vendor Suspects
+         * @description The version's vendor price suspects, to check in game (admins).
+         */
+        get: operations["get_admin_vendor_suspects_api_admin_vendor_suspects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ah-blocked": {
         parameters: {
             query?: never;
@@ -1028,6 +1048,11 @@ export interface components {
             stats: string[];
             /** Subclass Name */
             subclass_name: string | null;
+            /**
+             * Turn Ins
+             * @default []
+             */
+            turn_ins: components["schemas"]["TurnInOut"][];
             /** Vendor Price */
             vendor_price: number | null;
         };
@@ -1135,6 +1160,21 @@ export interface components {
             /** Quantity */
             quantity: number;
         };
+        /** ListedUnderOut */
+        ListedUnderOut: {
+            /** Cheapest */
+            cheapest: number;
+            /** Houses */
+            houses: number;
+            /** Item Id */
+            item_id: number;
+            /** Name */
+            name: string;
+            /** Units */
+            units: number;
+            /** Vendor */
+            vendor: number;
+        };
         /** LocationOut */
         LocationOut: {
             /** Id */
@@ -1209,6 +1249,19 @@ export interface components {
              * @default 0
              */
             unknown: number;
+        };
+        /** MovedOut */
+        MovedOut: {
+            /** After */
+            after: number;
+            /** Before */
+            before: number;
+            /** Build */
+            build: string;
+            /** Item Id */
+            item_id: number;
+            /** Name */
+            name: string;
         };
         /**
          * NodeOut
@@ -1310,6 +1363,15 @@ export interface components {
             source: string;
             /** Via */
             via: string;
+        };
+        /** OverriddenOut */
+        OverriddenOut: {
+            /** Item Id */
+            item_id: number;
+            /** Name */
+            name: string;
+            /** Vendor */
+            vendor: number;
         };
         /** PasteRequest */
         PasteRequest: {
@@ -1912,6 +1974,18 @@ export interface components {
             /** Unsold */
             unsold: number[];
         };
+        /** TurnInOut */
+        TurnInOut: {
+            /** Count */
+            count: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "crate" | "writ";
+            /** Name */
+            name: string;
+        };
         /** UploadOut */
         UploadOut: {
             /** Detail */
@@ -2045,6 +2119,19 @@ export interface components {
             percent: number;
         };
         /**
+         * VendorSuspectsOut
+         * @description Vendor prices that look wrong (`suspects.vendor_suspects`): listings that sit under what a vendor pays,
+         *     prices the newest build moved, and the overrides in force.
+         */
+        VendorSuspectsOut: {
+            /** Listed Under */
+            listed_under: components["schemas"]["ListedUnderOut"][];
+            /** Moved */
+            moved: components["schemas"]["MovedOut"][];
+            /** Overridden */
+            overridden: components["schemas"]["OverriddenOut"][];
+        };
+        /**
          * VersionOut
          * @description A game version the app serves; pass its `key` as `game_version` to the other routes.
          */
@@ -2145,6 +2232,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobStartedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_admin_vendor_suspects_api_admin_vendor_suspects_get: {
+        parameters: {
+            query: {
+                /** @description which game's data: tbc or forever */
+                game_version: "tbc" | "forever";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VendorSuspectsOut"];
                 };
             };
             /** @description Validation Error */

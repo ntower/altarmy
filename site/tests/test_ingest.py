@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import Connection, func, select
 from sqlalchemy.engine import Row
 
-from altarmy_site import db, ingest, prices, schema, spelltext, store
+from altarmy_site import db, ingest, prices, schema, spelltext, store, suspects, turnins
 
 from .conftest import FOREVER, set_prices, write_csv
 
@@ -22,7 +22,14 @@ def count(conn: Connection, table: str) -> int:
 
 def test_build_db_loads_items_and_recipes(db2_paths: dict[str, Path], conn: Connection) -> None:
     stats = ingest.build_db(db2_paths, conn, FOREVER)
-    assert stats == {"items": 3, "recipes": 1, "disenchant_rows": 0, "vendor_items": 0}
+    assert stats == {
+        "items": 3,
+        "recipes": 1,
+        "disenchant_rows": 0,
+        "vendor_items": 0,
+        "vendor_overrides": 0,
+        "vendor_overrides_stale": 0,
+    }
 
     robe = item(conn, 3)
     assert (robe.name, robe.quality, robe.item_level, robe.class_id, robe.sell_price) == (
@@ -944,3 +951,98 @@ def test_build_db_loads_enchants_as_recipes_making_no_item(
     )
     assert (enchant.output_item_id, enchant.output_count, enchant.reagents) == (0, 1, ((1, 2),))
     assert (enchant.trivial_low, enchant.trivial_high, enchant.source) == (20, 60, "trainer")
+
+
+def overrides_csv(tmp_path: Path, rows: list[dict[str, object]]) -> Path:
+    return write_csv(
+        tmp_path / "vendor_overrides.csv",
+        ["item_id", "sell_price", "buy_price", "db2_sell_price", "note"],
+        rows,
+    )
+
+
+def test_vendor_overrides_replace_db2s_prices(
+    db2_paths: dict[str, Path], conn: Connection, tmp_path: Path
+) -> None:
+    path = overrides_csv(
+        tmp_path,
+        [
+            {
+                "item_id": 3,
+                "sell_price": 1,
+                "buy_price": "",
+                "db2_sell_price": 500,
+                "note": "the robe vendors for 1c now",
+            },
+            {
+                "item_id": 1,
+                "sell_price": 20,
+                "buy_price": 99,
+                "db2_sell_price": 7,
+                "note": "written against an older build",
+            },
+        ],
+    )
+    stats = ingest.build_db(db2_paths, conn, FOREVER, vendor_overrides_csv=path)
+    i = schema.items
+    got = {
+        r.id: (r.sell_price, r.buy_price, r.sell_price_overridden)
+        for r in conn.execute(select(i.c.id, i.c.sell_price, i.c.buy_price, i.c.sell_price_overridden))
+    }
+    assert got[3] == (1, 0, True)
+    assert got[1] == (20, 99, True)
+    assert got[2] == (10, 51, False)
+    assert (
+        stats["vendor_overrides_stale"] == 1
+    )  # DB2 says 13 for the linen now, not the 7 it was written against
+
+
+def test_each_build_records_the_vendor_prices_that_moved(
+    db2_paths: dict[str, Path], conn: Connection, tmp_path: Path
+) -> None:
+    ingest.build_db(db2_paths, conn, FOREVER)
+    first = ingest.record_vendor_prices(conn, FOREVER, "1.0.1")
+    assert (
+        first
+        == conn.execute(
+            select(func.count()).select_from(schema.items).where(schema.items.c.sell_price > 0)
+        ).scalar_one()
+    )
+    assert ingest.record_vendor_prices(conn, FOREVER, "1.0.2") == 0  # nothing moved
+    ingest.build_db(
+        db2_paths,
+        conn,
+        FOREVER,
+        vendor_overrides_csv=overrides_csv(tmp_path, [{"item_id": 3, "sell_price": 1}]),
+    )
+    assert ingest.record_vendor_prices(conn, FOREVER, "1.0.3") == 1
+    h = schema.vendor_price_history
+    robe = conn.execute(
+        select(h.c.build, h.c.sell_price).where(h.c.item_id == 3).order_by(h.c.loaded_at)
+    ).all()
+    assert [tuple(r) for r in robe] == [("1.0.1", 500), ("1.0.3", 1)]
+    found = suspects.vendor_suspects(conn, FOREVER)
+    assert found.moved == [suspects.Moved(3, "Green Robe", "1.0.3", 500, 1)]
+    assert found.overridden == [suspects.Overridden(3, "Green Robe", 1)]
+
+
+def test_crates_and_writs_say_what_they_take(db2_paths: dict[str, Path], conn: Connection) -> None:
+    ingest.build_db(db2_paths, conn, FOREVER)
+    use = "Fill the crate with any bundle from the following list:\n- 20 Linen Cloth\n- 5 Nothing Real|r"
+    conn.execute(
+        schema.items.insert(),
+        [
+            {
+                "game_version": FOREVER,
+                "id": 248682,
+                "name": "Waylaid Crate: Apprentice Cloth",
+                "effects": json.dumps([{"trigger": "Use", "text": use}]),
+            },
+            {"game_version": FOREVER, "id": 264011, "name": "Craftsman's Writ: Green Robe", "effects": "[]"},
+        ],
+    )
+    db.set_build(conn, FOREVER, "test-build")  # a new load: worked out afresh
+    found = turnins.turn_ins(conn, FOREVER)
+    assert found[1] == (turnins.TurnIn("crate", "Waylaid Crate: Apprentice Cloth", 20),)
+    assert found[3] == (turnins.TurnIn("writ", "Craftsman's Writ: Green Robe", 1),)
+    assert 2 not in found
