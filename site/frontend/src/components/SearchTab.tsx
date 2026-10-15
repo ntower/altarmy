@@ -15,6 +15,7 @@ import { fromKey, realmOptions, toKey } from '../lib/realms'
 import { STRATEGY_PICKER } from '../lib/features'
 import { navigate, usePath } from '../lib/router'
 import { StrategyBar, StrategyPicker } from './StrategyPicker'
+import { VendorRuns } from './VendorRuns'
 import { useSession } from '../lib/session'
 import {
   CLIMBER_NAME,
@@ -293,6 +294,9 @@ export function SearchTab({
       ) : selection ? (
         <>
         {strategy && <StrategyBar current={strategy} />}
+        {strategy === 'vendor' ? (
+          <VendorRuns />
+        ) : (
         <AimSearch
           key={`${setup.aim}-${strategy ?? ''}`}
           strategy={strategy}
@@ -305,6 +309,7 @@ export function SearchTab({
           flush={characters.data ? flush : -1}
           lastScan={lastScan}
         />
+        )}
         </>
       ) : (
         status.data.prices === 0 && <Alert color="yellow">No data collected for this auction house</Alert>

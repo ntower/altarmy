@@ -117,6 +117,17 @@ export function useEssences() {
   })
 }
 
+/** Vendor runs at the selected auction house: what is listed under what a vendor pays, and what vendors sell for less
+ * than it pays, by zone. */
+export function useVendorRuns() {
+  const version = useDataVersion()
+  return useQuery({
+    queryKey: ['vendor-runs', GAME_VERSION, version],
+    queryFn: () => call(client.GET('/api/vendor-runs', GV)),
+    enabled: version !== undefined,
+  })
+}
+
 /** Every profession that has recipes in this game version, by name (game data: it changes only with an update). */
 export function useProfessions() {
   return useQuery({

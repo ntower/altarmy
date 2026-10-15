@@ -65,6 +65,7 @@ from . import (
     turnins,
     uploads,
     users,
+    vendorruns,
     versions,
 )
 from . import signals as price_signals
@@ -2521,6 +2522,90 @@ def get_essences(state: State, user: CurrentUser) -> Essences:
             tiers=[EssenceTierOut(**asdict(t)) for t in tiers],
             items=_item_details(state, conn, priced, ids),
         )
+
+
+class UnderVendorOut(BaseModel):
+    item_id: int
+    units: int  # listed under what a vendor pays
+    cheapest: int
+    vendor: int  # what a vendor pays a unit
+    profit: int  # buying them all and vendoring them
+    fresh: bool  # the cheapest such level is new: it may be gone, or the vendor price wrong
+
+
+class ResellOut(BaseModel):
+    item_id: int
+    vendor: str  # who sells it
+    limited: bool  # limited stock (`restock_s` to come back)
+    restock_s: int
+    unit_cost: int
+    sell_price: int
+    margin: int  # a unit's profit, after the cut and the estimated deposit
+    units: int
+    profit: int
+    area: int  # the zone map the vendor stands on (0 if none)
+    map_x: float
+    map_y: float
+
+
+class ZoneRun(BaseModel):
+    zone: str
+    profit: int
+    resells: list[ResellOut]
+
+
+class VendorRuns(BaseModel):
+    """Vendor runs at the selected auction house (`vendorruns`)."""
+
+    under_vendor: list[UnderVendorOut]
+    runs: list[ZoneRun]
+    items: dict[int, ItemInfo]
+
+
+VENDOR_RUNS_SHOWN = 100  # rows of each list
+
+
+@router.get("/vendor-runs")
+def get_vendor_runs(state: State, user: CurrentUser) -> VendorRuns:
+    """What the selected realm's auction house lists under what a vendor pays, and what vendors the
+    selection's faction can use sell for less than it pays, as one run per zone: the Vendor runs page."""
+    s = _selected(state, user, None)
+    under = vendorruns.under_vendor(s.base, s.listings)[:VENDOR_RUNS_SHOWN]
+    offers = vendorruns.offers_at(s.version.vendor_offers_csv)
+    with _connect(state) as conn:
+        buy = store.buy_prices(conn, state.key, {o.item_id for o in offers})
+        resold = vendorruns.resells(s.base, s.listings, offers, buy, s.faction, s.version)[:VENDOR_RUNS_SHOWN]
+        ids = sorted({u.item_id for u in under} | {r.offer.item_id for r in resold})
+        priced = state.cache.get_priced(service.selected_auction_house(conn, user.uid, state.key))
+        items = _item_details(state, conn, priced, ids)
+    return VendorRuns(
+        under_vendor=[UnderVendorOut(**asdict(u)) for u in under],
+        runs=[
+            ZoneRun(
+                zone=zone or "Unknown",
+                profit=sum(r.profit for r in rs),
+                resells=[
+                    ResellOut(
+                        item_id=r.offer.item_id,
+                        vendor=r.offer.name,
+                        limited=r.offer.max_count > 0,
+                        restock_s=r.offer.restock_s,
+                        unit_cost=r.unit_cost,
+                        sell_price=r.sell_price,
+                        margin=r.margin,
+                        units=r.units,
+                        profit=r.profit,
+                        area=r.offer.area,
+                        map_x=r.offer.map_x,
+                        map_y=r.offer.map_y,
+                    )
+                    for r in rs
+                ],
+            )
+            for zone, rs in vendorruns.by_zone(resold)
+        ],
+        items=items,
+    )
 
 
 @router.get("/ah-blocked")

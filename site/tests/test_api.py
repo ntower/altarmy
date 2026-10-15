@@ -2443,3 +2443,17 @@ def test_rank_shares_the_disenchant_budget_out_with_only_that_exit(
     (r,) = client.get("/api/rank", params={"exits": ["disenchant"], "sell_days": 3}).json()["results"]
     assert r["budget_casts"] == r["crafts"]  # no scan says how much linen sells: room for all
     assert r["needs_skill"] is None
+
+
+def test_vendor_runs_list_what_is_listed_under_a_vendor(
+    client: TestClient, db2_paths: dict[str, Path], conn: Connection
+) -> None:
+    ingest.build_db(db2_paths, conn, FOREVER)
+    with_tailor(conn)
+    robe: int = conn.execute(select(schema.items.c.sell_price).where(schema.items.c.id == 3)).scalar_one()
+    scanned(conn, {3: [(robe - 100, 2)]})  # two robes listed a silver under what a vendor pays
+    body = client.get("/api/vendor-runs").json()
+    (u,) = body["under_vendor"]
+    assert (u["item_id"], u["units"], u["profit"]) == (3, 2, 200)
+    assert body["items"]["3"]["name"] == "Green Robe"
+    assert body["runs"] == []  # the fixture's game data has no vendor offers to resell

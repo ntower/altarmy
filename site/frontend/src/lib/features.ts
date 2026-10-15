@@ -10,3 +10,7 @@ export const STRATEGY_PICKER = false
 
 /** The Process trade goods strategy (a card and a page once it is built). */
 export const PROCESSING = true
+
+/** The Vendor runs strategy: what the auction house lists under what a vendor pays, and what vendors sell for less
+ * than it pays. */
+export const VENDOR_RUNS = true

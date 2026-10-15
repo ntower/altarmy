@@ -148,8 +148,10 @@ CREATE TABLE creature_template (entry INTEGER, patch INTEGER, name TEXT, faction
     level_max INTEGER, loot_id INTEGER, vendor_id INTEGER DEFAULT 0);
 CREATE TABLE faction_template (id INTEGER, build INTEGER, hostile_mask INTEGER);
 CREATE TABLE map_template (entry INTEGER, patch INTEGER, map_type INTEGER, map_name TEXT);
-CREATE TABLE npc_vendor (entry INTEGER, item INTEGER, maxcount INTEGER, condition_id INTEGER DEFAULT 0);
-CREATE TABLE npc_vendor_template (entry INTEGER, item INTEGER, maxcount INTEGER, condition_id INTEGER);
+CREATE TABLE npc_vendor (entry INTEGER, item INTEGER, maxcount INTEGER, condition_id INTEGER DEFAULT 0,
+    incrtime INTEGER DEFAULT 0);
+CREATE TABLE npc_vendor_template (entry INTEGER, item INTEGER, maxcount INTEGER, condition_id INTEGER,
+    incrtime INTEGER DEFAULT 0);
 CREATE TABLE item_template (entry INTEGER, patch INTEGER, name TEXT, class INTEGER);
 CREATE TABLE quest_template (entry INTEGER, patch INTEGER, Title TEXT, ZoneOrSort INTEGER, QuestLevel INTEGER,
     RequiredRaces INTEGER, {REWARDS});
@@ -225,8 +227,8 @@ def sources_world(tmp_path: Path) -> Iterator[sqlite3.Connection]:
         + [(200 + i, 100 + i, 0, 5000, 5000) for i in range(MOBS)],
     )
     conn.executemany(  # 502 behind a condition
-        "INSERT INTO npc_vendor VALUES (?,?,?,?)",
-        [(1, 500, 0, 0), (2, 500, 1, 0), (3, 501, 0, 0), (3, 502, 0, 9)],
+        "INSERT INTO npc_vendor VALUES (?,?,?,?,?)",
+        [(1, 500, 0, 0, 0), (2, 500, 1, 0, 3600), (3, 501, 0, 0, 0), (3, 502, 0, 9, 0)],
     )
     conn.executemany(
         "INSERT INTO quest_template (entry, patch, Title, ZoneOrSort, QuestLevel, RequiredRaces, RewItemId1, "
@@ -294,6 +296,17 @@ def test_recipe_item_sources(sources_world: sqlite3.Connection) -> None:
     # more creatures than WORLD_DROP_AT: a world drop, the chest holding it left out (and Van Cleef's
     # 50% x 2 rolls x 10% among them)
     assert by_item[504] == [src(504, "world_drop", count=MOBS + 1, levels="10-32")]
+
+
+def test_vendor_offers(sources_world: sqlite3.Connection) -> None:
+    offers = vmangos.vendor_offers(sources_world, ZONES)
+    by_vendor = {(o.item_id, o.name): o for o in offers}
+    borya = by_vendor[500, "Borya"]
+    assert (borya.side, borya.zone, borya.max_count, borya.restock_s) == ("horde", "Duskwood", 1, 3600)
+    assert 502 not in {o.item_id for o in offers}  # behind a condition
+    kendor = by_vendor[500, "Kendor"]
+    assert (kendor.side, kendor.max_count, kendor.restock_s) == ("alliance", 0, 0)
+    assert all(o.vendor for o in offers)
 
 
 def test_write_sources_csv(tmp_path: Path) -> None:

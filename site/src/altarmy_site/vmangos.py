@@ -467,6 +467,65 @@ def _creatures(conn: sqlite3.Connection) -> dict[int, _Creature]:
     }
 
 
+@dataclass(frozen=True)
+class VendorOffer:
+    """An item a spawned vendor sells without a condition: a row of `vendor_offers.csv` (Vendor runs)."""
+
+    item_id: int
+    vendor: int  # the creature entry
+    name: str
+    side: str  # alliance | horde: a vendor only that faction can use; "" both
+    max_count: int  # 0: unlimited; else the stock, restocked every `restock_s`
+    restock_s: int
+    zone: str
+    area: int  # the zone map it stands on (AreaTable id); 0 if none
+    map_x: float
+    map_y: float
+
+
+def vendor_offers(conn: sqlite3.Connection, zones: Sequence[ZoneBox]) -> list[VendorOffer]:
+    """Everything spawned vendors sell without a condition, limited stock included, placed in the client's
+    zone maps (`zones`: `ingest.zone_boxes`); by item, then vendor."""
+    sides = _sides(conn)
+    creatures = _creatures(conn)
+    spawned = _zones(conn, "creature", ["id", "id2", "id3", "id4", "id5"], zones)
+    sold = conn.execute(
+        """
+        SELECT v.entry, v.item, v.maxcount, v.incrtime FROM npc_vendor v WHERE v.condition_id = 0
+        UNION
+        SELECT ct.entry, v.item, v.maxcount, v.incrtime FROM npc_vendor_template v
+        JOIN creature_template ct ON ct.vendor_id = v.entry
+        WHERE v.condition_id = 0
+        """
+    )
+    out = set()
+    for entry, item, most, every in sold:
+        if entry in creatures and entry in spawned:
+            at = spawned[entry]
+            out.add(
+                VendorOffer(
+                    int(item),
+                    int(entry),
+                    creatures[entry].name,
+                    sides.get(creatures[entry].faction, ""),
+                    int(most or 0),
+                    int(every or 0) if most else 0,
+                    at.zone,
+                    at.area,
+                    at.map_x,
+                    at.map_y,
+                )
+            )
+    return sorted(out, key=lambda o: (o.item_id, o.vendor))
+
+
+def write_offers_csv(rows: Sequence[VendorOffer], path: Path) -> None:
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f, lineterminator="\n")
+        w.writerow([f.name for f in fields(VendorOffer)])
+        w.writerows(astuple(r) for r in rows)
+
+
 def recipe_item_sources(conn: sqlite3.Connection, zones: Sequence[ZoneBox]) -> list[ItemSource]:
     """Where every recipe item (item class 9) comes from in vanilla's world: the spawned vendors selling
     it (without a condition), the quests rewarding it, and what drops it: the `MAX_DROPS` likeliest of

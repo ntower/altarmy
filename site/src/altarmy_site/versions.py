@@ -148,6 +148,12 @@ class GameVersion:
         return self.data_dir / "vendor_overrides.csv"
 
     @property
+    def vendor_offers_csv(self) -> Path:
+        """Everything spawned vendors sell, limited stock included, with where they stand (Forever:
+        `vmangos.vendor_offers`; Vendor runs)."""
+        return self.data_dir / "vendor_offers.csv"
+
+    @property
     def processing_csv(self) -> Path:
         """The recipes Process trade goods ranks, by group (written by hand: `processing`)."""
         return self.data_dir / "processing.csv"

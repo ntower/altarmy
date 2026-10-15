@@ -3216,6 +3216,74 @@
         "title": "RecipeItemOut",
         "type": "object"
       },
+      "ResellOut": {
+        "properties": {
+          "area": {
+            "title": "Area",
+            "type": "integer"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "integer"
+          },
+          "limited": {
+            "title": "Limited",
+            "type": "boolean"
+          },
+          "map_x": {
+            "title": "Map X",
+            "type": "number"
+          },
+          "map_y": {
+            "title": "Map Y",
+            "type": "number"
+          },
+          "margin": {
+            "title": "Margin",
+            "type": "integer"
+          },
+          "profit": {
+            "title": "Profit",
+            "type": "integer"
+          },
+          "restock_s": {
+            "title": "Restock S",
+            "type": "integer"
+          },
+          "sell_price": {
+            "title": "Sell Price",
+            "type": "integer"
+          },
+          "unit_cost": {
+            "title": "Unit Cost",
+            "type": "integer"
+          },
+          "units": {
+            "title": "Units",
+            "type": "integer"
+          },
+          "vendor": {
+            "title": "Vendor",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "vendor",
+          "limited",
+          "restock_s",
+          "unit_cost",
+          "sell_price",
+          "margin",
+          "units",
+          "profit",
+          "area",
+          "map_x",
+          "map_y"
+        ],
+        "title": "ResellOut",
+        "type": "object"
+      },
       "SelectionModel": {
         "description": "A realm and faction: whose recipes count and which auction house prices them.",
         "properties": {
@@ -3798,6 +3866,44 @@
         "title": "TurnInOut",
         "type": "object"
       },
+      "UnderVendorOut": {
+        "properties": {
+          "cheapest": {
+            "title": "Cheapest",
+            "type": "integer"
+          },
+          "fresh": {
+            "title": "Fresh",
+            "type": "boolean"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "integer"
+          },
+          "profit": {
+            "title": "Profit",
+            "type": "integer"
+          },
+          "units": {
+            "title": "Units",
+            "type": "integer"
+          },
+          "vendor": {
+            "title": "Vendor",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item_id",
+          "units",
+          "cheapest",
+          "vendor",
+          "profit",
+          "fresh"
+        ],
+        "title": "UnderVendorOut",
+        "type": "object"
+      },
       "UploadOut": {
         "properties": {
           "detail": {
@@ -4153,6 +4259,39 @@
         "title": "VendorDiscountOut",
         "type": "object"
       },
+      "VendorRuns": {
+        "description": "Vendor runs at the selected auction house (`vendorruns`).",
+        "properties": {
+          "items": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ItemInfo"
+            },
+            "title": "Items",
+            "type": "object"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/ZoneRun"
+            },
+            "title": "Runs",
+            "type": "array"
+          },
+          "under_vendor": {
+            "items": {
+              "$ref": "#/components/schemas/UnderVendorOut"
+            },
+            "title": "Under Vendor",
+            "type": "array"
+          }
+        },
+        "required": [
+          "under_vendor",
+          "runs",
+          "items"
+        ],
+        "title": "VendorRuns",
+        "type": "object"
+      },
       "VendorSuspectsOut": {
         "description": "Vendor prices that look wrong (`suspects.vendor_suspects`): listings that sit under what a vendor pays,\nprices the newest build moved, and the overrides in force.",
         "properties": {
@@ -4257,6 +4396,32 @@
           "profession_ranks"
         ],
         "title": "VersionOut",
+        "type": "object"
+      },
+      "ZoneRun": {
+        "properties": {
+          "profit": {
+            "title": "Profit",
+            "type": "integer"
+          },
+          "resells": {
+            "items": {
+              "$ref": "#/components/schemas/ResellOut"
+            },
+            "title": "Resells",
+            "type": "array"
+          },
+          "zone": {
+            "title": "Zone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "zone",
+          "profit",
+          "resells"
+        ],
+        "title": "ZoneRun",
         "type": "object"
       }
     },
@@ -6228,6 +6393,57 @@
           }
         ],
         "summary": "Post Paste"
+      }
+    },
+    "/api/vendor-runs": {
+      "get": {
+        "description": "What the selected realm's auction house lists under what a vendor pays, and what vendors the\nselection's faction can use sell for less than it pays, as one run per zone: the Vendor runs page.",
+        "operationId": "get_vendor_runs_api_vendor_runs_get",
+        "parameters": [
+          {
+            "description": "which game's data: tbc or forever",
+            "in": "query",
+            "name": "game_version",
+            "required": true,
+            "schema": {
+              "description": "which game's data: tbc or forever",
+              "enum": [
+                "tbc",
+                "forever"
+              ],
+              "title": "Game Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VendorRuns"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Vendor Runs"
       }
     },
     "/api/vendorcheck": {

@@ -17,6 +17,7 @@ vi.mock('../lib/features', () => ({
   },
   STRATEGY_PICKER: false,
   PROCESSING: false,
+  VENDOR_RUNS: false,
 }))
 afterEach(() => {
   features.makeGold = true

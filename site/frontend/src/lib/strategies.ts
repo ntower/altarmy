@@ -1,6 +1,6 @@
 import type { Exit, RankKind } from '../api/queries'
 import type { RankResult } from '../api/client'
-import { PROCESSING } from './features'
+import { PROCESSING, VENDOR_RUNS } from './features'
 import type { GoldStrategy } from './profitRoute'
 import { ALL_EXITS } from './setup'
 
@@ -34,6 +34,13 @@ export const GOLD_STRATEGIES: readonly StrategySpec[] = [
     blurb: 'Smelt, tan or weave, or sell the raw goods: whichever pays after the cut.',
     errand: "You'll buy or gather raw goods, process them, then post",
     live: PROCESSING,
+  },
+  {
+    key: 'vendor',
+    title: 'Vendor runs',
+    blurb: 'Buy what is listed under what a vendor pays, or buy from vendors what the auction house pays more for.',
+    errand: "You'll buy on the auction house or from vendors, then sell the other way",
+    live: VENDOR_RUNS,
   },
 ]
 

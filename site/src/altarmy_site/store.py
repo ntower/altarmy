@@ -643,3 +643,19 @@ def set_ah_blocked(conn: Connection, user_uid: str, game_version: str, item_id: 
                 t.c.user_uid == user_uid, t.c.game_version == game_version, t.c.item_id == item_id
             )
         )
+
+
+def buy_prices(conn: Connection, game_version: str, item_ids: Iterable[int]) -> dict[int, int]:
+    """{item id: what a vendor charges a unit (DB2's BuyPrice over VendorStackCount, rounded up)} of the
+    items that have one."""
+    wanted = set(item_ids)
+    items = schema.items
+    return {
+        r.id: -(-r.buy_price // max(1, r.buy_count))
+        for r in conn.execute(
+            select(items.c.id, items.c.buy_price, items.c.buy_count).where(
+                items.c.game_version == game_version, items.c.buy_price > 0
+            )
+        )
+        if r.id in wanted
+    }

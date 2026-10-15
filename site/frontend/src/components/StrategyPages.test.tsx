@@ -9,7 +9,7 @@ import { setSearchParam } from '../lib/router'
 import { SearchTab } from './SearchTab'
 
 // The strategy pages, switched on
-vi.mock('../lib/features', () => ({ MAKE_GOLD: true, STRATEGY_PICKER: true, PROCESSING: true }))
+vi.mock('../lib/features', () => ({ MAKE_GOLD: true, STRATEGY_PICKER: true, PROCESSING: true, VENDOR_RUNS: true }))
 
 const at = (path: string) => window.history.replaceState(null, '', path)
 const ranked = (r = robeResult) => ({ results: [r], total: 1, items: {}, classes: {} })
@@ -184,5 +184,46 @@ describe('the strategy pages', () => {
     await userEvent.click(screen.getByRole('radio', { name: 'A week' }))
     await waitFor(() => expect(rankParams(fetch)?.get('sell_days')).toBe('7'))
     localStorage.clear()
+  })
+
+  it('lists vendor runs: what is listed under a vendor, and what to buy from vendors, by zone', async () => {
+    at('/profit/gold/vendor')
+    const fetch = mockApi({
+      '/api/status': status(),
+      '/api/characters': characters,
+      '/api/vendor-runs': {
+        under_vendor: [{ item_id: 1, units: 3, cheapest: 50, vendor: 80, profit: 90, fresh: true }],
+        runs: [
+          {
+            zone: 'The Barrens',
+            profit: 5000,
+            resells: [
+              {
+                item_id: 1,
+                vendor: 'Trader',
+                limited: true,
+                restock_s: 3600,
+                unit_cost: 2000,
+                sell_price: 9000,
+                margin: 5000,
+                units: 1,
+                profit: 5000,
+                area: 17,
+                map_x: 50,
+                map_y: 50,
+              },
+            ],
+          },
+        ],
+        items: { '1': linen },
+      },
+    })
+    renderWithProviders(<SearchTab />)
+    expect(await screen.findByRole('tab', { name: 'Under what a vendor pays (1)' })).toBeInTheDocument()
+    expect(screen.getByText('new')).toBeInTheDocument()
+    expect(fetch.mock.calls.some(([r]) => new URL(r.url).pathname === '/api/rank')).toBe(false)
+    await userEvent.click(screen.getByRole('tab', { name: 'Vendor to auction house (1)' }))
+    expect(screen.getByRole('heading', { name: 'The Barrens' })).toBeInTheDocument()
+    expect(screen.getByText(/limited, back in 1h/)).toBeInTheDocument()
   })
 })

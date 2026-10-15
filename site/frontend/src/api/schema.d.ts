@@ -452,6 +452,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/vendor-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Vendor Runs
+         * @description What the selected realm's auction house lists under what a vendor pays, and what vendors the
+         *     selection's faction can use sell for less than it pays, as one run per zone: the Vendor runs page.
+         */
+        get: operations["get_vendor_runs_api_vendor_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/vendorcheck": {
         parameters: {
             query?: never;
@@ -1822,6 +1843,33 @@ export interface components {
             /** Price */
             price?: number | null;
         };
+        /** ResellOut */
+        ResellOut: {
+            /** Area */
+            area: number;
+            /** Item Id */
+            item_id: number;
+            /** Limited */
+            limited: boolean;
+            /** Map X */
+            map_x: number;
+            /** Map Y */
+            map_y: number;
+            /** Margin */
+            margin: number;
+            /** Profit */
+            profit: number;
+            /** Restock S */
+            restock_s: number;
+            /** Sell Price */
+            sell_price: number;
+            /** Unit Cost */
+            unit_cost: number;
+            /** Units */
+            units: number;
+            /** Vendor */
+            vendor: string;
+        };
         /**
          * SelectionModel
          * @description A realm and faction: whose recipes count and which auction house prices them.
@@ -2070,6 +2118,21 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** UnderVendorOut */
+        UnderVendorOut: {
+            /** Cheapest */
+            cheapest: number;
+            /** Fresh */
+            fresh: boolean;
+            /** Item Id */
+            item_id: number;
+            /** Profit */
+            profit: number;
+            /** Units */
+            units: number;
+            /** Vendor */
+            vendor: number;
+        };
         /** UploadOut */
         UploadOut: {
             /** Detail */
@@ -2203,6 +2266,20 @@ export interface components {
             percent: number;
         };
         /**
+         * VendorRuns
+         * @description Vendor runs at the selected auction house (`vendorruns`).
+         */
+        VendorRuns: {
+            /** Items */
+            items: {
+                [key: string]: components["schemas"]["ItemInfo"];
+            };
+            /** Runs */
+            runs: components["schemas"]["ZoneRun"][];
+            /** Under Vendor */
+            under_vendor: components["schemas"]["UnderVendorOut"][];
+        };
+        /**
          * VendorSuspectsOut
          * @description Vendor prices that look wrong (`suspects.vendor_suspects`): listings that sit under what a vendor pays,
          *     prices the newest build moved, and the overrides in force.
@@ -2255,6 +2332,15 @@ export interface components {
              * @default 20
              */
             resolved_min: number;
+        };
+        /** ZoneRun */
+        ZoneRun: {
+            /** Profit */
+            profit: number;
+            /** Resells */
+            resells: components["schemas"]["ResellOut"][];
+            /** Zone */
+            zone: string;
         };
     };
     responses: never;
@@ -3163,6 +3249,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UploadResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_vendor_runs_api_vendor_runs_get: {
+        parameters: {
+            query: {
+                /** @description which game's data: tbc or forever */
+                game_version: "tbc" | "forever";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VendorRuns"];
                 };
             };
             /** @description Validation Error */

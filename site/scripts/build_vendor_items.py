@@ -1,5 +1,5 @@
-"""Regenerate data/<version>/vendor_items.csv (and Forever's vendor_recipes.csv, recipe_item_sources.csv and
-trainer_costs.csv) from an open-source world database.
+"""Regenerate data/<version>/vendor_items.csv (and Forever's vendor_recipes.csv, recipe_item_sources.csv,
+vendor_offers.csv and trainer_costs.csv) from an open-source world database.
 
 Forever (vanilla-based) reads vmangos' database, TBC reads cmangos' tbc-db: by default the release pinned in
 data/game-data.json, from the repo's .cache/ (`gamedata.world_db`), and the zone maps of the pinned build.
@@ -46,10 +46,12 @@ def main() -> None:
     recipes = vmangos.vendor_recipes(conn) if source is vmangos else None
     fees = vmangos.trainer_costs(conn) if source is vmangos else None
     # where recipe items come from, placed in the client's zone maps
-    sources = None
+    sources = offers = None
     if source is vmangos:
         ui = {t: ingest.download(t, build, gamedata.REPO_CACHE) for t in ("UiMapAssignment", "UiMap")}
-        sources = vmangos.recipe_item_sources(conn, ingest.zone_boxes(ui["UiMapAssignment"], ui["UiMap"]))
+        zones = ingest.zone_boxes(ui["UiMapAssignment"], ui["UiMap"])
+        sources = vmangos.recipe_item_sources(conn, zones)
+        offers = vmangos.vendor_offers(conn, zones)
     conn.close()
     out.parent.mkdir(parents=True, exist_ok=True)
     vmangos.write_csv(rows, out)
@@ -62,6 +64,10 @@ def main() -> None:
         sources_out = ROOT / version.sources_csv
         vmangos.write_sources_csv(sources, sources_out)
         print(f"wrote {len(sources)} recipe item sources to {sources_out}")
+    if offers is not None:
+        offers_out = ROOT / version.vendor_offers_csv
+        vmangos.write_offers_csv(offers, offers_out)
+        print(f"wrote {len(offers)} vendor offers to {offers_out}")
     if fees is not None:
         fees_out = ROOT / version.trainer_costs_csv
         reference = args.reference_build or pins["tbc"].build
