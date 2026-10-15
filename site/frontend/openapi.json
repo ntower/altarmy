@@ -622,6 +622,126 @@
         "title": "EffectOut",
         "type": "object"
       },
+      "EssenceTierOut": {
+        "description": "One tier of enchanting essences at the selected auction house (`service.essence_spreads`).",
+        "properties": {
+          "down": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Down"
+          },
+          "greater": {
+            "title": "Greater",
+            "type": "integer"
+          },
+          "greater_buy": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Greater Buy"
+          },
+          "greater_sell": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Greater Sell"
+          },
+          "lesser": {
+            "title": "Lesser",
+            "type": "integer"
+          },
+          "lesser_buy": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lesser Buy"
+          },
+          "lesser_sell": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lesser Sell"
+          },
+          "per": {
+            "title": "Per",
+            "type": "integer"
+          },
+          "up": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Up"
+          }
+        },
+        "required": [
+          "lesser",
+          "greater",
+          "per",
+          "lesser_buy",
+          "greater_buy",
+          "lesser_sell",
+          "greater_sell",
+          "up",
+          "down"
+        ],
+        "title": "EssenceTierOut",
+        "type": "object"
+      },
+      "Essences": {
+        "properties": {
+          "items": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ItemInfo"
+            },
+            "title": "Items",
+            "type": "object"
+          },
+          "tiers": {
+            "items": {
+              "$ref": "#/components/schemas/EssenceTierOut"
+            },
+            "title": "Tiers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "tiers",
+          "items"
+        ],
+        "title": "Essences",
+        "type": "object"
+      },
       "EvaluateRequest": {
         "description": "Re-cost one recipe with some of its sources or its exit picked by the user.",
         "properties": {
@@ -2316,6 +2436,65 @@
         "title": "PlaceOut",
         "type": "object"
       },
+      "ProcessOut": {
+        "description": "A processing recipe against selling its inputs as they are (`service.process_sale`).",
+        "properties": {
+          "buy_up_to": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Buy Up To"
+          },
+          "gain": {
+            "title": "Gain",
+            "type": "integer"
+          },
+          "group": {
+            "enum": [
+              "smelt",
+              "leather",
+              "cloth",
+              "essence"
+            ],
+            "title": "Group",
+            "type": "string"
+          },
+          "inputs_value": {
+            "title": "Inputs Value",
+            "type": "integer"
+          },
+          "main_input": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Main Input"
+          },
+          "uses": {
+            "title": "Uses",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "group",
+          "inputs_value",
+          "gain",
+          "buy_up_to",
+          "main_input",
+          "uses"
+        ],
+        "title": "ProcessOut",
+        "type": "object"
+      },
       "ProfessionOut": {
         "properties": {
           "max_rank": {
@@ -2482,6 +2661,17 @@
             "title": "Bonus Output",
             "type": "number"
           },
+          "budget_casts": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget Casts"
+          },
           "buy_flags": {
             "default": [],
             "items": {
@@ -2605,6 +2795,7 @@
             "default": "paying",
             "enum": [
               "paying",
+              "buy_to_disenchant",
               "pennies",
               "waiting",
               "full",
@@ -2666,6 +2857,17 @@
             "title": "Milestones",
             "type": "array"
           },
+          "needs_skill": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Needs Skill"
+          },
           "no_vendor_floor": {
             "default": false,
             "title": "No Vendor Floor",
@@ -2692,6 +2894,17 @@
             "default": 0,
             "title": "Overtaken By Item",
             "type": "integer"
+          },
+          "pay_at_most": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pay At Most"
           },
           "per_day": {
             "default": 0,
@@ -2741,6 +2954,16 @@
           "postage": {
             "title": "Postage",
             "type": "integer"
+          },
+          "process": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProcessOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "profession": {
             "title": "Profession",
@@ -4563,6 +4786,57 @@
         "summary": "Get Coverage"
       }
     },
+    "/api/essences": {
+      "get": {
+        "description": "The essence tiers at the selected realm's auction house and which way converting pays: the Process\ntrade goods page's strip.",
+        "operationId": "get_essences_api_essences_get",
+        "parameters": [
+          {
+            "description": "which game's data: tbc or forever",
+            "in": "query",
+            "name": "game_version",
+            "required": true,
+            "schema": {
+              "description": "which game's data: tbc or forever",
+              "enum": [
+                "tbc",
+                "forever"
+              ],
+              "title": "Game Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Essences"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Essences"
+      }
+    },
     "/api/evaluate": {
       "post": {
         "description": "One recipe as /api/rank would give it (a session of the user's batch of crafts), with the user's\n`choices` of sources and exit applied, and for `copies` crafts or in `city` if given. With `chain_at`, a\nrun of `chain_from`'s chain, as /api/rank's `chain` has it (or for `copies` crafts at the skill it starts\nfrom).",
@@ -5080,6 +5354,32 @@
               ],
               "description": "the enchanter (one of the characters) who disenchants everything (default: the best)",
               "title": "Disenchanter"
+            }
+          },
+          {
+            "description": "Process trade goods: only the recipes that turn a trade good into another (`processing`), each weighed against selling its inputs (`RankResult.process`)",
+            "in": "query",
+            "name": "process",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Process trade goods: only the recipes that turn a trade good into another (`processing`), each weighed against selling its inputs (`RankResult.process`)",
+              "title": "Process",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "with only the disenchant exit: the days the materials should sell within, which the Disenchant budget shares out (`budget_casts`)",
+            "in": "query",
+            "name": "sell_days",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "description": "with only the disenchant exit: the days the materials should sell within, which the Disenchant budget shares out (`budget_casts`)",
+              "maximum": 7,
+              "minimum": 1,
+              "title": "Sell Days",
+              "type": "integer"
             }
           },
           {

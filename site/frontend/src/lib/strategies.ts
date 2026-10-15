@@ -62,9 +62,10 @@ export const sellViaKinds = (via: SellVia): RankKind[] => (via === 'disenchant' 
 
 /** Craft and sell's groups, in the order they are shown; only the first is open at first. */
 export type CraftGroup = RankResult['group']
-export const CRAFT_GROUPS: readonly CraftGroup[] = ['paying', 'pennies', 'waiting', 'full', 'losing']
+export const CRAFT_GROUPS: readonly CraftGroup[] = ['paying', 'buy_to_disenchant', 'pennies', 'waiting', 'full', 'losing']
 export const CRAFT_GROUP_LABELS: Readonly<Record<CraftGroup, string>> = {
   paying: 'Pays',
+  buy_to_disenchant: 'Buy to disenchant',
   pennies: "Pays only pennies: less than a craft's time is worth",
   waiting: "Waiting for sales: nothing else pays for sure, and the auction house isn't proven here yet",
   full: 'Full right now: more is listed under you than sells in a day',
@@ -75,3 +76,26 @@ export const CRAFT_GROUP_LABELS: Readonly<Record<CraftGroup, string>> = {
 export function byGroup<T extends Pick<RankResult, 'group'>>(results: readonly T[]): T[] {
   return CRAFT_GROUPS.flatMap((g) => results.filter((r) => r.group === g))
 }
+
+/** Process trade goods' groups, in the order they are shown, all open. */
+export type ProcessGroup = NonNullable<RankResult['process']>['group']
+export const PROCESS_GROUPS: readonly ProcessGroup[] = ['smelt', 'leather', 'cloth', 'essence']
+export const PROCESS_GROUP_LABELS: Readonly<Record<ProcessGroup, string>> = {
+  smelt: 'Smelting',
+  leather: 'Leather',
+  cloth: 'Cloth',
+  essence: 'Essences',
+}
+
+/** Processing results in their groups' order, each in the order the server ranked it; those of no group last. */
+export function byProcessGroup<T extends Pick<RankResult, 'process'>>(results: readonly T[]): T[] {
+  return [
+    ...PROCESS_GROUPS.flatMap((g) => results.filter((r) => r.process?.group === g)),
+    ...results.filter((r) => !r.process),
+  ]
+}
+
+/** Craft and sell's Disenchant: the days its materials should sell within, which the budget shares out. */
+export const SELL_DAYS = [1, 3, 7] as const
+export type SellDays = (typeof SELL_DAYS)[number]
+export const SELL_DAYS_LABELS: Readonly<Record<SellDays, string>> = { 1: 'A day', 3: '3 days', 7: 'A week' }

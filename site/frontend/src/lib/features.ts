@@ -9,4 +9,4 @@ export const MAKE_GOLD = false
 export const STRATEGY_PICKER = false
 
 /** The Process trade goods strategy (a card and a page once it is built). */
-export const PROCESSING = false
+export const PROCESSING = true

@@ -167,6 +167,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/essences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Essences
+         * @description The essence tiers at the selected realm's auction house and which way converting pays: the Process
+         *     trade goods page's strip.
+         */
+        get: operations["get_essences_api_essences_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/evaluate": {
         parameters: {
             query?: never;
@@ -751,6 +772,39 @@ export interface components {
             text: string;
             /** Trigger */
             trigger: string;
+        };
+        /**
+         * EssenceTierOut
+         * @description One tier of enchanting essences at the selected auction house (`service.essence_spreads`).
+         */
+        EssenceTierOut: {
+            /** Down */
+            down: number | null;
+            /** Greater */
+            greater: number;
+            /** Greater Buy */
+            greater_buy: number | null;
+            /** Greater Sell */
+            greater_sell: number | null;
+            /** Lesser */
+            lesser: number;
+            /** Lesser Buy */
+            lesser_buy: number | null;
+            /** Lesser Sell */
+            lesser_sell: number | null;
+            /** Per */
+            per: number;
+            /** Up */
+            up: number | null;
+        };
+        /** Essences */
+        Essences: {
+            /** Items */
+            items: {
+                [key: string]: components["schemas"]["ItemInfo"];
+            };
+            /** Tiers */
+            tiers: components["schemas"]["EssenceTierOut"][];
         };
         /**
          * EvaluateRequest
@@ -1423,6 +1477,27 @@ export interface components {
             /** Zone */
             zone: string;
         };
+        /**
+         * ProcessOut
+         * @description A processing recipe against selling its inputs as they are (`service.process_sale`).
+         */
+        ProcessOut: {
+            /** Buy Up To */
+            buy_up_to: number | null;
+            /** Gain */
+            gain: number;
+            /**
+             * Group
+             * @enum {string}
+             */
+            group: "smelt" | "leather" | "cloth" | "essence";
+            /** Inputs Value */
+            inputs_value: number;
+            /** Main Input */
+            main_input: number | null;
+            /** Uses */
+            uses: number;
+        };
         /** ProfessionOut */
         ProfessionOut: {
             /** Max Rank */
@@ -1508,6 +1583,8 @@ export interface components {
              * @default 0
              */
             bonus_output: number;
+            /** Budget Casts */
+            budget_casts?: number | null;
             /**
              * Buy Flags
              * @default []
@@ -1573,7 +1650,7 @@ export interface components {
              * @default paying
              * @enum {string}
              */
-            group: "paying" | "pennies" | "waiting" | "full" | "losing";
+            group: "paying" | "buy_to_disenchant" | "pennies" | "waiting" | "full" | "losing";
             /**
              * Kind
              * @default craft
@@ -1606,6 +1683,8 @@ export interface components {
              * @default []
              */
             milestones: components["schemas"]["MilestoneOut"][];
+            /** Needs Skill */
+            needs_skill?: number | null;
             /**
              * No Vendor Floor
              * @default false
@@ -1627,6 +1706,8 @@ export interface components {
              * @default 0
              */
             overtaken_by_item: number;
+            /** Pay At Most */
+            pay_at_most?: number | null;
             /**
              * Per Day
              * @default 0
@@ -1642,6 +1723,7 @@ export interface components {
             post_units?: number | null;
             /** Postage */
             postage: number;
+            process?: components["schemas"]["ProcessOut"] | null;
             /** Profession */
             profession: string;
             /** Profit */
@@ -2497,6 +2579,38 @@ export interface operations {
             };
         };
     };
+    get_essences_api_essences_get: {
+        parameters: {
+            query: {
+                /** @description which game's data: tbc or forever */
+                game_version: "tbc" | "forever";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Essences"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     evaluate_api_evaluate_post: {
         parameters: {
             query: {
@@ -2756,6 +2870,10 @@ export interface operations {
                 arcane_salvager?: boolean;
                 /** @description the enchanter (one of the characters) who disenchants everything (default: the best) */
                 disenchanter?: string | null;
+                /** @description Process trade goods: only the recipes that turn a trade good into another (`processing`), each weighed against selling its inputs (`RankResult.process`) */
+                process?: boolean;
+                /** @description with only the disenchant exit: the days the materials should sell within, which the Disenchant budget shares out (`budget_casts`) */
+                sell_days?: number;
                 /** @description copper */
                 min_cost?: number | null;
                 /** @description copper */

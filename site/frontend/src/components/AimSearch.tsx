@@ -42,7 +42,17 @@ import { BUILT_IN_SOURCES } from '../lib/skill'
 import type { GoldStrategy } from '../lib/profitRoute'
 import { setSearchParam, useSearchParam } from '../lib/router'
 import { useStoredState } from '../lib/storage'
-import { parseSellVia, SELL_VIA, SELL_VIA_LABELS, sellViaExits, sellViaKinds } from '../lib/strategies'
+import { EssencesStrip } from './EssencesStrip'
+import {
+  parseSellVia,
+  SELL_DAYS,
+  SELL_DAYS_LABELS,
+  SELL_VIA,
+  SELL_VIA_LABELS,
+  type SellDays,
+  sellViaExits,
+  sellViaKinds,
+} from '../lib/strategies'
 import { ProfessionIcon } from './ProfessionIcon'
 import classes from './SearchTab.module.css'
 import { type GoldSort, ResultsTable, type SortOrder } from './ResultsTable'
@@ -170,6 +180,7 @@ const Results = memo(function Results({
           skillCrafters: filters.skillCrafters,
           exits: filters.exits,
           arcaneSalvager: filters.arcaneSalvager,
+          disenchanter: filters.disenchanter,
           runs: filters.runs,
           version,
         }}
@@ -177,7 +188,9 @@ const Results = memo(function Results({
         onSetAhBlocked={(itemId, blocked) => setAhBlocked({ itemId, blocked })}
         favorites={favorites}
         onSetFavorite={(recipeId, favorite) => setFavorite({ recipeId, favorite })}
-        rankBy={filters.sort === 'skill' ? 'skill' : filters.sort === 'per_day' ? 'craft' : 'gold'}
+        rankBy={
+          filters.sort === 'skill' ? 'skill' : filters.process ? 'process' : filters.sort === 'per_day' ? 'craft' : 'gold'
+        }
         goldSort={filters.sort}
         goldOrder={filters.order}
         onGoldSort={onGoldSort}
@@ -288,6 +301,7 @@ export function AimSearch({
   const { aim } = setup
   const skill = aim === 'skill'
   const craft = !skill && strategy === 'craft'
+  const processing = !skill && strategy === 'process'
   const sellVia = parseSellVia(useSearchParam('exit'))
   const scope: SearchScope = !skill && strategy ? strategy : aim
   // Stored as strings: sections that no longer exist (the old Characters and Time assumptions ones) are dropped,
@@ -308,6 +322,7 @@ export function AimSearch({
   const [enchanterPick, setEnchanterPick] = useFilter<string | null>(scope, 'disenchanter', z.string().nullable(), null)
   const disenchanter =
     craft && sellVia === 'disenchant' ? enchanters.find((e) => e.name === enchanterPick)?.name : undefined
+  const [sellDays, setSellDays] = useFilter<SellDays>(scope, 'sellDays', z.union([z.literal(1), z.literal(3), z.literal(7)]), 1)
   // Money in gold and ROI in percent, as typed; converted for the API below.
   const [minCost, setMinCost] = useFilter(scope, 'minCost', bound, 0)
   const [maxCost, setMaxCost] = useFilter(scope, 'maxCost', bound, null)
@@ -369,6 +384,8 @@ export function AimSearch({
             ...(craft ? { kinds: sellViaKinds(sellVia) } : {}),
             arcaneSalvager,
             ...(disenchanter ? { disenchanter } : {}),
+            ...(processing ? { process: true } : {}),
+            ...(craft && sellVia === 'disenchant' ? { sellDays } : {}),
             minCost: scaled(minCost, goldToCopper),
             maxCost: scaled(maxCost, goldToCopper),
             minProfit: scaled(minProfit, goldToCopper),
@@ -378,7 +395,7 @@ export function AimSearch({
             minConfidence: null,
             professions: [],
             skillCrafters: [],
-            sort: craft ? 'per_day' : sort,
+            sort: craft || processing ? 'per_day' : sort,
             order: goldOrder,
             runs: false,
           },
@@ -396,8 +413,10 @@ export function AimSearch({
       sort,
       goldOrder,
       craft,
+      processing,
       sellVia,
       disenchanter,
+      sellDays,
       profession,
       skilled,
       climberSkill,
@@ -423,6 +442,7 @@ export function AimSearch({
 
   return (
     <>
+      {processing && <EssencesStrip />}
       {craft && (
         <Group gap="sm">
           <Text size="sm">Sell via</Text>
@@ -443,6 +463,18 @@ export function AimSearch({
               onChange={(v) => setEnchanterPick(v)}
               data={enchanters.map((e) => ({ value: e.name, label: `${e.name} (Enchanting ${e.rank})` }))}
             />
+          )}
+          {sellVia === 'disenchant' && (
+            <>
+              <Text size="sm">Sell within</Text>
+              <SegmentedControl
+                size="xs"
+                aria-label="Sell within"
+                value={String(sellDays)}
+                onChange={(v) => setSellDays(Number(v) as SellDays)}
+                data={SELL_DAYS.map((d) => ({ value: String(d), label: SELL_DAYS_LABELS[d] }))}
+              />
+            </>
           )}
         </Group>
       )}

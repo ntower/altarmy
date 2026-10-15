@@ -1,11 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import { robeResult } from '../test/results'
 import { parseProfitPath, profitPath } from './profitRoute'
-import { byGroup, liveStrategies, parseSellVia, sellViaExits, sellViaKinds } from './strategies'
+import { byGroup, byProcessGroup, liveStrategies, parseSellVia, sellViaExits, sellViaKinds } from './strategies'
 
 describe('strategies', () => {
-  it('offers Craft and sell, and Process trade goods only once it is switched on', () => {
-    expect(liveStrategies().map((s) => s.key)).toEqual(['craft'])
+  it('offers Craft and sell and Process trade goods', () => {
+    expect(liveStrategies().map((s) => s.key)).toEqual(['craft', 'process'])
+  })
+
+  it('shows processing results in their groups, those of none last', () => {
+    const of = (group: 'smelt' | 'cloth' | null) => ({
+      process: group && { group, inputs_value: 0, gain: 0, buy_up_to: null, main_input: null, uses: 0 },
+    })
+    const rows = [of('cloth'), of(null), of('smelt')]
+    expect(byProcessGroup(rows).map((r) => r.process?.group ?? null)).toEqual(['smelt', 'cloth', null])
   })
 
   it('reads Sell via from the URL, anything unknown as All', () => {

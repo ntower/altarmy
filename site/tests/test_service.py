@@ -1564,3 +1564,135 @@ def test_the_best_stack_is_the_one_that_sold_best() -> None:
     listing = robe_listing(listed=1, rate=1.0, stacks="1:2/8,5:6/2,20:9/30")
     assert prices.best_stack(listing) == 5  # 20s sold more, but mostly ran out
     assert prices.best_stack(robe_listing(listed=1, rate=1.0, stacks=None)) is None
+
+
+# --- Process trade goods ----------------------------------------------------------------------------------
+ORE, BAR, BLADE = 11, 12, 13
+SMELT = engine.Recipe(20, "Smelt", BAR, 1, ((ORE, 1),), "Mining", spell_id=2657)
+FORGE = engine.Recipe(21, "Blade", BLADE, 1, ((BAR, 2),), "Blacksmithing")
+
+
+def smelt_market(ah_open: frozenset[int] | None = None) -> engine.Market:
+    items = {
+        ORE: engine.Item(ORE, "Ore", sell_price=5),
+        BAR: engine.Item(BAR, "Bar", sell_price=10),
+        BLADE: engine.Item(BLADE, "Blade"),
+    }
+    return engine.Market(
+        items, [SMELT, FORGE], {ORE: 50}, sell_prices={ORE: 60, BAR: 200}, exits=frozenset({"ah", "vendor"}),
+        ah_open=ah_open,
+    )  # fmt: skip
+
+
+def test_processing_weighs_the_output_against_selling_the_inputs() -> None:
+    market = smelt_market()
+    r = market.evaluate(SMELT, crafts=10)
+    assert r is not None
+    uses = service.reagent_uses(market.recipes)
+    got = service.process_sale(r, "smelt", {}, market, uses)
+    brings = 10 * engine.ah_net(200)
+    assert got.inputs_value == 10 * engine.ah_net(60)  # the ore sold as it is
+    assert got.gain == brings - got.inputs_value
+    assert (got.main_input, got.buy_up_to) == (ORE, brings // 10)  # the most an ore is worth to smelt
+    assert got.uses == 1  # the blade takes bars
+
+
+def test_inputs_whose_auction_sale_does_not_count_are_valued_at_a_vendor() -> None:
+    market = smelt_market(ah_open=frozenset({BAR}))
+    assert service.sell_value(ORE, 10, {}, market) == 10 * 5
+    # a market that has shown it takes 4: the rest go to a vendor
+    shallow = prices.Listing(60, 4, (book.Level(60, 4, 4),), 0.0, prices.BLIZZARD, True)
+    assert service.sell_value(BAR, 10, {BAR: shallow}, market) == 4 * engine.ah_net(200) + 6 * 10
+
+
+def test_essence_tiers_say_which_way_converting_pays() -> None:
+    lesser, greater = 30, 31
+    items = {
+        lesser: engine.Item(lesser, "Lesser Magic Essence", item_level=10),
+        greater: engine.Item(greater, "Greater Magic Essence", item_level=10),
+    }
+    recipes = [
+        engine.Recipe(1, "up", greater, 1, ((lesser, 3),), kind="convert"),
+        engine.Recipe(2, "down", lesser, 3, ((greater, 1),), kind="convert"),
+    ]
+    market = engine.Market(
+        items, recipes, {lesser: 100, greater: 400}, sell_prices={lesser: 120, greater: 380}
+    )
+    (tier,) = service.essence_spreads(market)
+    assert (tier.lesser, tier.greater, tier.per) == (lesser, greater, 3)
+    assert tier.up == engine.ah_net(380) - 300  # three lesser bought make a greater worth more
+    assert tier.down == 3 * engine.ah_net(120) - 400  # a greater bought splits into less
+
+
+# --- Craft and sell's Disenchant budget -------------------------------------------------------------------
+GREEN_A, GREEN_B, DUST_ITEM, DE_CLOTH = 40, 41, 42, 43
+DE_ROW = engine.DisenchantRow(4, 2, 1, 100, DUST_ITEM, 1.0, 2, 2)  # a green disenchants into 2 dust
+
+
+def de_budget_market(enchanting: int = 300) -> engine.Market:
+    items = {
+        GREEN_A: engine.Item(GREEN_A, "Good Green", quality=2, item_level=20, class_id=4, sell_price=1),
+        GREEN_B: engine.Item(GREEN_B, "Fair Green", quality=2, item_level=30, class_id=4, sell_price=1),
+        DUST_ITEM: engine.Item(DUST_ITEM, "Dust", sell_price=1),
+        DE_CLOTH: engine.Item(DE_CLOTH, "Cloth"),
+    }
+    recipes = [
+        engine.Recipe(1, "Good Green", GREEN_A, 1, ((DE_CLOTH, 1),), "Tailoring", spell_id=1),
+        engine.Recipe(2, "Fair Green", GREEN_B, 1, ((DE_CLOTH, 2),), "Tailoring", spell_id=2),
+    ]
+    enchanter = engine.Crafter(
+        "Enchy", (("Enchanting", enchanting, 300), ("Tailoring", 300, 300)), frozenset({1, 2})
+    )
+    return engine.Market(
+        items, recipes, {DE_CLOTH: 10}, [DE_ROW], sell_prices={DUST_ITEM: 100},
+        crafters=[enchanter], exits=frozenset({"disenchant"}),
+    )  # fmt: skip
+
+
+def test_the_disenchant_budget_spends_each_materials_room_once() -> None:
+    market = de_budget_market()
+    a, b = (market.evaluate(r, crafts=10) for r in market.recipes)
+    assert a is not None and b is not None
+    # a day's room for dust: 10 seen bought a day, 2 already listed under the price: 8, so 4 casts in all
+    dust = prices.Listing(100, 2, (book.Level(100, 2, 2),), 10.0, prices.BLIZZARD, True)
+    got = service.disenchant_budget([a, b], {DUST_ITEM: dust}, market, days=1, enchanting=300)
+    assert sum(g.casts for g in got.values()) == 4
+    assert got[a.recipe.id].casts == 4  # the better margin first
+    assert got[b.recipe.id].casts == 0
+    # with a week to sell in, both fit
+    week = service.disenchant_budget([a, b], {DUST_ITEM: dust}, market, days=7, enchanting=300)
+    assert (week[a.recipe.id].casts, week[b.recipe.id].casts) == (10, 10)
+
+
+def test_the_disenchant_budget_says_what_skill_an_item_needs() -> None:
+    market = de_budget_market(enchanting=30)
+    (a, b) = (market.evaluate(r, crafts=1) for r in market.recipes)
+    assert a is not None and b is not None
+    skill = service.enchanter_skill(market.crafters)
+    assert skill == 30
+    got = service.disenchant_budget([a, b], {}, market, days=1, enchanting=skill)
+    assert got[a.recipe.id].needs_skill is None  # item level 20: anyone
+    assert got[b.recipe.id].needs_skill == 50  # item level 30 needs 50
+    assert engine.disenchant_skill(20) == 1 and engine.disenchant_skill(61) == 225
+
+
+def test_an_item_bought_to_disenchant_is_worth_its_worst_roll_at_most() -> None:
+    items = {
+        GREEN_A: engine.Item(GREEN_A, "Good Green", quality=2, item_level=20, class_id=4, sell_price=1),
+        DUST_ITEM: engine.Item(DUST_ITEM, "Dust", sell_price=1),
+    }
+    rows = [  # half the time 1 dust, half the time 3: 2 on average
+        engine.DisenchantRow(4, 2, 1, 100, DUST_ITEM, 0.5, 1, 1),
+        engine.DisenchantRow(4, 2, 1, 100, DUST_ITEM, 0.5, 3, 3),
+    ]
+    enchanter = engine.Crafter("Enchy", (("Enchanting", 300, 300),), frozenset())
+    market = engine.Market(
+        items, [], {GREEN_A: 50}, rows, sell_prices={DUST_ITEM: 100}, crafters=[enchanter],
+        exits=frozenset({"disenchant"}),
+    )  # fmt: skip
+    flip = next(r for r in market.recipes if r.is_flip)
+    r = market.evaluate(flip)
+    assert r is not None
+    (got,) = service.disenchant_budget([r], {}, market, days=1, enchanting=300).values()
+    assert got.pay_at_most == engine.ah_net(100)  # one dust: the worst roll, under 3/4 of two
+    assert service.craft_sale(r, {}, market, versions.get(FOREVER)).group == "buy_to_disenchant"

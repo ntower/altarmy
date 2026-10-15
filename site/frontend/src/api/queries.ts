@@ -107,6 +107,16 @@ export function useVendorCheckItem(itemId: number) {
   })
 }
 
+/** The essence tiers at the selected auction house and which way converting pays (Process trade goods' strip). */
+export function useEssences() {
+  const version = useDataVersion()
+  return useQuery({
+    queryKey: ['essences', GAME_VERSION, version],
+    queryFn: () => call(client.GET('/api/essences', GV)),
+    enabled: version !== undefined,
+  })
+}
+
 /** Every profession that has recipes in this game version, by name (game data: it changes only with an update). */
 export function useProfessions() {
   return useQuery({
@@ -160,6 +170,10 @@ export type RankParams = {
   arcaneSalvager: boolean
   /** the enchanter who disenchants everything; unset: the best of the characters */
   disenchanter?: string | undefined
+  /** Process trade goods: only the processing recipes, each weighed against selling its inputs */
+  process?: boolean
+  /** with only the disenchant exit: the days the materials should sell within (the Disenchant budget) */
+  sellDays?: number
   minCost: number | null
   maxCost: number | null
   minProfit: number | null
@@ -271,6 +285,8 @@ export function useRank(
               min_confidence: orUndefined(params.minConfidence),
               professions: params.professions.length ? params.professions : undefined,
               kinds: params.kinds?.length ? params.kinds : undefined,
+              process: params.process || undefined,
+              sell_days: params.sellDays,
               sort: params.sort === 'profit' ? undefined : params.sort,
               order: params.order === 'asc' && (params.sort === 'safe' || params.sort === 'ah') ? 'asc' : undefined,
               runs: params.runs || undefined,

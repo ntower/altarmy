@@ -54,6 +54,7 @@ from . import (
     launch,
     merge,
     prices,
+    processing,
     ratelimit,
     reputation,
     service,
@@ -367,6 +368,17 @@ class DetailOut(BaseModel):
     seconds: float  # go: the run there
 
 
+class ProcessOut(BaseModel):
+    """A processing recipe against selling its inputs as they are (`service.process_sale`)."""
+
+    group: Literal["smelt", "leather", "cloth", "essence"]
+    inputs_value: int  # what the session's inputs bring sold as they are
+    gain: int  # what processing adds over that
+    buy_up_to: int | None  # the most a unit of the main input is worth paying to break even
+    main_input: int | None  # that input (in `items`)
+    uses: int  # crafts that take the output as a reagent
+
+
 class RankResult(BaseModel):
     recipe_id: int
     recipe: str
@@ -437,12 +449,20 @@ class RankResult(BaseModel):
     # how many now, in which stack size, and the deposit that costs (estimated)
     likely_each: int = 0
     per_day: int = 0
-    group: Literal["paying", "pennies", "waiting", "full", "losing"] = "paying"
+    group: Literal["paying", "buy_to_disenchant", "pennies", "waiting", "full", "losing"] = "paying"
     post_price: int | None = None
     post_units: int | None = None
     post_stack: int | None = None
     deposit_est: int | None = None
     no_vendor_floor: bool = False  # a vendor pays nothing for what it makes
+    # Craft and sell's Disenchant budget (`/api/rank` with only the disenchant exit, `disenchant_budget`):
+    # the casts whose materials the market takes within `sell_days`, what an item bought to disenchant is
+    # worth paying at most, and the Enchanting skill its disenchant needs when the enchanter lacks it
+    budget_casts: int | None = None
+    pay_at_most: int | None = None
+    needs_skill: int | None = None
+    # Process trade goods (`/api/rank`'s `process`): how processing compares with selling the inputs
+    process: ProcessOut | None = None
     # the skill the recipe is learned at (0: a trainer's, at no skill DB2 knows) and where it turns yellow
     # and grey (green halfway between); 0 when unknown
     learn_skill: int = 0
@@ -1202,6 +1222,22 @@ def get_rank(
             description="the enchanter (one of the characters) who disenchants everything (default: the best)"
         ),
     ] = None,
+    process: Annotated[
+        bool,
+        Query(
+            description="Process trade goods: only the recipes that turn a trade good into another "
+            "(`processing`), each weighed against selling its inputs (`RankResult.process`)"
+        ),
+    ] = False,
+    sell_days: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=7,
+            description="with only the disenchant exit: the days the materials should sell within, which the "
+            "Disenchant budget shares out (`budget_casts`)",
+        ),
+    ] = 1,
     min_cost: Annotated[int | None, Query(description="copper")] = None,
     max_cost: Annotated[int | None, Query(description="copper")] = None,
     min_profit: Annotated[int | None, Query(description="copper")] = None,
@@ -1352,6 +1388,11 @@ def get_rank(
     gather = service.gather_values(base, gathered) if gathered else None
     climb_costs = _climb_learn_costs(state, s, skill_name, skilled) if run is not None else None
     enchanter = _disenchanter(chars, disenchanter)
+    groups = (
+        processing.recipe_groups(base.recipes, processing.for_path(s.version.processing_csv))
+        if process
+        else {}
+    )
 
     def key_of(learning: engine.Learning, run: engine.SkillRuns | None) -> tuple[Hashable, ...]:
         return (
@@ -1368,6 +1409,7 @@ def get_rank(
             no_ah,
             s.time.key,
             enchanter,
+            process,
         )
 
     key = key_of(learning, run)
@@ -1391,6 +1433,7 @@ def get_rank(
             gathered=gather,
             learn_costs=climb_costs,
             disenchanter=enchanter,
+            only=frozenset(groups) if process else None,
         ),
     )
     if sort in ("rate", "skill"):
@@ -1426,10 +1469,36 @@ def get_rank(
         matches = [r for r in matches if r.recipe.kind in kinds]
     if s.favorites and sort != "skill":  # a climb goes cheapest point first, favorite or not
         matches = service.favorites_first(matches, s.favorites)
+    budget = (
+        service.disenchant_budget(
+            matches,
+            s.listings,
+            base,
+            sell_days,
+            service.enchanter_skill(service.as_crafters(chars), enchanter),
+        )
+        if set(exits) == {"disenchant"}
+        else {}
+    )
     results = matches[:top]
     crafters = altarmy.crafters(chars)
     costs = _learn_costs(state, s, results)
     out = [_result_out(r, base, crafters, s, costs.get(r.recipe.id, 0)) for r in results]
+    if budget:
+        out = [
+            o.model_copy(
+                update={"budget_casts": b.casts, "pay_at_most": b.pay_at_most, "needs_skill": b.needs_skill}
+            )
+            if (b := budget.get(o.recipe_id)) is not None
+            else o
+            for o in out
+        ]
+    if process:
+        uses = service.reagent_uses(base.recipes)
+        out = [
+            o.model_copy(update={"process": _process_out(r, groups, s, base, uses)})
+            for o, r in zip(out, results, strict=True)
+        ]
     chain: list[engine.Result] = []
     strategies: list[tuple[Strategy, engine.Result, list[engine.Result]]] = []
 
@@ -1539,6 +1608,23 @@ def get_rank(
         chain=chain_out,
         strategies=strategies_out,
         watched_hours=s.watched,
+    )
+
+
+def _process_out(
+    r: engine.Result, groups: Mapping[int, str], s: Selected, base: engine.Market, uses: Mapping[int, int]
+) -> ProcessOut | None:
+    group = groups.get(r.recipe.id)
+    if group is None:
+        return None
+    p = service.process_sale(r, group, s.listings, base, uses)
+    return ProcessOut(
+        group=cast(processing.Group, p.group),
+        inputs_value=p.inputs_value,
+        gain=p.gain,
+        buy_up_to=p.buy_up_to,
+        main_input=p.main_input,
+        uses=p.uses,
     )
 
 
@@ -2402,6 +2488,39 @@ def get_vendor_check_item(state: State, user: CurrentUser, item_id: int) -> Item
         if found is None:
             raise HTTPException(status_code=404, detail=f"no item {item_id}")
         return found
+
+
+class EssenceTierOut(BaseModel):
+    """One tier of enchanting essences at the selected auction house (`service.essence_spreads`)."""
+
+    lesser: int
+    greater: int
+    per: int  # lesser essences to a greater one
+    lesser_buy: int | None
+    greater_buy: int | None
+    lesser_sell: int | None
+    greater_sell: int | None
+    up: int | None  # buying `per` lesser, converting and selling the greater: per conversion, net of the cut
+    down: int | None  # buying a greater, converting and selling the lesser
+
+
+class Essences(BaseModel):
+    tiers: list[EssenceTierOut]
+    items: dict[int, ItemInfo]
+
+
+@router.get("/essences")
+def get_essences(state: State, user: CurrentUser) -> Essences:
+    """The essence tiers at the selected realm's auction house and which way converting pays: the Process
+    trade goods page's strip."""
+    with _connect(state) as conn:
+        priced = state.cache.get_priced(service.selected_auction_house(conn, user.uid, state.key))
+        tiers = service.essence_spreads(priced.market)
+        ids = sorted({i for t in tiers for i in (t.lesser, t.greater)})
+        return Essences(
+            tiers=[EssenceTierOut(**asdict(t)) for t in tiers],
+            items=_item_details(state, conn, priced, ids),
+        )
 
 
 @router.get("/ah-blocked")

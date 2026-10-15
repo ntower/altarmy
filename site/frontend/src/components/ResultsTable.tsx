@@ -9,7 +9,13 @@ import { formatRoi } from '../lib/money'
 import { EXIT_SHORT } from '../lib/exits'
 import { ahCount, ahProfit, depthNote, safeProfit } from '../lib/selling'
 import { craftUntil, perPoint } from '../lib/skill'
-import { byGroup, CRAFT_GROUP_LABELS, type CraftGroup } from '../lib/strategies'
+import {
+  byGroup,
+  byProcessGroup,
+  CRAFT_GROUP_LABELS,
+  PROCESS_GROUP_LABELS,
+  PROCESS_GROUPS,
+} from '../lib/strategies'
 import { CharacterClasses } from '../lib/characterClasses'
 import { CharacterName } from './CharacterName'
 import { DisenchantLabel, ItemLink, RecipeTooltip } from './ItemTooltip'
@@ -31,10 +37,15 @@ const columnsFor = (rankBy: RankBy | undefined): string[] =>
       ? ['', 'Recipe', SAFE, AUCTION]
       : rankBy === 'craft'
         ? ['', 'Craft', WHAT_TO_DO, EACH]
-        : ['', PROFIT, 'Investment', 'ROI', 'Recipe', 'Crafter', 'Sell via']
+        : rankBy === 'process'
+          ? ['', 'Process', BUY_UP_TO, INPUTS_INSTEAD, EACH]
+          : ['', PROFIT, 'Investment', 'ROI', 'Recipe', 'Crafter', 'Sell via']
 /** Craft and sell's columns: what to do with a craft, and what one likely makes. */
 const WHAT_TO_DO = 'What to do'
 const EACH = 'Each'
+/** Process trade goods' columns: the most the main input may cost, and what selling the inputs would bring. */
+const BUY_UP_TO = 'Buy up to'
+const INPUTS_INSTEAD = 'Sell inputs instead'
 /** How far a skill-up run goes: "110 (~17 crafts)". */
 const CRAFT_UNTIL = 'Craft until'
 /** A gold list's two ways to sell, side by side: playing it safe (the better of a vendor and disenchanting) and the
@@ -107,13 +118,14 @@ const COLUMN_HIDDEN: Readonly<Record<string, string | undefined>> = {
 }
 /** What the server ranks by here (the whole ranking, not just this page): profit per session, best first; the
  * cost of an expected skill point, cheapest first; or a gold list (sorted by the server: its headers don't sort). */
-export type RankBy = 'profit' | 'skill' | 'gold' | 'craft'
+export type RankBy = 'profit' | 'skill' | 'gold' | 'craft' | 'process'
 /** The column showing each ranking, and whether the server's order is largest first on it. */
 const RANK_COLUMN: Readonly<Record<RankBy, Sort | null>> = {
   profit: { column: PROFIT, descending: true },
   skill: { column: PER_POINT, descending: false },
   gold: null,
   craft: null, // by what a day makes, in its groups (`byGroup`)
+  process: null, // likewise, in its groups (`byProcessGroup`)
 }
 
 type Sort = { column: string; descending: boolean }
@@ -408,6 +420,30 @@ function craftWhat(r: RankResult, items: ItemMap): { action: ReactNode; basis: s
       basis: `${sold} · ${listed}`,
     }
   }
+  if (r.likely_exit === 'disenchant' && r.budget_casts != null) {
+    const all = r.crafts * r.output_count
+    const buy = r.kind === 'flip'
+    return {
+      action: r.budget_casts ? (
+        <>
+          {buy ? 'Buy' : 'Craft'} {r.budget_casts} and disenchant
+          {r.pay_at_most != null && (
+            <>
+              , paying at most <Money copper={r.pay_at_most} />
+            </>
+          )}
+        </>
+      ) : (
+        'Skip: others here fill the materials’ market'
+      ),
+      basis: [
+        r.budget_casts < all ? `the materials sell for ${r.budget_casts} of ${all}` : null,
+        r.needs_skill ? `needs Enchanting ${r.needs_skill}` : null,
+      ]
+        .filter(Boolean)
+        .join(' · ') || null,
+    }
+  }
   const verb: Readonly<Record<string, string>> = {
     vendor: 'Vendor them',
     disenchant: 'Disenchant them',
@@ -418,6 +454,42 @@ function craftWhat(r: RankResult, items: ItemMap): { action: ReactNode; basis: s
     action: verb[r.likely_exit] ?? exitLabel(r.likely_exit),
     basis: r.group === 'waiting' ? "AH: not proven here yet" : r.group === 'full' ? 'AH: more listed than sells a day' : null,
   }
+}
+
+/** A Process trade goods row's cells: the most its main input may cost, what selling the inputs as they are would
+ * bring (and what processing adds), and what a craft likely makes. */
+function ProcessCells({ result: r, items }: { result: RankResult; items: ItemMap }) {
+  const p = r.process
+  const main = p?.main_input != null ? items[p.main_input]?.name : undefined
+  return (
+    <>
+      <Table.Td ta="right" ff="monospace">
+        {p?.buy_up_to != null ? <Money copper={p.buy_up_to} padded /> : '–'}
+        {main && (
+          <Text size="xs" c="dimmed">
+            per {main}
+          </Text>
+        )}
+      </Table.Td>
+      <Table.Td ta="right" ff="monospace">
+        {p ? <Money copper={p.inputs_value} padded /> : '–'}
+        {p && (
+          <Text size="xs" c={p.gain < 0 ? 'red' : 'dimmed'}>
+            {p.gain < 0 ? 'processing loses ' : 'processing adds '}
+            <Money copper={Math.abs(p.gain)} />
+          </Text>
+        )}
+      </Table.Td>
+      <Table.Td ta="right" ff="monospace" c={r.likely_each < 0 ? 'red' : 'teal'}>
+        <Money copper={r.likely_each} padded />
+        {r.post_units ? (
+          <Text size="xs" c="dimmed">
+            x{r.post_units} = <Money copper={r.per_day} />
+          </Text>
+        ) : null}
+      </Table.Td>
+    </>
+  )
 }
 
 /** A Craft and sell row's two cells: what to do, and what a craft likely makes (with a day's posts under it). */
@@ -627,6 +699,7 @@ export function ResultsTable({
   const gold = rankBy === 'gold'
   const skill = rankBy === 'skill'
   const craft = rankBy === 'craft'
+  const process = rankBy === 'process'
   const sortBy = (column: string) =>
     setSort(
       shownSort?.column === column
@@ -645,11 +718,19 @@ export function ResultsTable({
     [rankItems, evaluations],
   )
   const rows = useMemo(
-    () => (rankBy === 'craft' ? byGroup(sorted(current, null, favorites)) : sorted(current, sort, favorites)),
+    () =>
+      rankBy === 'craft'
+        ? byGroup(sorted(current, null, favorites))
+        : rankBy === 'process'
+          ? byProcessGroup(sorted(current, null, favorites))
+          : sorted(current, sort, favorites),
     [current, sort, favorites, rankBy],
   )
-  // Craft and sell's groups: what pays is open, the rest folded until asked for.
-  const [openGroups, setOpenGroups] = useState<ReadonlySet<CraftGroup>>(() => new Set(['paying']))
+  // Craft and sell's groups: what pays is open, the rest folded until asked for; Process trade goods' all open.
+  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(() => new Set(['paying', 'buy_to_disenchant', ...PROCESS_GROUPS]))
+  const groupOf = (r: RankResult): string | null => (craft ? r.group : process ? (r.process?.group ?? '') : null)
+  const groupLabel = (g: string): string =>
+    craft ? CRAFT_GROUP_LABELS[g as RankResult['group']] : (PROCESS_GROUP_LABELS[g as keyof typeof PROCESS_GROUP_LABELS] ?? 'Other')
   const editing = (id: number): PlanEditing => {
     const evaluation = evaluations[id]
     return {
@@ -773,11 +854,12 @@ export function ResultsTable({
                       <PhoneProfits ways={ways} />
                     </>
                   )}
-                  {craft && <RecipeLine result={r} />}
+                  {(craft || process) && <RecipeLine result={r} />}
                 </Table.Td>
               )
-              const groupStart = craft && (index === 0 || rows[index - 1]?.group !== r.group)
-              const folded = craft && !openGroups.has(r.group)
+              const group = groupOf(r)
+              const groupStart = group !== null && (index === 0 || groupOf(rows[index - 1]!) !== group)
+              const folded = group !== null && !openGroups.has(group)
               return (
                 <Fragment key={r.recipe_id}>
                   {groupStart && (
@@ -788,15 +870,15 @@ export function ResultsTable({
                           onClick={() =>
                             setOpenGroups((prev) => {
                               const next = new Set(prev)
-                              if (next.has(r.group)) next.delete(r.group)
-                              else next.add(r.group)
+                              if (next.has(group!)) next.delete(group!)
+                              else next.add(group!)
                               return next
                             })
                           }
                         >
                           <Text span size="sm" fw={500}>
-                            {folded ? '▸' : '▾'} {CRAFT_GROUP_LABELS[r.group]} (
-                            {rows.filter((x) => x.group === r.group).length})
+                            {folded ? '▸' : '▾'} {groupLabel(group!)} (
+                            {rows.filter((x) => groupOf(x) === group).length})
                           </Text>
                         </UnstyledButton>
                       </Table.Td>
@@ -879,6 +961,11 @@ export function ResultsTable({
                         {recipeCell}
                         <CraftCells result={r} items={items} />
                       </>
+                    ) : process ? (
+                      <>
+                        {recipeCell}
+                        <ProcessCells result={r} items={items} />
+                      </>
                     ) : skill ? (
                       <>
                         {recipeCell}
@@ -895,8 +982,8 @@ export function ResultsTable({
                         <Table.Td c={r.roi < 0 ? 'red' : undefined}>{formatRoi(r.roi)}</Table.Td>
                       </>
                     )}
-                    {!skill && !gold && !craft && recipeCell}
-                    {gold || craft ? null : rankBy === 'skill' ? (
+                    {!skill && !gold && !craft && !process && recipeCell}
+                    {gold || craft || process ? null : rankBy === 'skill' ? (
                       <Table.Td className={COLUMN_HIDDEN.Learn}>
                         {learn[r.recipe_id] && !r.crafters.includes(r.crafter) ? (
                           <LearnTooltip learn={learn[r.recipe_id]}>{learnLabel(r, learn[r.recipe_id])}</LearnTooltip>

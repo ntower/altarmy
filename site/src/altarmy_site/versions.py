@@ -148,6 +148,11 @@ class GameVersion:
         return self.data_dir / "vendor_overrides.csv"
 
     @property
+    def processing_csv(self) -> Path:
+        """The recipes Process trade goods ranks, by group (written by hand: `processing`)."""
+        return self.data_dir / "processing.csv"
+
+    @property
     def trainer_costs_csv(self) -> Path:
         """What trainers charge to teach each spell (Forever: `vmangos.trainer_costs`)."""
         return self.data_dir / "trainer_costs.csv"

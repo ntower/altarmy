@@ -943,7 +943,7 @@ def safe_profit(r: Result) -> tuple[str, int] | None:
     return max(options, key=lambda o: o[1], default=None)
 
 
-CraftGroup = Literal["paying", "pennies", "waiting", "full", "losing"]
+CraftGroup = Literal["paying", "buy_to_disenchant", "pennies", "waiting", "full", "losing"]
 POST_SHARE = 1 / 3  # of a day's units bought, what one crafter posts, until undercuts are measured
 POST_HOURS = 24  # the auction a post is for: a day's
 
@@ -995,6 +995,8 @@ def craft_sale(
             if each < engine.craft_value(r.recipe, engine.TIME_VALUE)
             else "paying"
         )
+        if group == "paying" and r.recipe.is_flip:
+            group = "buy_to_disenchant"
         return CraftSale(each, made.profit, group, no_vendor_floor=no_floor)
     per_unit = each / max(1, r.recipe.output_count)
     a_day = prices.demand(listing, days=1) or 0.0
@@ -1024,6 +1026,195 @@ def craft_sale(
         deposit,
         no_floor,
     )
+
+
+@dataclass(frozen=True)
+class ProcessSale:
+    """How processing a trade good compares with selling it as it is, for the Process trade goods page."""
+
+    group: str  # `processing.Group`
+    inputs_value: int  # what the session's inputs bring sold as they are (`sell_value`)
+    gain: int  # what processing adds: what the output likely brings, less `inputs_value`
+    buy_up_to: (
+        int | None
+    )  # the most a unit of the main input is worth paying to break even; None: none bought
+    main_input: int | None  # that input's item id
+    uses: int  # recipes that take the output as a reagent: a hint of its demand
+
+
+def sell_value(item_id: int, units: int, listings: Mapping[int, prices.Listing], market: Market) -> int:
+    """What `units` of an item bring sold as they are: on the AH (net of the cut) as many as its market has
+    shown it takes (`prices.sale_depth`; all of them from a price no scan gave), the rest at a vendor, and
+    all at a vendor where that pays more or its AH sale doesn't count (`Market.ah_open`)."""
+    item = market.items.get(item_id)
+    vendor = item.sell_price if item is not None else 0
+    price = market.sell_prices.get(item_id)
+    if price is None or (market.ah_open is not None and item_id not in market.ah_open):
+        return vendor * units
+    net = engine.ah_net(price, market.ah_cut)
+    if net <= vendor:
+        return vendor * units
+    listing = listings.get(item_id)
+    depth = prices.sale_depth(listing, price) if listing is not None else None
+    on_ah = units if depth is None else min(units, depth)
+    return net * on_ah + vendor * (units - on_ah)
+
+
+def reagent_uses(recipes: Iterable[engine.Recipe]) -> dict[int, int]:
+    """{item id: how many crafts take it as a reagent}."""
+    out: dict[int, int] = {}
+    for r in recipes:
+        if r.kind == "craft":
+            for item, _ in r.reagents:
+                out[item] = out.get(item, 0) + 1
+    return out
+
+
+def process_sale(
+    r: Result,
+    group: str,
+    listings: Mapping[int, prices.Listing],
+    market: Market,
+    uses: Mapping[int, int],
+) -> ProcessSale:
+    """`r` as the Process trade goods page shows it (see `ProcessSale`): its inputs valued as `sell_value`
+    sells them, what it likely brings (`likely`) against them, and what the input it spends most on may cost
+    for it to break even."""
+    crafts = max(1, r.crafts)
+    output = r.recipe.output_item_id
+    brings = likely(r, listings, market.sell_prices.get(output)).profit + r.cost
+    inputs = sum(sell_value(i, n * crafts, listings, market) for i, n in r.recipe.reagents)
+    main = max(r.tree.inputs, key=lambda n: n.cost, default=None)
+    buy_up_to = None
+    if main is not None and main.quantity > 0 and main.cost > 0:
+        buy_up_to = max(0, (brings - (r.cost - main.cost)) // main.quantity)
+    return ProcessSale(
+        group,
+        inputs,
+        brings - inputs,
+        buy_up_to,
+        main.item_id if main is not None and buy_up_to is not None else None,
+        uses.get(output, 0),
+    )
+
+
+@dataclass(frozen=True)
+class EssenceSpread:
+    """One tier of enchanting essences (a greater one is 3 lesser), and which way converting pays."""
+
+    lesser: int
+    greater: int
+    per: int  # lesser essences to a greater one
+    lesser_buy: int | None  # the cheapest listing, else None
+    greater_buy: int | None
+    lesser_sell: int | None  # what a unit sells for (`Market.sell_prices`), else None
+    greater_sell: int | None
+    up: int | None  # buying `per` lesser and selling the greater they make: net of the cut, per conversion
+    down: int | None  # buying a greater and selling the lesser it makes, likewise
+
+
+def essence_spreads(market: Market) -> list[EssenceSpread]:
+    """The market's essence conversions as tiers (see `EssenceSpread`), the lowest item level first."""
+    ups = {
+        (r.reagents[0][0], r.output_item_id): r.reagents[0][1] // max(1, r.output_count)
+        for r in market.recipes
+        if r.is_conversion and r.reagents and r.reagents[0][1] > r.output_count
+    }
+    out = []
+    for (lesser, greater), per in ups.items():
+
+        def net(item: int, units: int) -> int | None:
+            price = market.sell_prices.get(item)
+            return None if price is None else units * engine.ah_net(price, market.ah_cut)
+
+        lb, gb = market.prices.get(lesser), market.prices.get(greater)
+        up_sale, down_sale = net(greater, 1), net(lesser, per)
+        out.append(
+            EssenceSpread(
+                lesser,
+                greater,
+                per,
+                lb,
+                gb,
+                market.sell_prices.get(lesser),
+                market.sell_prices.get(greater),
+                None if lb is None or up_sale is None else up_sale - per * lb,
+                None if gb is None or down_sale is None else down_sale - gb,
+            )
+        )
+    level = {i: it.item_level for i, it in market.items.items()}
+    return sorted(out, key=lambda e: (level.get(e.greater, 0), e.greater))
+
+
+@dataclass(frozen=True)
+class Budget:
+    """What Craft and sell's Disenchant budget allows one result: the casts whose materials the market takes
+    within the days given, what an item bought to disenchant is worth paying at most, and the Enchanting
+    skill disenchanting it needs when the enchanter lacks it."""
+
+    casts: int
+    pay_at_most: int | None = None  # flips only
+    needs_skill: int | None = None
+
+
+PAY_SHARE = 0.75  # of a disenchant's average worth, the most an item bought to disenchant is worth paying
+
+
+def enchanter_skill(crafters: Iterable[engine.Crafter], disenchanter: str = "") -> int | None:
+    """The Enchanting skill of whoever disenchants: `disenchanter`, else the best enchanter; None if nobody
+    enchants (or no characters are known)."""
+    return max(
+        (c.enchanting for c in crafters if c.enchanting and (not disenchanter or c.name == disenchanter)),
+        default=None,
+    )
+
+
+def disenchant_budget(
+    results: Sequence[Result],
+    listings: Mapping[int, prices.Listing],
+    market: Market,
+    days: int,
+    enchanting: int | None = None,
+) -> dict[int, Budget]:
+    """{recipe id: Budget} for the `results` that disenchant: the best margin a cast first, each takes the
+    whole casts its materials still have room for, a material's room being the units its market takes in
+    `days` (`prices.demand`) less those listed at or under its price (`prices.ahead`), spent once across
+    every result; a material no scan tells about has room for anything. An item bought to disenchant (a
+    flip) is worth at most the lesser of its worst roll and `PAY_SHARE` of its average one. Disenchanting
+    needs the enchanter's skill (`engine.disenchant_skill`; `enchanting`, see `enchanter_skill`): a result
+    whose item needs more says so."""
+    room: dict[int, float] = {}
+    skill = enchanting
+    out: dict[int, Budget] = {}
+    rows = [r for r in results if r.best_exit == "disenchant"]
+    for r in sorted(rows, key=lambda r: -r.profit / max(1, r.crafts)):
+        item = market.items.get(r.recipe.output_item_id)
+        if item is None:
+            continue
+        materials = market.disenchant_materials(item)
+        casts = r.crafts * r.recipe.output_count
+        for m in materials:
+            if m.item_id not in room:
+                listing = listings.get(m.item_id)
+                demand = prices.demand(listing, days) if listing is not None else None
+                price = market.sell_prices.get(m.item_id)
+                room[m.item_id] = (
+                    float("inf")
+                    if listing is None or demand is None
+                    else max(0.0, demand - prices.ahead(listing, price))
+                )
+            if m.expected > 0 and room[m.item_id] != float("inf"):
+                casts = min(casts, int(room[m.item_id] / m.expected))
+        for m in materials:
+            room[m.item_id] -= casts * m.expected
+        pay = None
+        if r.recipe.is_flip:
+            rolls = [sell_value(m.item_id, m.min_count, {}, market) for m in materials]
+            average = market.disenchant_value(item) or 0
+            pay = max(0, int(min(min(rolls, default=0), PAY_SHARE * average)))
+        need = engine.disenchant_skill(item.item_level)
+        out[r.recipe.id] = Budget(casts, pay, need if skill is not None and need > skill else None)
+    return out
 
 
 def by_per_day(

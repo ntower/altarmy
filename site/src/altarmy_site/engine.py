@@ -1044,6 +1044,17 @@ def _option(key: str, node: Node) -> Option:
     return Option(key, node.cost, source=node.source, seconds=node.seconds)
 
 
+# Enchanting skill a disenchant needs, by the item's level: vanilla's table (lowest level of each band,
+# skill), the same for every quality until Forever's is checked in game (docs/INGAME_CHECKS.md)
+DISENCHANT_SKILL = ((66, 250), (61, 225), (56, 200), (51, 175), (46, 150), (41, 125), (36, 100), (31, 75),
+                    (26, 50), (21, 25))  # fmt: skip
+
+
+def disenchant_skill(item_level: int) -> int:
+    """The Enchanting skill disenchanting an item of `item_level` needs (`DISENCHANT_SKILL`)."""
+    return next((skill for level, skill in DISENCHANT_SKILL if item_level >= level), 1)
+
+
 def ah_net(price: int, cut: float = AH_CUT) -> int:
     return int(price * (1 - cut))
 

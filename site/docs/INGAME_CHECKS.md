@@ -10,7 +10,9 @@ What the site assumes until someone checks it in game, and where the answer goes
   needed (its green weapons at item level 21–30 give Greater Magic Essence, as Forever's own drop data has it,
   not vanilla's astral essences: worth a look too) and set `disenchant_verified` in `versions.py` once it matches.
 - [ ] **Disenchant skill.** Can a skill-1 enchanter disenchant a high item-level green? DB2's ItemDisenchantLoot
-  says no skill is needed (`docs/SKILL_UP_RESEARCH.md`); vanilla asked for one by item level.
+  says no skill is needed (`docs/SKILL_UP_RESEARCH.md`); vanilla asked for one by item level. Craft and sell's
+  Disenchant budget says "needs Enchanting N" by vanilla's table (`engine.DISENCHANT_SKILL`): empty it if
+  Forever asks for none, fix it if Forever's differs.
 - [ ] **Wands.** What a vendor pays for Lesser and Greater Magic Wand on the current build (DB2 has moved
   between 1c and 2s).
 - [ ] **Transmutes.** The cooldowns of Iron to Gold and Mithril to Truesilver (DB2 says 1 hour), and whether
