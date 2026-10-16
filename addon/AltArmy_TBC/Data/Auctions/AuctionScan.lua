@@ -11,7 +11,8 @@
 -- (AuctionBook.StoreSummary) so the website only ever gets full scans.
 -- Only a scan read to its end is stored; one the auction house closed on is dropped.
 -- With the automatic scan on (AltArmyTBC_Options.auctionAutoScan, the Auction House options), a scan starts
--- AUTO_DELAY seconds after the auction house opens, if the client allows one and none is under way.
+-- AUTO_DELAY seconds after the auction house opens, if the client allows one, none is under way and this
+-- auction house's newest scan (full or summary) is at least AUTO_GAP old. A scan asked for runs regardless.
 -- A scan Alt Army starts (the button, /altarmy scan or the automatic scan) says in chat which kind it is when
 -- it starts and how it ended; a full scan another addon asked for is read quietly.
 -- luacheck: globals GetServerTime AltArmyTBC_Options
@@ -25,6 +26,7 @@ S.BATCH = 2000 -- listings read a frame
 S.TIMEOUT = 60 -- seconds to wait for the listings (for a summary: for each page)
 S.REPEAT = 30 -- seconds after a scan in which the client repeating its event is not a new scan
 S.AUTO_DELAY = 1 -- seconds after the auction house opens before the automatic scan (the frame settles first)
+S.AUTO_GAP = 120 -- seconds after this auction house's newest scan before the automatic scan runs again
 S.REPLACED = 0.9 -- a summary ending with fewer rows than this share of the most it saw was someone else's search
 
 -- The browse query of a summary scan: every item, as Auctionator's summary scan asks.
@@ -347,12 +349,20 @@ function S.SetAutoScanEnabled(on)
     AltArmyTBC_Options.auctionAutoScan = on == true
 end
 
+--- True when the auction house the player stands at was scanned (full or summary) under AUTO_GAP ago.
+local function scannedRecently()
+    local realm = GetRealmName and GetRealmName() or nil
+    local faction = UnitFactionGroup and UnitFactionGroup("player") or nil
+    local newest = realm and faction and book().Newest(realm, faction)
+    return newest ~= nil and now() - (newest.t or 0) < S.AUTO_GAP
+end
+
 local function scheduleAutoScan()
     if not S.IsAutoScanEnabled() or not S.HasApi() or not (C_Timer and C_Timer.After) then return end
     local mine = visit
     C_Timer.After(S.AUTO_DELAY, function()
         -- Start refuses when closed, busy (another addon's scan came first) or cooling down without a summary.
-        if visit == mine and open and state == "idle" then
+        if visit == mine and open and state == "idle" and not scannedRecently() then
             S.Start()
         end
     end)

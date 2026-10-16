@@ -114,6 +114,29 @@ describe("AuctionScan", function()
             assert.equals(0, requested)
         end)
 
+        it("skips a house scanned under AUTO_GAP ago", function()
+            S.SetAutoScanEnabled(true)
+            B.StoreSummary({ t = now - S.AUTO_GAP + 1, realm = "Classic Beta PvE", faction = "Horde",
+                summary = true, listings = 1, items = "2770:64*1*1" }, now)
+            reopen()
+            runTimers(S.AUTO_DELAY)
+            assert.equals(0, requested)
+            assert.equals("idle", S.State())
+            assert.is_true((S.Start())) -- a scan asked for still runs
+            assert.equals(1, requested)
+        end)
+
+        it("scans again once AUTO_GAP has passed, and only the house scanned counts", function()
+            S.SetAutoScanEnabled(true)
+            B.Store({ t = now - S.AUTO_GAP, realm = "Classic Beta PvE", faction = "Horde", complete = true,
+                listings = 1, items = "2770:64*1*1" }, now)
+            B.StoreSummary({ t = now - 10, realm = "Classic Beta PvE", faction = "Alliance",
+                summary = true, listings = 1, items = "2770:64*1*1" }, now)
+            reopen()
+            runTimers(S.AUTO_DELAY)
+            assert.equals(1, requested)
+        end)
+
         it("does nothing if the auction house closed in the meantime", function()
             S.SetAutoScanEnabled(true)
             reopen()

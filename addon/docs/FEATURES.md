@@ -109,8 +109,9 @@ the reading of other addons' full scans are all off, whatever the client's API o
   tooltip says which kind of scan a click runs now.
 - **Scan automatically:** Options → General → **Auction House** can start the scan by itself a second after
   the auction house opens (off by default). The settings icon right of the button opens that option. A visit
-  within the 15-minute cooldown runs a summary scan; one where another addon already started a full scan
-  is skipped.
+  within the 15-minute cooldown runs a summary scan; one where another addon already started a full scan,
+  or within 2 minutes of that auction house's last scan (full or summary), is skipped. The button still
+  scans then.
 - A full scan started by another addon (Auctionator's full scan option) is saved too, and spends the same
   cooldown.
 - Keep the auction house open until the button stops showing progress: a scan that was cut short is dropped.
