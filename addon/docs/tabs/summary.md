@@ -34,7 +34,7 @@ Click headers to sort ascending/descending.
 
 ## Missing data
 
-One gold `!` per character with a de-duped action list (`GetMissingDataInfo`). Covers never-gathered modules, stale reputation schema, professions needing an open window (on WoW Forever, where recipes are read at login, an alt's missing recipes only ask to log in with it, except for professions that can't be read that way: Fishing, Mining, Herbalism, Skinning and Comprehension), talents, etc. See the summary-missing-data Cursor skill for the design contract.
+One gold `!` per character with a de-duped action list (`GetMissingDataInfo`). Covers never-gathered modules, stale reputation schema, professions needing an open window (on WoW Forever, where recipes are read at login, an alt's missing recipes only ask to log in with it, except for professions that can't be read that way: Fishing, Mining, Herbalism and Skinning; Comprehension, which has no window to open, is never asked for), talents, etc. See the summary-missing-data Cursor skill for the design contract.
 
 ## Data source
 

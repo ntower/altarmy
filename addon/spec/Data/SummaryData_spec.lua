@@ -680,6 +680,20 @@ describe("SummaryData", function()
         assert.is_true(found, "expected 'Open your Skinning window' for an alt")
       end)
 
+      it("never asks for Comprehension, which has no window to open", function()
+        DS.ProfessionHasNoRecipeWindow = function() return false end
+        _G.AltArmy.OwnRecipeRead.CanRead = function(name) return name ~= "Comprehension" end
+        local char = DS.GetCharacter()
+        char.Professions = { Comprehension = { rank = 24, maxRank = 100, Recipes = {} } }
+        char.professionsNeedingRecipeScan = { Comprehension = true }
+        for _, who in ipairs({ "Alice", "Bob" }) do
+          local out = SD.GetMissingDataInfo(who, "Realm1")
+          for _, line in ipairs(out.instructions) do
+            assert.is_nil(line:find("Comprehension", 1, true), who .. ": " .. line)
+          end
+        end
+      end)
+
       it("names the window when reading is turned off", function()
         _G.AltArmy.OwnRecipeRead.IsEnabled = function() return false end
         local out = SD.GetMissingDataInfo("Bob", "Realm1")

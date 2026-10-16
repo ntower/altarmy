@@ -412,6 +412,13 @@ local function appendReputationMissingInstructions(out, char, DS, isCurrent)
     end
 end
 
+-- Lowercase names of professions with recipes but no window the player can open (WoW Forever's mage-only
+-- Comprehension), so nothing the player does would gather them: never asked for. Not in
+-- DS.NO_RECIPE_PROFESSION_KEYS_*, which would also stop their recipes being stored when learned.
+local NO_WINDOW_TO_OPEN = {
+    comprehension = true,
+}
+
 local function appendRecipeMissingInstructions(out, char, DS, isCurrent)
     -- Per-profession: no recipes yet, or recipes marked stale after NEW_RECIPE_LEARNED without UI.
     -- Skips professions with no recipe window at all (Fishing/Riding/Herbalism/Mining, plus
@@ -419,15 +426,17 @@ local function appendRecipeMissingInstructions(out, char, DS, isCurrent)
     -- DS.ProfessionHasNoRecipeWindow in DataStoreProfessions.lua, the shared source of truth this
     -- and GuildTabData.lua's crafting/gathering split both read from.
     -- Where recipes are read in the background at login (OwnRecipeRead, WoW Forever), an alt only needs
-    -- logging in, for professions that can be read that way (not Fishing, gathering or Comprehension); the
-    -- current character is still told to open the window should a read have failed.
+    -- logging in, for professions that can be read that way (not Fishing or gathering); the current
+    -- character is still told to open the window should a read have failed. Comprehension is never asked
+    -- for (NO_WINDOW_TO_OPEN).
     if DS.HasModuleData and DS:HasModuleData(char, "professions") and DS.GetProfessions and DS.GetNumRecipes then
         local professions = DS:GetProfessions(char)
         local needingRescan = char.professionsNeedingRecipeScan
         local R = AltArmy.OwnRecipeRead
         local readAtLogin = not isCurrent and R and R.HasApi and R.HasApi() and R.IsEnabled and R.IsEnabled()
         for profName, prof in pairs(professions or {}) do
-            if not (DS.ProfessionHasNoRecipeWindow and DS.ProfessionHasNoRecipeWindow(profName)) then
+            if not (DS.ProfessionHasNoRecipeWindow and DS.ProfessionHasNoRecipeWindow(profName))
+                and not (type(profName) == "string" and NO_WINDOW_TO_OPEN[profName:lower()]) then
                 local rank = (prof and prof.rank) or 0
                 local needsOpen = (rank > 0 and DS:GetNumRecipes(char, profName) == 0)
                     or (type(needingRescan) == "table" and needingRescan[profName])
