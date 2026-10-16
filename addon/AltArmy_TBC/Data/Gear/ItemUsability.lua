@@ -21,6 +21,8 @@ end
 
 local ARMOR_SPEC_LEVEL = 40
 local POLEARM_TRAIN_LEVEL = 20
+-- Passive spells taught by the trainer at ARMOR_SPEC_LEVEL.
+local ARMOR_PROFICIENCY_SPELLS = { mail = 8737, plate = 750 }
 
 -- TBC class weapon proficiencies (subclass strings normalized to lowercase).
 local WEAPON_PROFICIENCIES = {
@@ -518,10 +520,32 @@ function IU.HasLearnedArmorProficiency(classFile, subclass, itemClass, charData,
     if IU.CharHasEquippedArmorSubclass(charData, subclass) then
         return true
     end
-    if isCurrentCharacter(classFile, charData) and link and _G.IsUsableItem then
-        return _G.IsUsableItem(link) == true
+    if isCurrentCharacter(classFile, charData) then
+        local spellId = ARMOR_PROFICIENCY_SPELLS[subclass:lower()]
+        if spellId and _G.IsSpellKnown then
+            local ok, known = pcall(_G.IsSpellKnown, spellId)
+            if ok and known ~= nil then return known == true end
+        end
+        if link and _G.IsUsableItem then
+            return _G.IsUsableItem(link) == true
+        end
     end
     return false
+end
+
+--- True when the item is armor the class learns from a trainer (mail/plate at 40) and the
+--- character hasn't learned it, whatever their level: they can't wear it until they train.
+function IU.LacksTrainedProficiency(classFile, link, charData)
+    if not link or not hasItemInfoApi() then return false end
+    local name, _, _, _, _, itemClass, subclass = compatGetItemInfo(link)
+    if not name then return false end
+    local ic = itemClass and itemClass:lower() or ""
+    if ic ~= "armor" and ic ~= "armour" then return false end
+    if not subclass or subclass == "" or subclass == "Shields" then return false end
+    classFile = normalizeClassFile(classFile)
+    if not IU.CanClassEverUseArmor(classFile, subclass) then return false end
+    if not IU.RequiresTrainerProficiency(classFile, subclass, itemClass) then return false end
+    return not IU.HasLearnedArmorProficiency(classFile, subclass, itemClass, charData, link)
 end
 
 --- True when character is high enough to train but has not learned armor proficiency.

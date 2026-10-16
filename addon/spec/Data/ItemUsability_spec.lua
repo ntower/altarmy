@@ -656,6 +656,47 @@ describe("ItemUsability", function()
         assert.are.equal(IU.EQUIP_WARNING_KIND.LEVEL, warnings[2].kind)
     end)
 
+    describe("LacksTrainedProficiency", function()
+        local mail = "|Hitem:3:0|h[Mail Vest]|h"
+
+        after_each(function()
+            _G.IsSpellKnown = nil
+            _G.IsUsableItem = nil
+            _G.UnitName = nil
+            _G.UnitClass = nil
+        end)
+
+        it("is true for a shaman's mail before it is trained, whatever the level", function()
+            assert.is_true(IU.LacksTrainedProficiency("SHAMAN", mail, { name = "Thrall" }))
+            local ok = IU.IsEquippableWithin("SHAMAN", 45, mail, 0)
+            assert.is_true(ok)
+        end)
+
+        it("is false once the shaman wears mail", function()
+            local charData = { name = "Thrall", Inventory = { [5] = mail } }
+            assert.is_false(IU.LacksTrainedProficiency("SHAMAN", mail, charData))
+        end)
+
+        it("asks IsSpellKnown for the current character", function()
+            _G.UnitName = function() return "Thrall" end
+            _G.UnitClass = function() return "Shaman", "SHAMAN" end
+            _G.IsUsableItem = function() return true end
+            local asked
+            _G.IsSpellKnown = function(id) asked = id; return false end
+            assert.is_true(IU.LacksTrainedProficiency("SHAMAN", mail, { name = "Thrall" }))
+            assert.are.equal(8737, asked)
+            _G.IsSpellKnown = function() return true end
+            assert.is_false(IU.LacksTrainedProficiency("SHAMAN", mail, { name = "Thrall" }))
+        end)
+
+        it("is false for armor that needs no training or that the class can never wear", function()
+            assert.is_false(IU.LacksTrainedProficiency("WARRIOR", mail, nil))
+            assert.is_false(IU.LacksTrainedProficiency("MAGE", mail, nil))
+            assert.is_false(IU.LacksTrainedProficiency("SHAMAN", "|Hitem:1:0|h[Cloth Hood]|h", nil))
+            assert.is_false(IU.LacksTrainedProficiency("SHAMAN", "|Hitem:7:0|h[Shield]|h", nil))
+        end)
+    end)
+
     describe("per-link cache", function()
         local getItemInfoCalls
 

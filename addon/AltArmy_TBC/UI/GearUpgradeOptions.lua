@@ -24,6 +24,13 @@ local function hookHostShow(panel)
     end)
 end
 
+-- An EditBox given text while hidden can draw it scrolled out of view (blank until focused);
+-- putting the cursor back at the start shows it.
+local function setEditText(box, text)
+    box:SetText(text)
+    if box.SetCursorPosition then box:SetCursorPosition(0) end
+end
+
 local function refreshQuestRewardIndicators()
     local QRI = AltArmy.QuestRewardIndicators
     if QRI and QRI.Refresh then
@@ -198,7 +205,7 @@ function AltArmy.BuildGearUpgradeOptionsUI(panel)
         local n = tonumber(thresholdEdit:GetText()) or 0
         GU.EnsureGearUpgradeOptions().upgradeThresholdPercent =
             GU.ResolveUpgradeThresholdPercent(n)
-        thresholdEdit:SetText(tostring(GU.GetOptions().upgradeThresholdPercent))
+        setEditText(thresholdEdit, tostring(GU.GetOptions().upgradeThresholdPercent))
     end
 
     thresholdEdit:SetScript("OnEnterPressed", function(box)
@@ -220,8 +227,8 @@ function AltArmy.BuildGearUpgradeOptionsUI(panel)
         showUpgradeChk:SetChecked(opts.showQuestRewardUpgradeIndicator ~= false)
         showVendorChk:SetChecked(opts.showQuestRewardVendorIndicator ~= false)
         otherCharChk:SetChecked(opts.notifyOtherCharacters ~= false)
-        levelsEdit:SetText(tostring(opts.levelsAhead))
-        thresholdEdit:SetText(tostring(opts.upgradeThresholdPercent))
+        setEditText(levelsEdit, tostring(opts.levelsAhead))
+        setEditText(thresholdEdit, tostring(opts.upgradeThresholdPercent))
         UpdateGearUpgradeScrollRange()
     end
 

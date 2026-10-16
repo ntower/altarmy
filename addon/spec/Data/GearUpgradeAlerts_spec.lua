@@ -1289,6 +1289,7 @@ describe("GearUpgradeAlerts", function()
                 IsBindOnPickup = function() return false end,
                 GetInventorySlotsForItem = overrides.getInventorySlotsForItem or function() return { 1 } end,
                 IsEquippableWithin = overrides.isEquippableWithin or function() return true, 0, nil end,
+                LacksTrainedProficiency = overrides.lacksTrainedProficiency,
             }
             AltArmy.ClassColor = {
                 wrapName = function(name) return name end,
@@ -1469,6 +1470,23 @@ describe("GearUpgradeAlerts", function()
                 isEquippableWithin = function(_, _, link)
                     return link == linkB, 0, nil
                 end,
+            })
+            GA.AnnounceQuestRewardUpgrades()
+            assert.are.equal(1, #chatLines)
+            assert.is_not_nil(chatLines[1]:find(linkB, 1, true))
+            assert.is_nil(chatLines[1]:find(linkA, 1, true))
+        end)
+
+        it("skips quest rewards whose armor proficiency is not trained yet", function()
+            loadWithMocks({
+                getNumQuestChoices = function() return 2 end,
+                evaluateForCharacter = function() return true end,
+                getCharacterUpgradeDelta = function(_, link)
+                    if link == linkA then return 100 end
+                    if link == linkB then return 5 end
+                    return 0
+                end,
+                lacksTrainedProficiency = function(_, link) return link == linkA end,
             })
             GA.AnnounceQuestRewardUpgrades()
             assert.are.equal(1, #chatLines)

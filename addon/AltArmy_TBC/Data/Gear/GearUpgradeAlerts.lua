@@ -480,7 +480,12 @@ function GA.IsQuestRewardEquippableForCharacter(char, link, evalOpts)
     local levelsAhead = evalOpts and evalOpts.levelsAhead or 0
     if not IU.IsEquippableWithin then return false end
     local equippable = IU.IsEquippableWithin(classFile, level, link, levelsAhead)
-    return equippable == true
+    if equippable ~= true then return false end
+    -- Mail/plate the character hasn't trained yet isn't a reward they can wear.
+    if IU.LacksTrainedProficiency and IU.LacksTrainedProficiency(classFile, link, char) then
+        return false
+    end
+    return true
 end
 
 local function questRewardClearUpgrade(char, link, evalOpts, opts)
