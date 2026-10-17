@@ -27,6 +27,42 @@ function RF.filterListByRealm(list, realmFilter, currentRealm)
     return out
 end
 
+--- Whether one entry is shown under `scope` (GlobalRealmFilter's: otherFaction, otherRealms, linked). This
+--- realm's characters of the current faction always are; the other faction here and every faction on other
+--- realms each by their toggle; a linked account's (entry.linkId) only with `linked` too. An entry whose
+--- faction isn't known counts as the current faction's.
+--- @param faction string|nil the entry's faction ("Horde" | "Alliance"), when known
+function RF.inScope(entry, faction, scope, currentRealm, currentFaction)
+    scope = scope or {}
+    if entry.linkId ~= nil and not scope.linked then
+        return false
+    end
+    if (entry.realm or "") ~= (currentRealm or "") then
+        return scope.otherRealms and true or false
+    end
+    if faction and faction ~= "" and currentFaction and currentFaction ~= "" and faction ~= currentFaction then
+        return scope.otherFaction and true or false
+    end
+    return true
+end
+
+--- Filter a list of entries (with .realm, and .faction or a `factionOf(entry)` lookup) by `scope`.
+--- @return table[] a new array
+function RF.filterListByScope(list, scope, currentRealm, currentFaction, factionOf)
+    local out = {}
+    for i = 1, #(list or {}) do
+        local e = list[i]
+        local faction = e.faction
+        if faction == nil and factionOf then
+            faction = factionOf(e)
+        end
+        if RF.inScope(e, faction, scope, currentRealm, currentFaction) then
+            out[#out + 1] = e
+        end
+    end
+    return out
+end
+
 --- Return true if list has entries from more than one distinct realm.
 --- @param list table[] Array of entries with at least .realm
 --- @return boolean

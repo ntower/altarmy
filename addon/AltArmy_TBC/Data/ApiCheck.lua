@@ -218,6 +218,20 @@ AC.MANIFEST = {
     { area = "Addon Infra", label = "hooksecurefunc", candidates = { "hooksecurefunc" } },
     { area = "Addon Infra", label = "GetBuildInfo", candidates = { "GetBuildInfo" } },
 
+    -- Battle.net: linked accounts send each other their characters as game data between your own
+    -- WoW accounts (Data/Link/LinkDiscovery.lua, /altarmy debug bnprobe).
+    { area = "Battle.net", label = "BNGetInfo", candidates = { "BNGetInfo" } },
+    { area = "Battle.net", label = "GetGameAccountInfoByID",
+      candidates = { "C_BattleNet.GetGameAccountInfoByID" } },
+    { area = "Battle.net", label = "GetAccountInfoByGUID", candidates = { "C_BattleNet.GetAccountInfoByGUID" } },
+    { area = "Battle.net", label = "BNGetGameAccountInfo", candidates = { "BNGetGameAccountInfo" } },
+    { area = "Battle.net", label = "SendGameData", candidates = { "C_BattleNet.SendGameData", "BNSendGameData" } },
+    { area = "Battle.net", label = "InChatMessagingLockdown",
+      candidates = { "C_ChatInfo.InChatMessagingLockdown" } },
+    { area = "Battle.net", label = "issecretvalue", candidates = { "issecretvalue" } },
+    { area = "Battle.net", label = "IsGUIDRelatedToLocalAccount",
+      candidates = { "C_AccountInfo.IsGUIDRelatedToLocalAccount" } },
+
     -- Unit/Player Info
     { area = "Unit Info", label = "UnitName", candidates = { "UnitName" } },
     { area = "Unit Info", label = "UnitLevel", candidates = { "UnitLevel" } },

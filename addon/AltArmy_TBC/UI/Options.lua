@@ -159,8 +159,8 @@ panel.default = function()
     if panel.minimapCheckbox then
         panel.minimapCheckbox:SetChecked(true)
     end
-    if AltArmy.GlobalRealmFilter and AltArmy.GlobalRealmFilter.Set then
-        AltArmy.GlobalRealmFilter.Set("currentRealm")
+    if AltArmy.GlobalRealmFilter and AltArmy.GlobalRealmFilter.ResetScope then
+        AltArmy.GlobalRealmFilter.ResetScope()
     end
     if panel.RefreshRealmFilterDropdown then
         panel.RefreshRealmFilterDropdown()
@@ -235,9 +235,10 @@ rootIntro:SetText("Version " .. tostring(AltArmy.Version or "?") .. "\n\n"
 
 --- id -> { page = canvas frame, label, category = Settings subcategory once registered }
 panel.pages = {}
-local PAGE_ORDER = { "general", "characters", "gearUpgrades", "cooldowns", "debug" }
+local PAGE_ORDER = { "general", "sharing", "characters", "gearUpgrades", "cooldowns", "debug" }
 local PAGE_LABELS = {
     general = "General",
+    sharing = "Sharing",
     characters = "Characters",
     gearUpgrades = "Gear",
     cooldowns = "Cooldowns",
@@ -269,6 +270,8 @@ local tabCharacters, pageCharacters = CreateOptionsPage("characters")
 local tabGearUpgrades, pageGearUpgrades = CreateOptionsPage("gearUpgrades")
 local tabCooldowns = CreateOptionsPage("cooldowns")
 local tabDebug, pageDebug = CreateOptionsPage("debug")
+-- Sharing: guild sharing (and, to come, linked accounts). On panel, not main-chunk locals (200-local limit).
+panel.tabSharing, panel.pageSharing = CreateOptionsPage("sharing")
 
 local RefreshDebugCheckboxes
 local RefreshDebugTabVisibility
@@ -703,6 +706,20 @@ local generalViewport = Theme.CreateVerticalScrollViewport({
 })
 local generalScrollChild = generalViewport.child
 
+panel.sharingViewport = Theme.CreateVerticalScrollViewport({
+    name = "AltArmyTBC_SharingOptionsScroll",
+    parent = panel.tabSharing,
+    gutterEdge = panel.pageSharing,
+    anchorTop = { "TOPLEFT", panel.tabSharing, "TOPLEFT", 0, 0 },
+    anchorBottom = { "BOTTOMRIGHT", panel.pageSharing, "BOTTOMRIGHT", -GENERAL_SCROLL_GUTTER, 4 },
+    wheelStep = 40,
+    valueStep = 20,
+    enableMouseWheel = true,
+    wheelOnChild = false,
+    wheelSource = "slider",
+    minScrollToShow = 1,
+})
+
 local LayoutGeneralSections -- defined once every section is built
 local function onSectionToggled()
     if LayoutGeneralSections then
@@ -715,7 +732,7 @@ local generalSection = Theme.CreateCollapsibleSection(generalScrollChild, {
     defaultExpanded = true,
     onToggle = onSectionToggled,
 })
-local guildSection = Theme.CreateCollapsibleSection(generalScrollChild, {
+local guildSection = Theme.CreateCollapsibleSection(panel.sharingViewport.child, {
     text = "Guild",
     defaultExpanded = true,
     onToggle = onSectionToggled,
@@ -750,72 +767,63 @@ local minimapRow = Theme.CreateLabeledCheckbox(generalSection.content, {
 })
 panel.minimapCheckbox = minimapRow.check
 
-local REALM_FILTER_MENU = {
-    { value = "currentRealm", label = "View characters on current realm only" },
-    { value = "all",          label = "View characters on all realms at once" },
-}
+-- Which characters every tab shows (GlobalRealmFilter's scope): this realm and your faction always, the
+-- rest by a checkbox each. Linked accounts get theirs once there are any.
+local SCOPE_CAPTION_HEIGHT = 16
+panel.scopeCaption = Theme.CreateOptionsSectionLabel(generalSection.content, {
+    relativeTo = minimapRow,
+    relativePoint = "BOTTOMLEFT",
+    x = 0,
+    y = -14,
+    text = "Characters shown",
+    justifyH = "LEFT",
+})
+panel.scopeCaption:SetHeight(SCOPE_CAPTION_HEIGHT)
 
-local function realmFilterEntries()
-    local out = {}
-    for i = 1, #REALM_FILTER_MENU do
-        local entry = REALM_FILTER_MENU[i]
-        out[i] = { id = entry.value, label = entry.label }
+panel.SCOPE_ROWS = {
+    { key = nil, text = "Characters on the same realm and same faction" },
+    { key = "otherFaction", text = "Characters on the same realm of the opposite faction" },
+    { key = "otherRealms", text = "Characters on other realms" },
+}
+panel.scopeRows = {}
+for i, def in ipairs(panel.SCOPE_ROWS) do
+    local row = Theme.CreateLabeledCheckbox(generalSection.content, {
+        point = "TOPLEFT",
+        relativeTo = i == 1 and panel.scopeCaption or panel.scopeRows[i - 1],
+        relativePoint = "BOTTOMLEFT",
+        x = 0,
+        y = i == 1 and -6 or -2,
+        text = def.text,
+        fullWidthHover = true,
+        onClick = def.key and function(checked)
+            local G = AltArmy.GlobalRealmFilter
+            if G and G.SetScope then
+                G.SetScope(def.key, checked)
+            end
+        end or nil,
+    })
+    if not def.key then
+        row.check:SetChecked(true)
+        row.check:Disable()
+        if row.label then
+            row.label:SetTextColor(0.6, 0.6, 0.6)
+        end
     end
-    return out
+    row.scopeKey = def.key
+    panel.scopeRows[i] = row
 end
 
-local REALM_FILTER_ROW_HEIGHT = Theme.OPTIONS_DROPDOWN_ROW_HEIGHT or 24
-local realmFilterRow = CreateFrame("Frame", nil, generalSection.content)
-realmFilterRow:SetPoint("TOPLEFT", minimapRow, "BOTTOMLEFT", 0, -14)
-realmFilterRow:SetPoint("RIGHT", generalSection.content, "RIGHT", 0, 0)
-realmFilterRow:SetHeight(REALM_FILTER_ROW_HEIGHT)
-
-local realmFilterColumn = CreateFrame("Frame", nil, realmFilterRow)
-realmFilterColumn:SetPoint("TOP", realmFilterRow, "TOP", 0, 0)
-realmFilterColumn:SetPoint("BOTTOM", realmFilterRow, "BOTTOM", 0, 0)
-realmFilterColumn:SetPoint("LEFT", realmFilterRow, "LEFT", 0, 0)
-realmFilterColumn:SetPoint("RIGHT", realmFilterRow, "CENTER", -8, 0)
-
-local realmFilterDropdown = Theme.CreateSingleSelectDropdown({
-    parent = realmFilterColumn,
-    point = "TOPLEFT",
-    relativeTo = realmFilterColumn,
-    relativePoint = "TOPLEFT",
-    x = 0,
-    y = 0,
-    rowHeight = REALM_FILTER_ROW_HEIGHT,
-    dropdownParent = tabGeneral,
-    getEntries = realmFilterEntries,
-    getSelectedId = function()
-        local G = AltArmy.GlobalRealmFilter
-        if G and G.Get then
-            G.Ensure()
-            return G.Get()
-        end
-        return "all"
-    end,
-    onSelect = function(id)
-        local G = AltArmy.GlobalRealmFilter
-        if G and G.Set then
-            G.Set(id)
-        end
-    end,
-})
-realmFilterDropdown.button:ClearAllPoints()
-realmFilterDropdown.button:SetPoint("TOPLEFT", realmFilterColumn, "TOPLEFT", 0, 0)
-realmFilterDropdown.button:SetPoint("BOTTOMRIGHT", realmFilterColumn, "BOTTOMRIGHT", 0, 0)
-realmFilterDropdown.popup:ClearAllPoints()
-realmFilterDropdown.popup:SetPoint("TOPLEFT", realmFilterDropdown.button, "BOTTOMLEFT", 0, -2)
-realmFilterDropdown.popup:SetPoint("TOPRIGHT", realmFilterDropdown.button, "BOTTOMRIGHT", 0, -2)
-
 local function RefreshRealmFilterDropdown()
-    if realmFilterDropdown and realmFilterDropdown.Update then
-        realmFilterDropdown:Update()
+    local G = AltArmy.GlobalRealmFilter
+    local scope = G and G.GetScope and G.GetScope() or {}
+    for _, row in ipairs(panel.scopeRows) do
+        if row.scopeKey then
+            row.check:SetChecked(scope[row.scopeKey] and true or false)
+        end
     end
 end
 
 RefreshRealmFilterDropdown()
-panel.realmFilterDropdown = realmFilterDropdown
 panel.RefreshRealmFilterDropdown = RefreshRealmFilterDropdown
 
 -- Guild sharing settings (only shown when the guildShare feature flag is on).
@@ -1599,7 +1607,8 @@ do
     panel.advancedSection.SetShown(R and R.HasApi and R.HasApi() or false)
 end
 
-generalSection.SetContentHeight(Theme.CHAR_LIST_ROW_HEIGHT + 14 + REALM_FILTER_ROW_HEIGHT)
+generalSection.SetContentHeight(Theme.CHAR_LIST_ROW_HEIGHT + 14 + SCOPE_CAPTION_HEIGHT + 6
+    + #panel.SCOPE_ROWS * (Theme.CHAR_LIST_ROW_HEIGHT + 2))
 guildSection.SetContentHeight(GUILD_CONTENT_HEIGHT)
 auctionSection.SetContentHeight(math.max(Theme.CHAR_LIST_ROW_HEIGHT, Theme.OPTIONS_DROPDOWN_ROW_HEIGHT or 24))
 panel.advancedSection.SetContentHeight(Theme.CHAR_LIST_ROW_HEIGHT)
@@ -1650,46 +1659,68 @@ function panel.DumpGeneralLayout()
     })
 end
 
-local generalSections = { generalSection, guildSection, auctionSection, panel.advancedSection }
-local stackGeneralSections = Theme.StackCollapsibleSections(generalSections, { parent = generalScrollChild, gap = 8 })
+-- The scrolling pages built of collapsible sections: General, and Sharing (the Guild section).
+local SECTION_PAGES = {
+    general = {
+        sections = { generalSection, auctionSection, panel.advancedSection },
+        viewport = generalViewport,
+    },
+    sharing = {
+        sections = { guildSection },
+        viewport = panel.sharingViewport,
+    },
+}
+for _, pg in pairs(SECTION_PAGES) do
+    pg.stack = Theme.StackCollapsibleSections(pg.sections, { parent = pg.viewport.child, gap = 8 })
+end
 
---- Stack the sections and size the scroll area to them.
+--- Stack each page's sections and size its scroll area to them.
 function LayoutGeneralSections()
-    generalScrollChild:SetHeight(math.max(1, stackGeneralSections() + 8))
-    if generalViewport.UpdateRange then
-        generalViewport.UpdateRange()
+    for _, pg in pairs(SECTION_PAGES) do
+        pg.viewport.child:SetHeight(math.max(1, pg.stack() + 8))
+        if pg.viewport.UpdateRange then
+            pg.viewport.UpdateRange()
+        end
     end
 end
 LayoutGeneralSections()
 
---- The section a flashed control lives in, and the control (see AltArmy.OpenInterfaceOptions).
-local GENERAL_FLASH_TARGETS = {
-    main = { section = guildSection, region = guildMainFocusRegion },
-    guildShare = { section = guildSection, region = guildShareEnableFocusRegion },
-    autoDelete = { section = guildSection, region = guildAutoDeleteRow },
-    autoScan = { section = auctionSection, region = autoScanRow },
-    scanMode = { section = auctionSection, region = panel.auctionRightHolder },
+--- The page and section a flashed control lives in, and the control (see AltArmy.OpenInterfaceOptions).
+local FLASH_TARGETS = {
+    main = { page = "sharing", section = guildSection, region = guildMainFocusRegion },
+    guildShare = { page = "sharing", section = guildSection, region = guildShareEnableFocusRegion },
+    autoDelete = { page = "sharing", section = guildSection, region = guildAutoDeleteRow },
+    autoScan = { page = "general", section = auctionSection, region = autoScanRow },
+    scanMode = { page = "general", section = auctionSection, region = panel.auctionRightHolder },
 }
 
---- Show `flash`'s control: open only the section it is in (the others close), scroll it into view and
---- flash it. False if it is not on the General tab.
+--- The options page a flashed control is on (nil if none of the section pages').
+function panel.FlashTargetPage(flash)
+    local target = FLASH_TARGETS[flash or ""]
+    return target and target.page or nil
+end
+
+--- Show `flash`'s control: open only the section it is in (the others on its page close), scroll it into
+--- view and flash it. False if it is on none of the section pages.
 local function FocusGeneralControl(flash)
-    local target = GENERAL_FLASH_TARGETS[flash]
+    local target = FLASH_TARGETS[flash]
     if not target then
         return false
     end
-    for _, section in ipairs(generalSections) do
+    local pg = SECTION_PAGES[target.page]
+    for _, section in ipairs(pg.sections) do
         section.SetExpanded(section == target.section, true)
     end
     LayoutGeneralSections()
-    if generalViewport.SetOffset then
-        generalViewport.SetOffset(0)
+    local viewport = pg.viewport
+    if viewport.SetOffset then
+        viewport.SetOffset(0)
     end
     local function reveal()
-        local top, rowTop, rowBottom = generalScrollChild:GetTop(), target.region:GetTop(), target.region:GetBottom()
-        local viewHeight = generalViewport.scroll:GetHeight() or 0
-        if top and rowTop and rowBottom and top - rowBottom > viewHeight and generalViewport.SetOffset then
-            generalViewport.SetOffset(math.max(0, top - rowTop - 24))
+        local top, rowTop, rowBottom = viewport.child:GetTop(), target.region:GetTop(), target.region:GetBottom()
+        local viewHeight = viewport.scroll:GetHeight() or 0
+        if top and rowTop and rowBottom and top - rowBottom > viewHeight and viewport.SetOffset then
+            viewport.SetOffset(math.max(0, top - rowTop - 24))
         end
         if Theme.FlashAttentionHighlight then
             Theme.FlashAttentionHighlight(target.region)
@@ -2485,6 +2516,15 @@ SlashCmdList.ALTARMY = function(msg)
         end
         return
     end
+    if lower == "debug bnprobe" or lower == "debug bnprobe burst" then
+        local probe = AltArmy and AltArmy.LinkProbe
+        if probe and probe.Start then
+            probe.Start(lower == "debug bnprobe burst")
+        elseif AltArmy.Debug and AltArmy.Debug.NotifyChat then
+            AltArmy.Debug.NotifyChat("The Battle.net probe is unavailable.")
+        end
+        return
+    end
     if lower == "debug ahprobe" then
         local probe = AltArmy and AltArmy.AuctionProbe
         if probe and probe.Start then
@@ -2624,7 +2664,8 @@ end
 AltArmy.OptionsPanel = panel
 
 --- Opens Options -> AddOns -> AltArmy at a sub-page.
---- @param initialTab string|nil "general" (default), "characters", "gearUpgrades", "cooldowns", or "debug"
+--- @param initialTab string|nil "general" (default), "sharing", "characters", "gearUpgrades", "cooldowns",
+--- or "debug"
 --- @param opts table|nil { name, realm, flash = "main"|"bankAlt"|"guildShare"|"autoDelete"|"autoScan"|"scanMode" }
 --- A flashed General tab control's section is opened first (Guild: main, guildShare, autoDelete;
 --- Auction House: autoScan, scanMode).
@@ -2634,6 +2675,8 @@ function AltArmy.OpenInterfaceOptions(initialTab, opts)
     if tab == "debug" and not (AltArmy.Debug and AltArmy.Debug.IsEnabled()) then
         tab = "general"
     end
+    -- a flashed control opens its own page (the Guild controls moved from General to Sharing)
+    tab = panel.FlashTargetPage(opts.flash) or tab
     local focus = {
         tab = tab,
         name = opts.name,

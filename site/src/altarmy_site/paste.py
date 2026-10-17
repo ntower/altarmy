@@ -4,7 +4,8 @@ pasted on the main page or the Upload page instead of uploading AltArmy_TBC.lua 
 The addon (`AltArmy_TBC/Data/ProfitExport.lua`) writes "AAX1:" plus LibDeflate's printable encoding of raw
 DEFLATE of these lines:
 
-    V|2|<interface>|<build>                       the client, so the export says which game it is from
+    V|2|<interface>|<build>[|<account id>]        the client, so the export says which game it is from,
+                                                  and the WoW account (newer addons; see `altarmy`)
     C|<realm>|<name>|<faction>|<CLASS_FILE>|<level>|<guid>
     P|<profession>|<rank>|<maxRank>|<recipe ids>  belongs to the C line before it; ids comma-separated
     T|<spell id>|<rank>                           a Legacy talent (WoW: Forever) of the C line before it
@@ -27,7 +28,7 @@ import zlib
 from dataclasses import dataclass
 
 from . import versions
-from .altarmy import Character, Profession
+from .altarmy import Character, Profession, account_id
 from .reputation import EXALTED, HATED, city_standings
 
 PREFIX = "AAX1:"
@@ -46,6 +47,7 @@ class Export:
     interface: int  # the client's interface number, e.g. 20506
     build: str  # e.g. 2.5.6.69795
     characters: list[Character]  # sorted by realm then name
+    account_id: str | None = None  # the WoW account the export is from (None from older addons)
 
     @property
     def game_version(self) -> str | None:
@@ -120,7 +122,7 @@ def decode(text: str, max_bytes: int = MAX_BYTES) -> Export:
 
 def _parse(lines: list[str]) -> Export:
     head = lines[0].split("|")
-    if len(head) != 4 or head[0] != "V":
+    if len(head) not in (4, 5) or head[0] != "V":
         raise ValueError("the export has no version line")
     character_fields = CHARACTER_FIELDS.get(head[1])
     if character_fields is None:
@@ -157,7 +159,8 @@ def _parse(lines: list[str]) -> Export:
             raise ValueError(f"unexpected line in the export: {line[:40]!r}")
     if current is not None:
         chars.append(_character(*current))
-    return Export(interface, head[3], sorted(chars, key=lambda c: (c.realm, c.name)))
+    account = account_id(head[4]) if len(head) == 5 else None
+    return Export(interface, head[3], sorted(chars, key=lambda c: (c.realm, c.name)), account)
 
 
 def _character(

@@ -266,16 +266,8 @@ local function RefreshRaidsList()
     local rows = LD.BuildRows(DS, now)
     do
         local GRF = AltArmy.GlobalRealmFilter
-        local rf = GRF and GRF.Get and GRF.Get() or "all"
-        if rf == "currentRealm" then
-            local curRealm = GetCurrentRealm()
-            local filtered = {}
-            for _, rd in ipairs(rows) do
-                if rd.realm == curRealm then
-                    filtered[#filtered + 1] = rd
-                end
-            end
-            rows = filtered
+        if GRF and GRF.FilterList then
+            rows = GRF.FilterList(rows, GetCurrentRealm())
         end
     end
 

@@ -226,6 +226,29 @@ local function FoldLegacyEntries(data, realm, guid, fullName, char)
     end
 end
 
+-- This WoW account's id: 16 random hex digits made on first load and kept in AltArmyTBC_Data. Nothing in the
+-- game names the account, and every character of it shares this file. The website replaces only the
+-- characters of the account an upload comes from (site/src/altarmy_site/altarmy.py), and linked accounts
+-- tell each other apart by it. `force` makes a new one (a copied WTF folder shares the old one).
+local ACCOUNT_ID_PATTERN = "^%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x%x$"
+
+local function EnsureAccountId(data, rng, force)
+    data = data or AltArmyTBC_Data
+    if not force and type(data.accountId) == "string" and data.accountId:match(ACCOUNT_ID_PATTERN) then
+        return data.accountId
+    end
+    rng = rng or math.random
+    local digits = {}
+    for i = 1, 16 do
+        digits[i] = string.format("%x", rng(0, 15))
+    end
+    data.accountId = table.concat(digits)
+    return data.accountId
+end
+
+DS.EnsureAccountId = EnsureAccountId
+DS._EnsureAccountId = EnsureAccountId
+
 DS._GetCurrentCharTable = GetCurrentCharTable
 DS._RemoveUnknownStubs = RemoveUnknownStubs
 DS._MigrateCharacterKeys = MigrateCharacterKeys
@@ -643,6 +666,7 @@ frame:SetScript("OnEvent", function(_, event, ...)
             AltArmyTBC_Data.Characters = AltArmyTBC_Data.Characters or {}
             AltArmyTBC_Data.OrphanImports = AltArmyTBC_Data.OrphanImports or {}
             AltArmyTBC_Data.RecipeReagents = AltArmyTBC_Data.RecipeReagents or {}
+            EnsureAccountId()
             RemoveUnknownStubs()
             MigrateCharacterKeys()
             GetCurrentCharTable()

@@ -1975,14 +1975,16 @@ def replace_characters(
     game_version: str,
     chars: Sequence[Character],
     keep_holdings: bool = False,
+    source: str | None = None,
 ) -> None:
-    """Store an import's characters in place of the user's (with `keep_holdings`, keeping what each held:
-    see `store.save_characters`). A selected realm none of them is on is forgotten, so the new characters'
-    biggest group is selected."""
-    store.save_characters(conn, user_uid, game_version, chars, keep_holdings)
+    """Store an upload's characters in place of the user's from the same WoW account (`source`; with
+    `keep_holdings`, keeping what each held: see `store.save_characters`). A selected realm none of the
+    user's characters is on any more is forgotten, so their biggest group is selected."""
+    store.save_characters(conn, user_uid, game_version, chars, keep_holdings, source)
     saved = users.get_settings(conn, user_uid, game_version)
     wanted = (saved.selected_realm, saved.selected_faction)
-    if not any((g.realm, g.faction) == wanted for g in altarmy.groups(chars)):
+    now = store.load_characters(conn, user_uid, game_version)
+    if not any((g.realm, g.faction) == wanted for g in altarmy.groups(now)):
         users.update_settings(conn, user_uid, game_version, selected_realm=None, selected_faction=None)
 
 

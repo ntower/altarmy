@@ -17,15 +17,21 @@ made one while the name still read "Unknown") are skipped.
 
 Recipe ids are craft spell ids (they match `recipes.spell_id`). On TBC clients one recipe can be stored
 under several alias keys that all share a `primaryRecipeID`; Enchanting rows only carry `color`.
+
+`AltArmyTBC_Data.accountId` names the WoW account the file is from (random, made by the addon on first
+load; none from older addons), so each account's upload replaces only its own characters. Only
+`AltArmyTBC_Data` is read: the file's other globals (guild data, linked accounts' characters) are not the
+uploader's characters.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Literal
 
-from .luasv import LuaTable, LuaValue, parse_assignments
+from .luasv import LuaTable, LuaValue, parse_assignment
 from .reputation import city_standings
 
 
@@ -108,12 +114,35 @@ def crafters(chars: Iterable[Character]) -> dict[int, list[str]]:
     return out
 
 
+ACCOUNT_ID = re.compile(r"[0-9A-Za-z]{1,64}")  # the addon writes 16 hex digits
+
+
+@dataclass(frozen=True)
+class AltArmyFile:
+    account_id: str | None  # the WoW account the file is from; None from addons that don't say
+    characters: list[Character]  # sorted by realm then name
+
+
+def parse_file(data: bytes, retail_bags: bool = True) -> AltArmyFile:
+    """The file's account and its characters (see `parse_characters`)."""
+    root = parse_assignment(data, "AltArmyTBC_Data")
+    if not isinstance(root, dict):
+        raise ValueError("no AltArmyTBC_Data in file (is this Alt Army's AltArmy_TBC.lua?)")
+    return AltArmyFile(account_id(root.get("accountId")), _characters(root, retail_bags))
+
+
+def account_id(v: LuaValue) -> str | None:
+    """An account id as the addon writes it, else None (a malformed one is ignored, not refused)."""
+    return v if isinstance(v, str) and ACCOUNT_ID.fullmatch(v) else None
+
+
 def parse_characters(data: bytes, retail_bags: bool = True) -> list[Character]:
     """All characters in the file, sorted by realm then name; their holdings read with the container ids of
     a retail client (`retail_bags`: WoW: Forever's) or a Classic one."""
-    root = parse_assignments(data).get("AltArmyTBC_Data")
-    if not isinstance(root, dict):
-        raise ValueError("no AltArmyTBC_Data in file (is this Alt Army's AltArmy_TBC.lua?)")
+    return parse_file(data, retail_bags).characters
+
+
+def _characters(root: LuaTable, retail_bags: bool) -> list[Character]:
     chars: list[Character] = []
     for realm, by_key in _table(root.get("Characters")).items():
         entries = {

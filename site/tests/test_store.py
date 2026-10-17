@@ -242,6 +242,38 @@ def test_load_cities_reads_every_preset(cities: Path, tmp_path: Path) -> None:
         store.load_cities(cities)
 
 
+def _char(name: str, realm: str = "R") -> Character:
+    return Character(realm, name, "Horde", "MAGE", 30, ())
+
+
+def _names(conn: Connection) -> list[str]:
+    return [c.name for c in store.load_characters(conn, ME, FOREVER)]
+
+
+def test_each_accounts_upload_replaces_only_its_own_characters(conn: Connection) -> None:
+    store.save_characters(conn, ME, FOREVER, [_char("A1"), _char("A2")], source="acct-a")
+    store.save_characters(conn, ME, FOREVER, [_char("B1")], source="acct-b")
+    assert _names(conn) == ["A1", "A2", "B1"]  # a multiboxer's two accounts side by side
+    store.save_characters(conn, ME, FOREVER, [_char("A1")], source="acct-a")  # A2 deleted in game
+    assert _names(conn) == ["A1", "B1"]
+    # a character moved to the other account (or a copied WTF folder): the newest upload has it
+    store.save_characters(conn, ME, FOREVER, [_char("B1"), _char("A1")], source="acct-b")
+    assert _names(conn) == ["A1", "B1"]
+    store.save_characters(conn, ME, FOREVER, [], source="acct-a")
+    assert _names(conn) == ["A1", "B1"]  # A1 is acct-b's now
+
+
+def test_characters_saved_without_an_account_are_taken_over(conn: Connection) -> None:
+    store.save_characters(conn, ME, FOREVER, [_char("Old1"), _char("Old2")])  # before the addon named one
+    store.save_characters(conn, ME, FOREVER, [_char("New")], source="acct-a")
+    assert _names(conn) == ["New"]
+    # an older addon's upload replaces the unnamed ones and its own names, never another account's
+    store.save_characters(conn, ME, FOREVER, [_char("Legacy")])
+    assert _names(conn) == ["Legacy", "New"]
+    store.save_characters(conn, ME, FOREVER, [_char("Legacy2"), _char("New")])
+    assert _names(conn) == ["Legacy2", "New"]
+
+
 def test_holdings_are_saved_apart_and_kept_through_an_export(conn: Connection) -> None:
     held = (Holding(2589, 25, "bags"), Holding(2140, 1, "bags", bound=True))
     holder = Character("R", "Holder", "Horde", "MAGE", 30, (), holdings=held, bags_at=100, bank_at=None)

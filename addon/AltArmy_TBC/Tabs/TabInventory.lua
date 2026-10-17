@@ -65,7 +65,7 @@ end
 local function CharacterEntries()
     local list = SD.GetCharacterList()
     local currentRealm = GetRealmName and GetRealmName() or ""
-    list = RF.filterListByRealm(list, GRF.Get(), currentRealm)
+    list = AltArmy.GlobalRealmFilter.FilterList(list, currentRealm)
     table.sort(list, function(a, b)
         if (a.realm or "") ~= (b.realm or "") then return (a.realm or "") < (b.realm or "") end
         return (a.name or "") < (b.name or "")

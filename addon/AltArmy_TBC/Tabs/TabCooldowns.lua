@@ -2896,16 +2896,9 @@ RefreshList = function()
     local rows = CD.BuildRows(DS, opts, now)
     do
         local GRF = AltArmy.GlobalRealmFilter
-        local rf = GRF and GRF.Get and GRF.Get() or "all"
-        if rf == "currentRealm" then
+        if GRF and GRF.FilterList then
             local _, curRealm = GetCurrentIdentity()
-            local filtered = {}
-            for _, rd in ipairs(rows) do
-                if rd.realm == curRealm then
-                    filtered[#filtered + 1] = rd
-                end
-            end
-            rows = filtered
+            rows = GRF.FilterList(rows, curRealm)
         end
     end
 

@@ -16,14 +16,20 @@ local GOLD_ICON = "|TInterface\\MoneyFrame\\UI-GoldIcon:" .. COIN_ICON_SIZE .. "
 local SILVER_ICON = "|TInterface\\MoneyFrame\\UI-SilverIcon:" .. COIN_ICON_SIZE .. ":" .. COIN_ICON_SIZE .. "|t"
 local COPPER_ICON = "|TInterface\\MoneyFrame\\UI-CopperIcon:" .. COIN_ICON_SIZE .. ":" .. COIN_ICON_SIZE .. "|t"
 
---- Layout for Summary name-column status icons (main star / bank alt) after the class icon.
---- Returns mainX/bankX (nil when hidden) and nameTextLeft for the name font string.
-function AltArmy.SummaryData.GetNameStatusIconLayout(classIconSize, statusIconSize, gap, isMain, isBankAlt)
+--- Layout for Summary name-column status icons after the class icon: the faction badge (a character of
+--- the opposite faction), then the main star, then bank alt.
+--- Returns factionX/mainX/bankX (nil when hidden) and nameTextLeft for the name font string.
+function AltArmy.SummaryData.GetNameStatusIconLayout(classIconSize, statusIconSize, gap, isMain, isBankAlt,
+                                                     isOtherFaction)
     classIconSize = classIconSize or 16
     statusIconSize = statusIconSize or 16
     gap = gap or 2
     local x = classIconSize + gap
-    local mainX, bankX
+    local factionX, mainX, bankX
+    if isOtherFaction then
+        factionX = x
+        x = x + statusIconSize + gap
+    end
     if isMain then
         mainX = x
         x = x + statusIconSize + gap
@@ -33,6 +39,7 @@ function AltArmy.SummaryData.GetNameStatusIconLayout(classIconSize, statusIconSi
         x = x + statusIconSize + gap
     end
     return {
+        factionX = factionX,
         mainX = mainX,
         bankX = bankX,
         nameTextLeft = x,
@@ -189,6 +196,7 @@ function AltArmy.SummaryData.GetCharacterList()
             table.insert(list, {
                 name = name,
                 realm = realm or "",
+                faction = charData.faction,
                 level = level,
                 restXp = restRate,
                 wellRestedRank = wellRestedRank,

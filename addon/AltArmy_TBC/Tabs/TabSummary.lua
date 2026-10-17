@@ -36,6 +36,11 @@ local ICON_SIZE = 16
 local STATUS_ICON_SIZE = 16
 local STATUS_ICON_GAP = 2
 local MAIN_STAR_TEXTURE = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_1"
+-- The badge on a character of the opposite faction (one shown when Options lists that faction too).
+local FACTION_TEXTURES = {
+    Horde = "Interface\\FriendsFrame\\PlusManz-Horde",
+    Alliance = "Interface\\FriendsFrame\\PlusManz-Alliance",
+}
 
 local CC = AltArmy.ClassColor
 local BA = AltArmy.BankAlt
@@ -644,13 +649,18 @@ for i = 1, ROW_POOL_SIZE do
             cell:SetJustifyH(col and col.JustifyH or "LEFT")
             row.cells[colName] = cell
             if colName == "RestXP" then
-                -- Well Rested: an arrow at the column's left edge, and its talent tooltip over the cell.
+                -- Well Rested: an arrow just left of the widest Rest XP ("100.0%"), so every row's
+                -- lines up whatever the text's width at the current scale, and its talent tooltip over the cell.
                 local restArrow = row:CreateTexture(nil, "ARTWORK")
                 restArrow:SetSize(12, 12)
-                restArrow:SetPoint("LEFT", row, "LEFT", rowCellX + 18, 0)
                 SetWellRestedArrowArt(restArrow)
                 restArrow:Hide()
                 row.restArrow = restArrow
+                local restMeasure = row:CreateFontString(nil, "OVERLAY", Theme.FONTS.body)
+                restMeasure:SetPoint("LEFT", row, "LEFT", rowCellX, 0)
+                restMeasure:SetText("100.0%")
+                restMeasure:SetAlpha(0) -- invisible, not hidden: a never-shown string may measure 0 wide
+                row.restMeasure = restMeasure
                 local restHit = CreateFrame("Frame", nil, row)
                 restHit:SetPoint("LEFT", row, "LEFT", rowCellX, 0)
                 restHit:SetSize(w, ROW_HEIGHT)
@@ -717,6 +727,29 @@ for i = 1, ROW_POOL_SIZE do
     end)
     row.bankAltHit = bankAltHit
 
+    local factionIcon = row:CreateTexture(nil, "ARTWORK")
+    factionIcon:SetSize(STATUS_ICON_SIZE, STATUS_ICON_SIZE)
+    factionIcon:Hide()
+    row.factionIcon = factionIcon
+
+    local factionHit = CreateFrame("Frame", nil, row)
+    factionHit:SetAllPoints(factionIcon)
+    factionHit:EnableMouse(true)
+    factionHit:Hide()
+    factionHit:SetFrameLevel(row:GetFrameLevel() + 3)
+    factionHit:SetScript("OnEnter", function(self)
+        local e = self.tooltipEntry
+        if e and GameTooltip then
+            GameTooltip:SetOwner(self, "ANCHOR_BOTTOMLEFT")
+            GameTooltip:SetText(e.faction or "", 1, 1, 1)
+            GameTooltip:Show()
+        end
+    end)
+    factionHit:SetScript("OnLeave", function()
+        if GameTooltip then GameTooltip:Hide() end
+    end)
+    row.factionHit = factionHit
+
     local mainStarIcon = row:CreateTexture(nil, "ARTWORK")
     mainStarIcon:SetSize(STATUS_ICON_SIZE, STATUS_ICON_SIZE)
     mainStarIcon:SetTexture(MAIN_STAR_TEXTURE)
@@ -758,12 +791,19 @@ local function GetRow(index)
     return rowPool[index]
 end
 
---- Shows the Well Rested arrow at the Rest XP column's left edge, and arms its tooltip,
+--- Gap between the Well Rested arrow and the widest Rest XP text.
+local REST_ARROW_GAP = 0
+
+--- Shows the Well Rested arrow just left of where "100.0%" would start, and arms its tooltip,
 --- when the entry has a rank; hides both otherwise (entry nil for an empty row).
 local function UpdateWellRestedMarker(rowFrame, entry)
     local arrow, hit = rowFrame.restArrow, rowFrame.restHit
     if not arrow or not hit then return end
     if entry and not entry.isMaxLevel and (tonumber(entry.wellRestedRank) or 0) > 0 then
+        -- Measured on every update: the text's width moves with the window's scale.
+        local textWidth = rowFrame.restMeasure and rowFrame.restMeasure:GetStringWidth() or 0
+        arrow:ClearAllPoints()
+        arrow:SetPoint("RIGHT", rowFrame.cells.RestXP, "RIGHT", -(textWidth + REST_ARROW_GAP), 0)
         arrow:Show()
         hit.tooltipEntry = entry
         hit:Show()
@@ -786,7 +826,7 @@ Update = function()
     end
     local filtered
     if RF and RF.filterListByRealm then
-        filtered = RF.filterListByRealm(rawList, realmFilter, currentRealm)
+        filtered = AltArmy.GlobalRealmFilter.FilterList(rawList, currentRealm)
     else
         filtered = rawList
     end
@@ -916,9 +956,21 @@ Update = function()
                         local GSS = AltArmy.GuildShareSettings
                         local isMain = GSS and GSS.IsConfiguredMain
                             and GSS.IsConfiguredMain(entry.name, entry.realm)
+                        local myFaction = UnitFactionGroup and UnitFactionGroup("player")
+                        local factionTexture = entry.faction and entry.faction ~= myFaction
+                            and FACTION_TEXTURES[entry.faction]
                         local layout = SD.GetNameStatusIconLayout(
-                            ICON_SIZE, STATUS_ICON_SIZE, STATUS_ICON_GAP, isMain, isBankAlt
+                            ICON_SIZE, STATUS_ICON_SIZE, STATUS_ICON_GAP, isMain, isBankAlt,
+                            factionTexture and true or false
                         )
+                        if factionTexture then
+                            rowFrame.factionIcon:SetTexture(factionTexture)
+                            showStatusIcon(rowFrame, rowFrame.factionIcon, rowFrame.factionHit, layout.factionX, {
+                                faction = entry.faction,
+                            })
+                        else
+                            hideStatusIcon(rowFrame.factionIcon, rowFrame.factionHit)
+                        end
                         if isMain then
                             showStatusIcon(rowFrame, rowFrame.mainStarIcon, rowFrame.mainStarHit, layout.mainX, {
                                 name = entry.name or "",
@@ -983,6 +1035,7 @@ Update = function()
                     rowFrame.mainStarHit.showTooltip = false
                 end
                 hideStatusIcon(rowFrame.bankAltIcon, rowFrame.bankAltHit)
+                hideStatusIcon(rowFrame.factionIcon, rowFrame.factionHit)
                 UpdateWellRestedMarker(rowFrame, nil)
                 rowFrame:Hide()
             end

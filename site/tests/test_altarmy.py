@@ -228,6 +228,32 @@ def test_rejects_other_files() -> None:
         altarmy.parse_characters(b"AUCTIONATOR_PRICE_DATABASE = {}\n")
 
 
+def test_the_file_names_its_account() -> None:
+    assert altarmy.parse_file(ALTARMY_SV).account_id is None  # from addons before it named one
+    named = ALTARMY_SV.replace(
+        b"AltArmyTBC_Data = {\n", b'AltArmyTBC_Data = {\n["accountId"] = "0a1b2c3d4e5f6789",\n'
+    )
+    got = altarmy.parse_file(named)
+    assert got.account_id == "0a1b2c3d4e5f6789"
+    assert got.characters == chars()
+    bad = ALTARMY_SV.replace(b"AltArmyTBC_Data = {\n", b'AltArmyTBC_Data = {\n["accountId"] = "a b",\n')
+    assert altarmy.parse_file(bad).account_id is None  # malformed: ignored, the upload still counts
+
+
+def test_only_the_accounts_own_characters_are_read() -> None:
+    # Guild data and linked accounts' characters are other globals of the same file: never the uploader's.
+    others = (
+        b'AltArmyTBC_LinkedData = {\n["accounts"] = {\n["ffff"] = {\n'
+        + b'["Characters"] = {\n["Classic Beta PvE"] = {\n'
+        + _entry("Partner", level=60, updated=1).encode()
+        + b"},\n},\n},\n},\n}\n"
+        + b'AltArmyTBC_GuildData = {\n["chars"] = {\n["Classic Beta PvE"] = {\n'
+        + _entry("Guildmate", level=60, updated=1).encode()
+        + b"},\n},\n}\n"
+    )
+    assert altarmy.parse_characters(ALTARMY_SV + others) == chars()
+
+
 def _sv(realm_body: str) -> bytes:
     body = f'["Characters"] = {{\n["Classic Beta PvE"] = {{\n{realm_body}}},\n}},\n'
     return f"AltArmyTBC_Data = {{\n{body}}}\n".encode()

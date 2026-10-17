@@ -80,16 +80,8 @@ function CA.RunEvaluateOnce()
     local alerts = CD.EvaluateAlerts(DS, opts, now, alertState)
     local GRF = AltArmy.GlobalRealmFilter
     local showAllRealms = GRF and GRF.Get and GRF.Get() == "all"
-    if GRF and GRF.Get and GRF.Get() == "currentRealm" then
-        local curRealm = (GetRealmName and GetRealmName()) or ""
-        local filtered = {}
-        for i = 1, #alerts do
-            local a = alerts[i]
-            if a and a.realm == curRealm then
-                filtered[#filtered + 1] = a
-            end
-        end
-        alerts = filtered
+    if GRF and GRF.FilterList then
+        alerts = GRF.FilterList(alerts)
     end
     announceBatch(alerts, showAllRealms)
 end

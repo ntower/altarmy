@@ -144,14 +144,9 @@ local function GetDisplayList()
     end
     local list = RepSort.BuildSortedDisplayList(visible, isPinnedEntry, isSelfEntry, showSelfFirst, sortPair)
 
-    local RF = AltArmy.RealmFilter
-    local realmFilter = "all"
     local GRF = AltArmy.GlobalRealmFilter
-    if GRF and GRF.Get then
-        realmFilter = GRF.Get()
-    end
-    if RF and RF.filterListByRealm then
-        list = RF.filterListByRealm(list, realmFilter, currentRealm)
+    if GRF and GRF.FilterList then
+        list = GRF.FilterList(list, currentRealm)
     end
     return list
 end

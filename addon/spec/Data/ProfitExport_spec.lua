@@ -55,8 +55,10 @@ local CHARACTERS = {
   },
 }
 
+local ACCOUNT = "0a1b2c3d4e5f6789"
+
 local LINES = table.concat({
-  "V|2|20506|2.5.6.69795",
+  "V|2|20506|2.5.6.69795|" .. ACCOUNT,
   "C|Classic Beta PvE|Tailor Guy||PRIEST|20|",
   "C|Dreamscythe|Alchemist|Horde|ROGUE|12|",
   "C|Dreamscythe|Frell Ofelements|Horde|MAGE|70|Player-5826-0A1B2C3D",
@@ -81,11 +83,11 @@ describe("ProfitExport", function()
   end)
 
   it("names characters by their name and identifies them by GUID, sorted by name", function()
-    assert.are.equal(LINES, ProfitExport.Lines(CHARACTERS, 20506, "2.5.6.69795"))
+    assert.are.equal(LINES, ProfitExport.Lines(CHARACTERS, 20506, "2.5.6.69795", ACCOUNT))
   end)
 
   it("resolves recipe aliases to their primary recipe id", function()
-    local text = ProfitExport.Lines(CHARACTERS, 20506, "2.5.6.69795")
+    local text = ProfitExport.Lines(CHARACTERS, 20506, "2.5.6.69795", ACCOUNT)
     assert.is_nil(text:find("31460", 1, true))
   end)
 
@@ -96,6 +98,11 @@ describe("ProfitExport", function()
 
   it("exports nothing but the version line without characters", function()
     assert.are.equal("V|2|16001|1.60.1", ProfitExport.Lines(nil, 16001, "1.60.1"))
+  end)
+
+  it("names the WoW account on the version line when it has an id", function()
+    assert.are.equal("V|2|16001|1.60.1|abc", ProfitExport.Lines(nil, 16001, "1.60.1", "abc"))
+    assert.are.equal("V|2|16001|1.60.1", ProfitExport.Lines(nil, 16001, "1.60.1", ""))
   end)
 
   it("encodes as AAX1: plus LibDeflate's printable raw DEFLATE, matching the golden fixture", function()

@@ -162,9 +162,9 @@ def ingest_altarmy(
     conn: Connection, user_uid: str, game_version: str, data: bytes, *, now: datetime | None = None
 ) -> Imported:
     """The file's characters and, where prices are first-party, its auction house scans."""
-    chars = altarmy.parse_characters(data, versions.get(game_version).retail_bags)
+    file = altarmy.parse_file(data, versions.get(game_version).retail_bags)
     scans = book.read(data) if versions.get(game_version).first_party_prices else []
-    got = _save_characters(conn, user_uid, game_version, chars)
+    got = _save_characters(conn, user_uid, game_version, file.characters, source=file.account_id)
     realms = _record_books(conn, user_uid, game_version, scans, db.utc(now or db.utcnow()))
     return Imported("altarmy", got.characters, got.groups, realms)
 
@@ -205,7 +205,9 @@ def ingest_paste(conn: Connection, user_uid: str, game_version: str, text: str) 
         served = versions.VERSIONS[game_version].label
         raise ValueError(f"This is a {made_by.label} export; this site serves {served}.")
     # the export carries no bags or bank: what each character held stays as the last file upload had it
-    return _save_characters(conn, user_uid, game_version, export.characters, keep_holdings=True)
+    return _save_characters(
+        conn, user_uid, game_version, export.characters, keep_holdings=True, source=export.account_id
+    )
 
 
 def _save_characters(
@@ -214,8 +216,9 @@ def _save_characters(
     game_version: str,
     chars: list[altarmy.Character],
     keep_holdings: bool = False,
+    source: str | None = None,
 ) -> Imported:
-    service.replace_characters(conn, user_uid, game_version, chars, keep_holdings)
+    service.replace_characters(conn, user_uid, game_version, chars, keep_holdings, source)
     service.bump_data_version(conn, user_uid, game_version)
     groups = tuple((g.realm, g.faction, len(g.characters)) for g in altarmy.groups(chars))
     return Imported("altarmy", characters=len(chars), groups=groups)

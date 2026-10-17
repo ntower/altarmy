@@ -186,7 +186,7 @@ local function ApplyRealmFilter(list)
     if not list then return {} end
     if not RF or not RF.filterListByRealm then return list end
     local currentRealm = (GetRealmName and GetRealmName()) or ""
-    return RF.filterListByRealm(list, GetRealmFilterValue(), currentRealm)
+    return AltArmy.GlobalRealmFilter.FilterList(list, currentRealm)
 end
 
 local function GetCompareList()

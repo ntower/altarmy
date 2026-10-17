@@ -1752,9 +1752,12 @@ def test_a_known_price_version_skips_the_markets_ttl(client: TestClient, priced:
 def test_bad_uploads(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     res = upload(client, "altarmy", b"garbage", LINKED)
     assert res.status_code == 400
+    assert "no AltArmyTBC_Data" in res.json()["detail"]
+    res = upload(client, "altarmy", b"AltArmyTBC_Data = { garbage", LINKED)
+    assert res.status_code == 400
     assert "Lua syntax error" in res.json()["detail"]
-    (row,) = client.get("/api/uploads", headers=LINKED).json()
-    assert (row["outcome"], row["size"]) == ("rejected", 7)
+    rows = client.get("/api/uploads", headers=LINKED).json()
+    assert sorted((r["outcome"], r["size"]) for r in rows) == [("rejected", 7), ("rejected", 27)]
     assert upload(client, "cheese", b"x", LINKED).status_code == 422
     assert upload(client, "altarmy", b"x", {"Authorization": "Bearer nonsense"}).status_code == 401
 

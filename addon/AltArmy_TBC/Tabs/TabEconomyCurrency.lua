@@ -161,12 +161,10 @@ local function GetDisplayList()
         function(e) return DS.IsCurrentCharacter and DS:IsCurrentCharacter(e.name, e.realm) end,
         showSelfFirst, sortPair)
 
-    local RF = AltArmy.RealmFilter
     local GRF = AltArmy.GlobalRealmFilter
-    local realmFilter = GRF and GRF.Get and GRF.Get() or "all"
-    if RF and RF.filterListByRealm then
+    if GRF and GRF.FilterList then
         local currentRealm = DS.GetCurrentPlayerRealm and DS:GetCurrentPlayerRealm() or ""
-        list = RF.filterListByRealm(list, realmFilter, currentRealm)
+        list = GRF.FilterList(list, currentRealm)
     end
     return list
 end

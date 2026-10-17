@@ -461,19 +461,35 @@ def save_characters(
     game_version: str,
     chars: Sequence[Character],
     keep_holdings: bool = False,
+    source: str | None = None,
 ) -> None:
-    """Replace the user's characters of the version with `chars` (Alt Army's file is the source of truth).
+    """Replace the user's characters of the version from `source` (the WoW account an Alt Army file or
+    export is from; None from addons that don't say) with `chars`: that account's file is the source of
+    truth for its characters, and other accounts' stay. Characters saved without a source (before the
+    addon named its account) and any of the same realm and name as one in `chars` are replaced too.
     With `keep_holdings` (an upload that carries none: the export), each keeps the holdings saved for a
     character of the same realm and name."""
     c = schema.characters
     kept = load_holdings(conn, user_uid, game_version) if keep_holdings else {}
+    incoming = {(ch.realm, ch.name) for ch in chars}
+    rows = conn.execute(
+        select(c.c.id, c.c.realm, c.c.name, c.c.source).where(
+            c.c.user_uid == user_uid, c.c.game_version == game_version
+        )
+    ).all()
+    gone = [
+        r.id
+        for r in rows
+        if r.source is None or (source is not None and r.source == source) or (r.realm, r.name) in incoming
+    ]
     # professions and recipes cascade
-    conn.execute(delete(c).where(c.c.user_uid == user_uid, c.c.game_version == game_version))
+    for start in range(0, len(gone), IN_CHUNK):
+        conn.execute(delete(c).where(c.c.id.in_(gone[start : start + IN_CHUNK])))
     for ch in chars:
         old = kept.get((ch.realm, ch.name))
         if old is not None and not ch.holdings and ch.bags_at is None and ch.bank_at is None:
             ch = replace(ch, holdings=old.holdings, bags_at=old.bags_at, bank_at=old.bank_at)
-        _insert_character(conn, user_uid, game_version, ch)
+        _insert_character(conn, user_uid, game_version, ch, source)
 
 
 @dataclass(frozen=True)
@@ -516,13 +532,16 @@ def delete_character(conn: Connection, user_uid: str, game_version: str, realm: 
     return bool(done.rowcount)
 
 
-def _insert_character(conn: Connection, user_uid: str, game_version: str, ch: Character) -> None:
+def _insert_character(
+    conn: Connection, user_uid: str, game_version: str, ch: Character, source: str | None = None
+) -> None:
     c = schema.characters
     char_id: int = conn.execute(
         c.insert()
         .values(
             user_uid=user_uid,
             game_version=game_version,
+            source=source,
             realm=ch.realm,
             name=ch.name,
             faction=ch.faction,

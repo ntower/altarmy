@@ -34,6 +34,7 @@ def encoded(lines: str) -> str:
 def test_decodes_the_addons_golden_export() -> None:
     got = paste.decode(GOLDEN)
     assert (got.interface, got.build) == (20506, "2.5.6.69795")
+    assert got.account_id == "0a1b2c3d4e5f6789"
     assert got.characters == [
         Character("Classic Beta PvE", "Tailor Guy", "", "PRIEST", 20, ()),
         Character("Dreamscythe", "Alchemist", "Horde", "ROGUE", 12, ()),
@@ -114,6 +115,16 @@ def test_bad_strings_raise_value_error(text: str) -> None:
 def test_malformed_lines_raise_value_error(lines: str) -> None:
     with pytest.raises(ValueError):
         paste.decode(encoded(lines))
+
+
+def test_the_version_line_may_name_the_account() -> None:
+    assert paste.decode(encoded("V|2|16001|x\nC|R|A|Horde|MAGE|30|")).account_id is None
+    assert paste.decode(encoded("V|2|16001|x|0a1b2c3d4e5f6789\nC|R|A|Horde|MAGE|30|")).account_id == (
+        "0a1b2c3d4e5f6789"
+    )
+    assert paste.decode(encoded("V|2|16001|x|not ok\nC|R|A|Horde|MAGE|30|")).account_id is None
+    with pytest.raises(ValueError):
+        paste.decode(encoded("V|2|16001|x|a|b\nC|R|A|Horde|MAGE|30|"))
 
 
 def test_talents_belong_to_the_character_before_them() -> None:

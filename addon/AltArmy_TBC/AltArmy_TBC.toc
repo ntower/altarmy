@@ -140,6 +140,8 @@ Libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
 Libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
 Libs\LibDeflate\LibDeflate.lua
 Data\ProfitExport.lua
+Data\Link\LinkDiscovery.lua
+Data\Link\LinkProbe.lua
 UI\MinimapSavedVars.lua
 UI\Minimap.lua
 UI\BankAltSuggestDialog.lua

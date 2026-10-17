@@ -169,4 +169,45 @@ describe("RealmFilter", function()
       assert.truthy(s:find("Ada"))
     end)
   end)
+
+  describe("inScope / filterListByScope", function()
+    local ALL_OFF = { otherFaction = false, otherRealms = false, linked = false }
+    local ALL_ON = { otherFaction = true, otherRealms = true, linked = true }
+
+    it("always shows this realm's characters of my faction, and those whose faction is unknown", function()
+      assert.is_true(RF.inScope({ realm = "R" }, "Horde", ALL_OFF, "R", "Horde"))
+      assert.is_true(RF.inScope({ realm = "R" }, nil, ALL_OFF, "R", "Horde"))
+    end)
+
+    it("shows the other faction here only with otherFaction", function()
+      assert.is_false(RF.inScope({ realm = "R" }, "Alliance", ALL_OFF, "R", "Horde"))
+      assert.is_true(RF.inScope({ realm = "R" }, "Alliance", { otherFaction = true }, "R", "Horde"))
+    end)
+
+    it("shows other realms, either faction, only with otherRealms", function()
+      assert.is_false(RF.inScope({ realm = "X" }, "Horde", { otherFaction = true }, "R", "Horde"))
+      assert.is_true(RF.inScope({ realm = "X" }, "Alliance", { otherRealms = true }, "R", "Horde"))
+    end)
+
+    it("shows a linked account's characters only with linked, then by the same rules", function()
+      local linked = { realm = "R", linkId = "acct" }
+      assert.is_false(RF.inScope(linked, "Horde", { otherFaction = true, otherRealms = true }, "R", "Horde"))
+      assert.is_true(RF.inScope(linked, "Horde", { linked = true }, "R", "Horde"))
+      assert.is_false(RF.inScope(linked, "Alliance", { linked = true }, "R", "Horde"))
+      assert.is_true(RF.inScope(linked, "Alliance", ALL_ON, "R", "Horde"))
+    end)
+
+    it("filters a list, looking a faction up when an entry has none", function()
+      local list = { { realm = "R", name = "A", faction = "Horde" }, { realm = "R", name = "B" },
+        { realm = "X", name = "C", faction = "Horde" } }
+      local lookups = {}
+      local out = RF.filterListByScope(list, ALL_OFF, "R", "Horde", function(e)
+        lookups[#lookups + 1] = e.name
+        return "Alliance"
+      end)
+      assert.are.same({ "B" }, lookups)
+      assert.are.equal(1, #out)
+      assert.are.equal("A", out[1].name)
+    end)
+  end)
 end)

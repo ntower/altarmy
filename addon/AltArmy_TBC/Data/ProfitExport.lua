@@ -2,7 +2,8 @@
 -- printable string, pasted on the site's Upload tab instead of uploading AltArmy_TBC.lua.
 --
 -- Format (v2): "AAX1:" .. LibDeflate:EncodeForPrint(LibDeflate:CompressDeflate(lines)), where lines are
---   V|2|<interface>|<build>                       the client, so the site knows which game it is
+--   V|2|<interface>|<build>|<account id>          the client, so the site knows which game it is, and this
+--                                                 WoW account (AltArmyTBC_Data.accountId; omitted if unset)
 --   C|<realm>|<name>|<faction>|<CLASS_FILE>|<level>|<guid>
 --   P|<profession>|<rank>|<maxRank>|<recipe ids>  belongs to the C line before it; ids comma-separated
 --   T|<spell id>|<rank>                           a Legacy talent of the C line before it (rank > 0)
@@ -117,8 +118,12 @@ end
 
 --- The export's text: `characters` is AltArmyTBC_Data.Characters (realm -> storage key -> character).
 --- @return string
-function ProfitExport.Lines(characters, interface, build)
-    local out = { table.concat({ "V", "2", field(interface), field(build) }, "|") }
+function ProfitExport.Lines(characters, interface, build, accountId)
+    local head = { "V", "2", field(interface), field(build) }
+    if accountId and accountId ~= "" then
+        head[#head + 1] = field(accountId)
+    end
+    local out = { table.concat(head, "|") }
     for _, realm in ipairs(sortedKeys(characters)) do
         for _, entry in ipairs(charactersByName(characters[realm])) do
             local name, char = entry[1], entry[2]
@@ -204,5 +209,6 @@ function ProfitExport.Build()
     end
     local data = AltArmyTBC_Data --luacheck: ignore 113
     local _, build, _, interface = GetBuildInfo()
-    return ProfitExport.Encode(ProfitExport.Lines(data and data.Characters, interface, build), libDeflate)
+    local lines = ProfitExport.Lines(data and data.Characters, interface, build, data and data.accountId)
+    return ProfitExport.Encode(lines, libDeflate)
 end

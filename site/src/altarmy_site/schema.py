@@ -300,7 +300,7 @@ copy_counts = Table(
     Column("copies", Integer, nullable=False),
 )
 
-# Characters from the Alt Army addon's SavedVariables, replaced wholesale on every import.
+# Characters from the Alt Army addon's SavedVariables, each WoW account's replaced by its every upload.
 characters = Table(
     "characters",
     metadata,
@@ -309,6 +309,8 @@ characters = Table(
     _version(primary_key=False),
     Column("realm", Text, nullable=False),
     Column("name", Text, nullable=False),
+    # the WoW account they were uploaded from (the addon's `accountId`); None before the addon named it
+    Column("source", String(64)),
     Column("faction", String(16), nullable=False),  # Horde | Alliance | "" (never scanned)
     Column("class_file", String(32), nullable=False),  # e.g. PALADIN
     Column("level", Integer, nullable=False),

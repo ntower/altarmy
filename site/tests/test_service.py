@@ -458,6 +458,13 @@ def test_an_import_forgets_a_selected_realm_it_has_no_characters_on(conn: Connec
     assert service.selected_characters(conn, ME, FOREVER)[0] == Selection("Classic Beta PvE", "Horde")
 
 
+def test_another_accounts_upload_keeps_the_selected_realm(conn: Connection) -> None:
+    service.replace_characters(conn, ME, FOREVER, chars("Tailor Guy"), source="acct-a")
+    service.select(conn, ME, FOREVER, "Classic Beta PvE", "Horde")
+    service.replace_characters(conn, ME, FOREVER, chars("Frell"), source="acct-b")  # none on that realm
+    assert service.selected_characters(conn, ME, FOREVER)[0] == Selection("Classic Beta PvE", "Horde")
+
+
 def test_delete_characters(conn: Connection) -> None:
     service.replace_characters(conn, ME, FOREVER, chars())
     service.delete_character(conn, ME, FOREVER, "Classic Beta PvE", "Tailor Guy")

@@ -28,6 +28,38 @@ describe("DataStore", function()
     DS = AltArmy.DataStore
   end)
 
+  describe("EnsureAccountId", function()
+    local function counter()
+      local n = 0
+      return function()
+        n = (n + 1) % 16
+        return n
+      end
+    end
+
+    it("makes 16 hex digits once and keeps them", function()
+      local data = {}
+      local id = DS._EnsureAccountId(data, counter())
+      assert.are.equal("123456789abcdef0", id)
+      assert.are.equal(id, data.accountId)
+      assert.are.equal(id, DS._EnsureAccountId(data, function() return 0 end))
+    end)
+
+    it("replaces a malformed id", function()
+      local data = { accountId = "not an id" }
+      assert.are.equal("0000000000000000", DS._EnsureAccountId(data, function() return 0 end))
+    end)
+
+    it("makes a new one when forced (a copied WTF folder)", function()
+      local data = { accountId = "0000000000000000" }
+      assert.are.equal("123456789abcdef0", DS._EnsureAccountId(data, counter(), true))
+    end)
+
+    it("uses math.random by default", function()
+      assert.truthy(DS._EnsureAccountId({}):match("^%x+$"))
+    end)
+  end)
+
   describe("_MigrateDataVersions", function()
     it("does nothing when Characters is empty", function()
       local data = { Characters = {} }

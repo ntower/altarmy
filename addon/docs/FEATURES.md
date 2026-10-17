@@ -50,7 +50,7 @@ AltArmy TBC is an account-wide alt management addon for TBC Classic that:
 
 ### Realm filtering and character visibility
 
-- Global realm filter: current realm only, or all realms.
+- Characters shown (Options → General): this realm of your faction always; this realm's other faction and other realms each by a checkbox.
 - Applied across Summary, Gear, Reputation, Search, Cooldowns, and Graphs.
 - Per-tab pin/hide (and related sort) settings on major matrix/list tabs.
 

@@ -332,7 +332,7 @@ function AltArmy.CreateCharacterPinHideList(parent, anchorBelow, opts)
         end
         local RF = AltArmy.RealmFilter
         if RF and RF.filterListByRealm then
-            list = RF.filterListByRealm(list, realmFilter, currentRealm)
+            list = AltArmy.GlobalRealmFilter.FilterList(list, currentRealm)
         end
         local showRealmSuffix = (realmFilter == "all") and RF and RF.hasMultipleRealms and RF.hasMultipleRealms(list)
         for _, row in pairs(rowPool) do

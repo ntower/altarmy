@@ -44,6 +44,26 @@ def test_altarmy_upload_replaces_only_the_uploaders_characters(conn: Connection,
     assert service.data_version(conn, ME, FOREVER) == 1
 
 
+def of_account(account: str, data: bytes = ALTARMY_SV) -> bytes:
+    return data.replace(
+        b"AltArmyTBC_Data = {\n", f'AltArmyTBC_Data = {{\n["accountId"] = "{account}",\n'.encode()
+    )
+
+
+def test_each_wow_accounts_file_keeps_the_others_characters(conn: Connection) -> None:
+    uploads.ingest(conn, ME, FOREVER, "altarmy", of_account("aaaa"), None, now=NOW)
+    other = b'AltArmyTBC_Data = {\n["Characters"] = {\n["Dreamscythe"] = {\n["Player-9-B"] = {\n'
+    other += (
+        b'["name"] = "Second Box",\n["faction"] = "Horde",\n["classFile"] = "WARRIOR",\n["level"] = 30,\n'
+    )
+    other += b"},\n},\n},\n}\n"
+    got = uploads.ingest(conn, ME, FOREVER, "altarmy", of_account("bbbb", other), None, now=NOW)
+    assert got.characters == 1
+    assert store.count_characters(conn, ME, FOREVER) == 5  # both accounts' characters
+    uploads.ingest(conn, ME, FOREVER, "altarmy", of_account("aaaa"), None, now=NOW)  # again: replaces its own
+    assert store.count_characters(conn, ME, FOREVER) == 5
+
+
 def with_scans(*scans: book.Scan) -> bytes:
     """An AltArmy_TBC.lua holding the usual characters and these auction house scans."""
     return ALTARMY_SV + saved_book(*scans)
