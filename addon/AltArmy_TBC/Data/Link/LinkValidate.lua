@@ -139,6 +139,9 @@ function V.Unit(domain, unit, charKey, realm, localVersions)
             return nil, "wrongRealm"
         end
     end
+    if domain == "levels" then
+        out.levelHistory = Domains().TrimLevels(out.levelHistory)
+    end
     if domain == "mail" then
         for _, field in ipairs({ "Mails", "MailCache" }) do
             local list = out[field]

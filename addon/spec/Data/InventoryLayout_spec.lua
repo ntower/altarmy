@@ -135,6 +135,15 @@ describe("InventoryLayout", function()
             assert.are.equal(0, blocks[1].used)
         end)
 
+        it("hides an empty keyring", function()
+            local blocks = IL.BagsBlocks({ Containers = {
+                [0] = bag({}, { numSlots = 16 }),
+                [-2] = bag({}, { numSlots = 12 }),
+            } })
+            assert.are.equal(1, #blocks)
+            assert.are.equal("backpack", blocks[1].kind)
+        end)
+
         it("can leave the keyring out", function()
             assert.are.equal(3, #IL.BagsBlocks(char, { includeKeyring = false }))
         end)

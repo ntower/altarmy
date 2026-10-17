@@ -291,4 +291,29 @@ describe("AltArmy.Debug", function()
             assert.is_nil(AltArmyTBC_Options.debug.devDumps)
         end)
     end)
+
+    describe("IsLinkedAccountsEnabled", function()
+        local savedDS
+
+        before_each(function()
+            savedDS = AltArmy.DataStore
+        end)
+
+        after_each(function()
+            AltArmy.DataStore = savedDS
+        end)
+
+        it("is on for WoW: Forever, whether or not debug is", function()
+            AltArmy.DataStore = { IsWowForever = true }
+            D.SetEnabled(false)
+            assert.is_true(D.IsLinkedAccountsEnabled())
+        end)
+
+        it("is off on TBC Anniversary, even with debug on", function()
+            AltArmy.DataStore = { IsWowForever = false }
+            D.SetEnabled(true)
+            assert.is_false(D.IsLinkedAccountsEnabled())
+            D.SetEnabled(false)
+        end)
+    end)
 end)

@@ -232,14 +232,14 @@ describe("SearchPresent", function()
         assert.are.equal("Bob", out[4].characterName)
     end)
 
-    it("SortRecipeResults puts ours first, then linked accounts', then guildmates'", function()
+    it("SortRecipeResults sorts linked accounts' characters among ours, guildmates' after", function()
         local list = {
             { recipeID = 1, recipeNameLower = "a", professionName = "Alchemy", characterName = "Ann", isGuild = true },
             { recipeID = 1, recipeNameLower = "a", professionName = "Alchemy", characterName = "Bea", linkId = "x" },
             { recipeID = 1, recipeNameLower = "a", professionName = "Alchemy", characterName = "Cid" },
         }
         local out = SP.SortRecipeResults(list, "Recipe", true, false)
-        assert.are.same({ "Cid", "Bea", "Ann" }, { out[1].characterName, out[2].characterName, out[3].characterName })
+        assert.are.same({ "Bea", "Cid", "Ann" }, { out[1].characterName, out[2].characterName, out[3].characterName })
     end)
 
     it("AggregateItemRows keeps a linked account's character apart, and says which link it is", function()

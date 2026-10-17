@@ -791,7 +791,11 @@ panel.SCOPE_ROWS = {
     { key = nil, text = "Characters on the same realm and same faction" },
     { key = "otherFaction", text = "Characters on the same realm of the opposite faction" },
     { key = "otherRealms", text = "Characters on other realms" },
-    { key = "linked", text = "Characters from linked accounts", onlyWithLinks = true },
+    {
+        key = "linked",
+        text = "Characters from linked accounts (if they match the filters above)",
+        onlyWithLinks = true,
+    },
 }
 panel.scopeRows = {}
 for i, def in ipairs(panel.SCOPE_ROWS) do

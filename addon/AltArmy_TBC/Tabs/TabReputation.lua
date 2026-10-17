@@ -849,7 +849,7 @@ local function PopulateGridColumn(c, entry, factionRows, numRows, _ctx)
     col:ClearAllPoints()
     col:SetPoint("TOPLEFT", gridContainer, "TOPLEFT", (c - 1) * dims.columnWidth + PAD - 4, 0)
 
-    local charData = DS.GetCharacter and DS:GetCharacter(entry.name, entry.realm)
+    local charData = DS.GetCharacter and DS:GetCharacterFor(entry.name, entry.realm, entry.linkId)
     local hasRep = charData and DS.HasModuleData and DS:HasModuleData(charData, "reputations")
 
     for r = 1, numRows do

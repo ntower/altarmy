@@ -80,7 +80,7 @@ local function SetCharSetting(name, realm, pin, hide)
 end
 
 local function CharData(entry)
-    return DS.GetCharacter and DS:GetCharacter(entry.name, entry.realm)
+    return DS.GetCharacter and DS:GetCharacterFor(entry.name, entry.realm, entry.linkId)
 end
 
 local function HasData(char)

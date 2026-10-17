@@ -315,15 +315,10 @@ local function compareRequiredSkill(a, b, ascending)
     return applySortDirection(cmpValues(ordA, ordB), ascending)
 end
 
--- Whose a row is, in the order rows sort: ours, then a linked account's, then a guildmate's.
+-- Whose a row is, in the order rows sort: ours (a linked account's characters count as ours), then a
+-- guildmate's.
 local function affiliationTier(row)
-    if row.isGuild then
-        return 2
-    end
-    if row.linkId then
-        return 1
-    end
-    return 0
+    return row.isGuild and 1 or 0
 end
 SP.AffiliationTier = affiliationTier
 

@@ -67,7 +67,7 @@ function SSR.IsScoreMissing(entry, id)
     local DS = AltArmy.DataStore
     if not GS or not GS.IsScoreMissing then return false end
     if not DS or not DS.GetCharacter then return false end
-    local char = DS:GetCharacter(entry.name, entry.realm)
+    local char = DS:GetCharacterFor(entry.name, entry.realm, entry.linkId)
     return GS.IsScoreMissing(char, id)
 end
 
@@ -95,7 +95,7 @@ function SSR.DecorateEntry(entry)
     local GS = AltArmy.GearScore
     local DS = AltArmy.DataStore
     if not entry or not GS or not GS.DecorateEntry then return end
-    local charData = DS and DS.GetCharacter and DS:GetCharacter(entry.name, entry.realm)
+    local charData = DS and DS.GetCharacter and DS:GetCharacterFor(entry.name, entry.realm, entry.linkId)
     if charData then
         GS.DecorateEntry(entry, charData)
     end
@@ -112,7 +112,7 @@ function SSR.ApplyColumnScore(scoreText, scoreHover, entry, providerId, gray, op
     if not scoreText then return end
     local GS = AltArmy.GearScore
     local DS = AltArmy.DataStore
-    local charData = DS and DS.GetCharacter and DS:GetCharacter(entry.name, entry.realm)
+    local charData = DS and DS.GetCharacter and DS:GetCharacterFor(entry.name, entry.realm, entry.linkId)
     local scoreMissing = GS and GS.IsScoreMissing and GS.IsScoreMissing(charData, providerId)
 
     if scoreMissing then

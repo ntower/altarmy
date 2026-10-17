@@ -418,9 +418,9 @@ local function BuildGuildRecipes()
     return list
 end
 
--- Ours, then a linked account's, then a guildmate's (as SearchPresent sorts them).
+-- Ours (a linked account's characters count as ours), then a guildmate's (as SearchPresent sorts them).
 local function affiliationTier(row)
-    return row.isGuild and 2 or (row.linkId and 1 or 0)
+    return row.isGuild and 1 or 0
 end
 
 local function CompareRecipeRowsWithinId(a, b)

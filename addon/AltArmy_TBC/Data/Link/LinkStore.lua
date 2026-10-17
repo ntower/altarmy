@@ -270,6 +270,32 @@ function S.ForEachCharacter(fn)
     end
 end
 
+--- A character `id` sent, by GUID (its key) or name, on `realm`; nil if we hold none (or the link isn't
+--- active).
+function S.FindCharacter(id, name, realm)
+    if not (id and name and realm) or not S.IsActive(id) then
+        return nil
+    end
+    local acct = S.Ensure().accounts[id]
+    local chars = acct and acct.Characters and acct.Characters[realm]
+    if not chars then
+        return nil
+    end
+    local char = chars[name]
+    if not char then
+        for _, c in pairs(chars) do
+            if type(c) == "table" and c.name == name then
+                char = c
+                break
+            end
+        end
+    end
+    if char then
+        linkOf[char] = id
+    end
+    return char
+end
+
 --- The link a character table came from (nil for our own characters).
 function S.LinkOf(char)
     return char and linkOf[char] or nil

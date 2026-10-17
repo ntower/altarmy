@@ -213,7 +213,8 @@ local function realmAllowed(realm, allRealms, currentRealm)
     return (realm or "") == (currentRealm or "")
 end
 
---- Returns sorted rows { { name, copper }, ... }, totalCopper.
+--- Returns sorted rows { { name, copper }, ... }, totalCopper. Linked accounts' characters (the same player's
+--- other WoW accounts) count too, while the character scope shows them.
 --- opts.allRealms: when true, include every realm; default is current realm only.
 function NW.Compute(scaleFactor, opts)
     if not NW.IsAuctionatorAvailable() then
@@ -234,7 +235,13 @@ function NW.Compute(scaleFactor, opts)
     local realmCount = 0
     local byChar = {}
 
-    DS:ForEachCharacter(function(realm, charName, charData)
+    -- a linked account's character is its own row, never one of ours of the same name
+    local function rowKey(realm, name, linkId)
+        return charKey(realm, name) .. (linkId and ("" .. linkId) or "")
+    end
+
+    local forEach = DS.ForEachCharacterInScope or DS.ForEachCharacter
+    forEach(DS, function(realm, charName, charData, linkId)
         if not realmAllowed(realm, allRealms, currentRealm) then
             return
         end
@@ -243,7 +250,7 @@ function NW.Compute(scaleFactor, opts)
             realmsSeen[realm] = true
             realmCount = realmCount + 1
         end
-        local key = charKey(realm, name)
+        local key = rowKey(realm, name, linkId)
         local gold = (DS.GetMoney and DS:GetMoney(charData)) or 0
         byChar[key] = {
             realm = realm,
@@ -256,9 +263,8 @@ function NW.Compute(scaleFactor, opts)
     for _, entry in ipairs(slots) do
         local name = entry.characterName
         local realm = entry.realm
-        -- ours alone: a linked account's bags are not our wealth
-        if not entry.linkId and realmAllowed(realm, allRealms, currentRealm) then
-            local key = charKey(realm, name)
+        if realmAllowed(realm, allRealms, currentRealm) then
+            local key = rowKey(realm, name, entry.linkId)
             local row = byChar[key]
             if not row then
                 if realm and not realmsSeen[realm] then

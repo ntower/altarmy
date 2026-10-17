@@ -1159,7 +1159,8 @@ function CD.EvaluateAlerts(DS, options, now, stateMutate)
         local catKey = row.categoryKey
         local catOpts = options.categories and options.categories[catKey] or {}
         local char = DS.GetCharacter and DS:GetCharacter(row.charKeyName, row.realm) or nil
-        if catOpts.alertWhenAvailable ~= false
+        -- a linked account's character is listed, but its cooldowns never alert here
+        if not row.linkId and catOpts.alertWhenAvailable ~= false
             and CD.RowMeetsSpecializationGate(catKey, char, catOpts.alertOnlyIfSpecialization == true)
         then
             local exp = row.expiresUnix

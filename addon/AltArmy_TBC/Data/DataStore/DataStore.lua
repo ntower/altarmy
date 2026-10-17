@@ -390,11 +390,36 @@ function DS:GetCharacterAny(name, realm)
     return found, foundLink
 end
 
---- Linked data arrived or was removed: views that list characters redraw.
-function DS:FireLinkedDataChanged()
-    if AltArmy.RefreshCharacterViews then
-        AltArmy.RefreshCharacterViews()
+--- The character a list row stands for: a linked account's when the row came from one (its `linkId`),
+--- else ours. For tabs that draw rows of ForEachCharacterInScope's characters; read-only for a linked one.
+function DS:GetCharacterFor(name, realm, linkId)
+    if linkId == nil then
+        return self:GetCharacter(name, realm)
     end
+    local LS = AltArmy.LinkStore
+    return LS and LS.FindCharacter and LS.FindCharacter(linkId, name, realm) or nil
+end
+
+--- Linked data arrived or was removed: views that list characters redraw, and the Inventory (a container
+--- listener) too. A sync applies a character's units one after another: coalesced into one redraw.
+local linkedRedrawPending = false
+function DS:FireLinkedDataChanged()
+    local function redraw()
+        linkedRedrawPending = false
+        if AltArmy.RefreshCharacterViews then
+            AltArmy.RefreshCharacterViews()
+        end
+        self:FireContainerDataChanged()
+    end
+    if not (C_Timer and C_Timer.After) then
+        redraw()
+        return
+    end
+    if linkedRedrawPending then
+        return
+    end
+    linkedRedrawPending = true
+    C_Timer.After(0.5, redraw)
 end
 
 function DS:HasModuleData(char, moduleName)

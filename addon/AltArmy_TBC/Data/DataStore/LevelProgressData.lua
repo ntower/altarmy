@@ -182,9 +182,10 @@ end
 --- @param name string
 --- @param realm string
 --- @param metric string|nil LPD.METRIC_TIME_PER_LEVEL or LPD.METRIC_CUMULATIVE_PLAYED
+--- @param linkId string|nil the linked account a row's character came from (nil: ours)
 --- @return table[] { level, seconds, fromLevel, toLevel, totalSeconds, spansGap }
-function LPD.GetSeriesForCharacter(name, realm, metric)
-    local char = DS:GetCharacter(name, realm)
+function LPD.GetSeriesForCharacter(name, realm, metric, linkId)
+    local char = DS:GetCharacterFor(name, realm, linkId)
     if not char or not char.levelHistory or not char.levelHistory.milestones then
         return {}
     end
@@ -354,6 +355,7 @@ local function BuildCharacterEntry(entry, char)
     return {
         name = entry.name,
         realm = entry.realm,
+        linkId = entry.linkId,
         classFile = entry.classFile or (char and char.classFile) or "",
         level = entry.level or (char and char.level) or 0,
     }
@@ -374,7 +376,7 @@ local function CollectCharactersByMilestoneCount(minCount, maxExclusive)
     end
 
     for _, entry in ipairs(SD.GetCharacterList()) do
-        local char = DS:GetCharacter(entry.name, entry.realm)
+        local char = DS:GetCharacterFor(entry.name, entry.realm, entry.linkId)
         local milestones = char and char.levelHistory and char.levelHistory.milestones
         if HasAnyMilestone(milestones) then
             local count = CountUsableMilestones(milestones)
@@ -404,7 +406,7 @@ function LPD.GetCharactersWithInsufficientHistory()
     end
 
     for _, entry in ipairs(SD.GetCharacterList()) do
-        local char = DS:GetCharacter(entry.name, entry.realm)
+        local char = DS:GetCharacterFor(entry.name, entry.realm, entry.linkId)
         if char and GetUsableMilestoneCountForChar(char) < 2 then
             out[#out + 1] = BuildCharacterEntry(entry, char)
         end

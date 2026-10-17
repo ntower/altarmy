@@ -70,6 +70,18 @@ function AltArmy.RefreshCharacterViews()
     if AltArmy.RefreshSummary then
         AltArmy.RefreshSummary()
     end
+    -- the open grid tab redraws (the others rebuild when shown)
+    local tabs = AltArmy.TabFrames or {}
+    for _, key in ipairs({ "Gear", "Reputation" }) do
+        local f = tabs[key]
+        if f and f.RefreshGrid and f.IsVisible and f:IsVisible() then
+            f:RefreshGrid()
+        end
+    end
+    local economy = tabs.Economy
+    if economy and economy.RefreshCurrency then
+        economy.RefreshCurrency() -- only while its panel is visible
+    end
 end
 
 --- The scope made from a realmFilter value (exported for tests).

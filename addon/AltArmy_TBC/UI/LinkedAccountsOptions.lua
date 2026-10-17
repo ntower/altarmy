@@ -1,7 +1,7 @@
 -- AltArmy TBC — Options > Sharing > Linked accounts: your other WoW accounts (the same Battle.net login).
 -- Lists each link (online or not: its characters, when it last synced, Sync now and Unlink) and each other
 -- account of yours online with Alt Army that isn't linked (Link). Shown while linked accounts are on
--- (Debug.IsLinkedAccountsEnabled, for now). Rows come from LinkTransport.View (LinkSession.View).
+-- (Debug.IsLinkedAccountsEnabled: WoW: Forever only, for now). Rows come from LinkTransport.View (LinkSession.View).
 
 if not AltArmy then return end
 

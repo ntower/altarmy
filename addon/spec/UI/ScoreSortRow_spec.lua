@@ -38,6 +38,7 @@ describe("ScoreSortRow logic", function()
         }
         _G.AltArmy.DataStore = {
             GetCharacter = function(_, name) return missingChars[name] end,
+            GetCharacterFor = function(_, name) return missingChars[name] end,
         }
 
         assert(loadfile("AltArmy_TBC/UI/ScoreSortRow.lua"))()

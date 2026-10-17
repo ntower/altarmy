@@ -163,6 +163,7 @@ local columns = {
     },
     Level = {
         Width = 44,
+        sortedHeaderLabel = "Lvl", -- "Level" plus the sort arrow truncates at this width
         GetText = function(entry)
             local l = entry.level
             if l == nil then return "" end
@@ -264,8 +265,10 @@ local function UpdateHeaderSortIndicators()
     for _, cn in ipairs(columnOrder) do
         local b = headerButtons[cn]
         if b and b.label then
-            local label = (columns[cn] and columns[cn].headerLabel) or cn
-            b.label:SetText(Theme.FormatSortHeaderLabel(label, columnToSortKey[cn] == currentSortKey, sortAscending))
+            local col = columns[cn]
+            local sorted = columnToSortKey[cn] == currentSortKey
+            local label = (sorted and col and col.sortedHeaderLabel) or (col and col.headerLabel) or cn
+            b.label:SetText(Theme.FormatSortHeaderLabel(label, sorted, sortAscending))
         end
     end
 end

@@ -2485,7 +2485,7 @@ sendAllSeq.Advance = function()
         local rd = rows[sendAllSeq.index]
         sendAllSeq.index = sendAllSeq.index + 1
         if rd then
-            local targetChar = DS.GetCharacter and DS:GetCharacter(rd.charKeyName, rd.realm) or nil
+            local targetChar = DS.GetCharacter and DS:GetCharacterFor(rd.charKeyName, rd.realm, rd.linkId) or nil
             local decision
 
             if sendAllSeq.usePreallocated then
@@ -2770,7 +2770,7 @@ end
 
 local function FillCooldownListRow(row, rd, now, compose, curName, curRealm, opts)
     opts = opts or {}
-    row.charTableRef = DS:GetCharacter(rd.charKeyName, rd.realm)
+    row.charTableRef = DS:GetCharacterFor(rd.charKeyName, rd.realm, rd.linkId)
     row.catCell:SetText(FormatRecipeColumnText(rd.spellId, rd.categoryTitle or "", row.charTableRef))
     local groupPickable = CD.IsGroupCategory and CD.IsGroupCategory(rd.categoryKey)
     local pickerOpenOnRow = recipePicker.row == row and recipePicker:IsOpen()
@@ -2903,7 +2903,7 @@ RefreshList = function()
     end
 
     for _, rd in ipairs(rows) do
-        local ch = DS:GetCharacter(rd.charKeyName, rd.realm)
+        local ch = DS:GetCharacterFor(rd.charKeyName, rd.realm, rd.linkId)
         rd._sortCraftQty = nil
         if ch and rd.spellId and CD.GetMaxCraftableQuantity then
             rd._sortCraftQty = CD.GetMaxCraftableQuantity(ch, rd.spellId, GetItemCountForMats)

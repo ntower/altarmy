@@ -4,9 +4,11 @@
 -- `dataVersions` those fields are at. Sender and receiver share this whitelist: a field not listed here is
 -- never sent and never kept.
 --
--- Never sent: levelHistory (large, and per-milestone gear), Auctions/Bids/lastAuctionScan (auction house
--- data), cooldownGroupChoice and professionsNeedingRecipeScan (this client's UI state), and of mail the
--- subject, body and sender (only what is held: items, money, expiry). Account-wide data travels as the
+-- Of levelHistory only what the Graphs tab draws travels (the "levels" unit: each milestone's playedTotal and
+-- playedLevel, Dom.TrimLevels); never its per-milestone gear, zone, money or deaths log. Never sent:
+-- Auctions/Bids/lastAuctionScan (auction house data), cooldownGroupChoice and professionsNeedingRecipeScan
+-- (this client's UI state), and of mail the subject, body and sender (only what is held: items, money,
+-- expiry). Account-wide data travels as the
 -- "meta" unit: the currency and faction names a linked character's numbers need (filled in where we lack
 -- them, never overwriting ours). Options, guild data, auction scans and every other SavedVariable are never
 -- sent.
@@ -18,7 +20,7 @@ local Dom = AltArmy.LinkDomains
 --- Domain -> { fields = character fields, versions = the dataVersions keys that go with them }, in the order
 --- a sync sends them (what the Summary shows first).
 Dom.ORDER = { "identity", "equipment", "professions", "containers", "reputations", "currencies", "talents",
-    "lockouts", "mail" }
+    "lockouts", "mail", "levels" }
 Dom.DOMAINS = {
     identity = {
         fields = { "name", "realm", "guid", "faction", "race", "raceFile", "class", "classFile", "sex", "level",
@@ -58,7 +60,13 @@ Dom.DOMAINS = {
         fields = { "Mails", "MailCache", "lastMailCheck" },
         versions = { "mail" },
     },
+    -- the Graphs tab's: levelHistory trimmed to milestones' played times (Dom.TrimLevels)
+    levels = {
+        fields = { "levelHistory" },
+        versions = { "levelHistory" },
+    },
 }
+Dom.MAX_LEVEL = 200 -- a milestone's level above this is not a level
 -- Account-wide names the characters' numbers refer to.
 Dom.META_FIELDS = { "CurrencyMeta", "ReputationFactionNames" }
 -- Of a mail entry (Mails, MailCache), what is never sent.
@@ -90,6 +98,31 @@ local function stripMail(list)
     return list
 end
 
+local function playedSeconds(v)
+    return type(v) == "number" and v == v and v >= 0 and v ~= math.huge and v or nil
+end
+
+--- What the Graphs tab needs of a level history: { milestones = { [level] = { playedTotal, playedLevel } } };
+--- nil when it has no milestone with either.
+function Dom.TrimLevels(levelHistory)
+    local milestones = type(levelHistory) == "table" and levelHistory.milestones
+    if type(milestones) ~= "table" then
+        return nil
+    end
+    local out, any = {}, false
+    for level, m in pairs(milestones) do
+        if type(level) == "number" and level >= 1 and level <= Dom.MAX_LEVEL and level == math.floor(level)
+            and type(m) == "table" then
+            local total, inLevel = playedSeconds(m.playedTotal), playedSeconds(m.playedLevel)
+            if total or inLevel then
+                out[level] = { playedTotal = total, playedLevel = inLevel }
+                any = true
+            end
+        end
+    end
+    return any and { milestones = out } or nil
+end
+
 --- The unit of `domain` for `char`: a copy of its fields and their dataVersions; nil for an unknown domain.
 function Dom.Extract(char, domain)
     local def = Dom.DOMAINS[domain]
@@ -97,9 +130,13 @@ function Dom.Extract(char, domain)
         return nil
     end
     local unit = {}
-    for _, f in ipairs(def.fields) do
-        if char[f] ~= nil then
-            unit[f] = copy(char[f])
+    if domain == "levels" then
+        unit.levelHistory = Dom.TrimLevels(char.levelHistory) -- never a copy of the whole history
+    else
+        for _, f in ipairs(def.fields) do
+            if char[f] ~= nil then
+                unit[f] = copy(char[f])
+            end
         end
     end
     if domain == "mail" then

@@ -171,7 +171,7 @@ function RYB.LookupCharSpecLabel(entry)
     if not DS or not DS.GetCharacter then
         return nil
     end
-    local char = DS:GetCharacter(entry.characterName, entry.realm)
+    local char = DS:GetCharacterFor(entry.characterName, entry.realm, entry.linkId)
     if not char then
         return nil
     end

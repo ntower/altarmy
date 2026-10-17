@@ -251,6 +251,19 @@ describe("NetWorth", function()
             assert.are.equal("Rich", rows[2].name)
         end)
 
+        it("counts linked accounts' characters, apart from ours of the same name", function()
+            addChar("RealmA", "Alice", 100)
+            AltArmy.DataStore.ForEachCharacterInScope = function(self, fn)
+                self:ForEachCharacter(function(realm, name, data) fn(realm, name, data, nil) end)
+                fn("RealmA", "Alice", { name = "Alice", money = 400 }, "acct")
+            end
+            containerSlots = {}
+            local rows, total = NW.Compute(0.9)
+            AltArmy.DataStore.ForEachCharacterInScope = nil
+            assert.are.equal(2, #rows)
+            assert.are.equal(500, total)
+        end)
+
         it("defaults to current realm only", function()
             addChar("RealmA", "Alice", 100)
             addChar("RealmB", "Bob", 200)

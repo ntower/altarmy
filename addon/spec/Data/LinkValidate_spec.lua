@@ -79,6 +79,14 @@ describe("LinkValidate", function()
     assert.are.same({ money = 5 }, kept.MailCache[1])
   end)
 
+  it("keeps of a level history only milestones' played times, whatever was sent", function()
+    local sent = { levelHistory = { deaths = { { at = 1 } }, milestones = {
+      [20] = { playedTotal = 7200, playedLevel = 900, gear = { "link" }, zone = "Duskwood" },
+    } }, dataVersions = { levelHistory = 1 } }
+    local kept = V.Unit("levels", sent, GUID, REALM, { levelHistory = 1 })
+    assert.are.same({ milestones = { [20] = { playedTotal = 7200, playedLevel = 900 } } }, kept.levelHistory)
+  end)
+
   it("refuses an unknown domain", function()
     assert.are.same({ nil, "unknownDomain" }, { V.Unit("levelHistory", {}, GUID, REALM, VERSIONS) })
   end)

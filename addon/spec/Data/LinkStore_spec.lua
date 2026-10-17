@@ -68,6 +68,17 @@ describe("LinkStore", function()
     assert.is_false(DS:IsLinkedCharacter(DS:GetCharacter("Mine", REALM)))
   end)
 
+  it("gives a list row its character: the linked account's by the row's link, else ours", function()
+    S.SetLink("acct", { confirmed = true })
+    S.Receive("acct", REALM, GUID, "identity", identity("Mine"), 100) -- the same name as one of ours
+    assert.are.equal(60, DS:GetCharacterFor("Mine", REALM).level)
+    assert.are.equal(10, DS:GetCharacterFor("Mine", REALM, "acct").level)
+    assert.are.equal(10, DS:GetCharacterFor(GUID, REALM, "acct").level) -- or by its key
+    assert.is_nil(DS:GetCharacterFor("Mine", REALM, "other"))
+    S.SetLink("acct", { suspended = "another game" })
+    assert.is_nil(DS:GetCharacterFor("Mine", REALM, "acct"))
+  end)
+
   it("updates a domain in place and remembers its hash", function()
     S.SetLink("acct", { confirmed = true })
     S.Receive("acct", REALM, GUID, "identity", identity("Theirs"), 100)

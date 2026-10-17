@@ -104,7 +104,7 @@ end
 --- Build one block per bag id, in the order given. A block: { bagID, kind, name, icon, numSlots,
 --- sizeIsEstimate, used, bagItemID, bagLink, slots[slot] = { slot, itemID, count, link } }.
 --- The backpack and the main bank always appear (even unscanned); an equippable bag slot appears when a
---- bag is recorded there (identity, contents or a size); the keyring when it has slots or keys.
+--- bag is recorded there (identity, contents or a size); the keyring only when it holds a key.
 --- opts.ids (IdsForClient; Classic by default), opts.defaults as for ResolveNumSlots;
 --- opts.resolveBag(block) -> name, icon may override both.
 function IL.BuildBlocks(char, bagIDs, opts)
@@ -120,7 +120,7 @@ function IL.BuildBlocks(char, bagIDs, opts)
         if kind == "backpack" or kind == "bank" then
             present = true
         elseif kind == "keyring" then
-            present = numSlots > 0
+            present = maxUsedSlot(bag) > 0
         else
             present = bag ~= nil and (bag.bagItemID ~= nil or numSlots > 0)
         end

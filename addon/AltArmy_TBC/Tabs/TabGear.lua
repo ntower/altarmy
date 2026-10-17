@@ -294,7 +294,7 @@ function GearTab.CollectComparePanelContext(list)
     end
     local entry = GearTab.GetSelectedCompareEntry(list)
     if not entry then return nil end
-    local charData = DS and DS.GetCharacter and DS:GetCharacter(entry.name, entry.realm)
+    local charData = DS and DS.GetCharacter and DS:GetCharacterFor(entry.name, entry.realm, entry.linkId)
     if not charData then return nil end
     local technique = GearTab.GetSessionCompareTechnique()
     local equippedLink = GearTab.GetSelectedEquippedCompareLink(list, technique)
@@ -370,7 +370,7 @@ function GearTab.PickBestCompareSlotForEntry(entry, list)
     if not entry then return slots[1] end
     local focusOpts = GU and GU.GetOptions and GU.GetOptions() or {}
     local upgradeMaxDelta = GearTab.ComputeFocusUpgradeMaxDelta(list, slots, focusOpts)
-    local charData = DS and DS.GetCharacter and DS:GetCharacter(entry.name, entry.realm)
+    local charData = DS and DS.GetCharacter and DS:GetCharacterFor(entry.name, entry.realm, entry.linkId)
     local slot = GU and GU.GetBestFocusCompareSlot
         and GU.GetBestFocusCompareSlot(
             entry, charData, droppedItemLink, slots, focusOpts, upgradeMaxDelta)
@@ -419,7 +419,7 @@ function GearTab.PickBestCompareSelection(list)
     local inRangeUpgrade = GU and GU.FOCUS_CATEGORY
     for i = 1, #list do
         local e = list[i]
-        local charData = DS and DS.GetCharacter and DS:GetCharacter(e.name, e.realm)
+        local charData = DS and DS.GetCharacter and DS:GetCharacterFor(e.name, e.realm, e.linkId)
         for s = 1, #slots do
             local invSlot = slots[s]
             local info = GU and GU.ClassifyFocusSlot
@@ -820,7 +820,7 @@ function GearTab.GetDisplayList()
         local isHidden = GearTab.GetCharSetting(e.name, e.realm, "hide") or isBankAlt
         -- Opposite-faction alts can't receive gear by mail; never list them.
         local otherFaction = not isSelf and DS and DS.IsSameFactionAsCurrent and DS.GetCharacter
-            and not DS:IsSameFactionAsCurrent(DS:GetCharacter(e.name, e.realm))
+            and not DS:IsSameFactionAsCurrent(DS:GetCharacterFor(e.name, e.realm, e.linkId))
         if not otherFaction and (not isHidden or (showSelfFirst and isSelf)) then
             visible[#visible + 1] = e
             GearTab.DecorateDisplayEntry(e)
@@ -873,8 +873,8 @@ function GearTab.GetDisplayList()
             local bSelf = DS and DS.IsCurrentCharacter and DS:IsCurrentCharacter(b.name, b.realm)
             if aSelf ~= bSelf then return aSelf end
         end
-        local charA = DS and DS.GetCharacter and DS:GetCharacter(a.name, a.realm)
-        local charB = DS and DS.GetCharacter and DS:GetCharacter(b.name, b.realm)
+        local charA = DS and DS.GetCharacter and DS:GetCharacterFor(a.name, a.realm, a.linkId)
+        local charB = DS and DS.GetCharacter and DS:GetCharacterFor(b.name, b.realm, b.linkId)
         if GU and GU.CompareFocusEntries then
             return GU.CompareFocusEntries(
                 a, b, charA, charB, droppedItemLink, upgradeOpts, upgradeMaxDelta)
@@ -886,7 +886,7 @@ end
 
 function GearTab.GetFocusSummaryForEntry(entry, upgradeMaxDelta)
     if not droppedItemLink or not GU or not GU.SummarizeFocusEntry then return nil end
-    local charData = DS and DS.GetCharacter and DS:GetCharacter(entry.name, entry.realm)
+    local charData = DS and DS.GetCharacter and DS:GetCharacterFor(entry.name, entry.realm, entry.linkId)
     local opts = GU.GetOptions and GU.GetOptions() or {}
     return GU.SummarizeFocusEntry(entry, charData, droppedItemLink, opts, upgradeMaxDelta)
 end
@@ -898,7 +898,7 @@ function GearTab.GetFocusColumnDimmed(entry, upgradeMaxDelta)
             return true
         end
     end
-    local charData = DS and DS.GetCharacter and DS:GetCharacter(entry.name, entry.realm)
+    local charData = DS and DS.GetCharacter and DS:GetCharacterFor(entry.name, entry.realm, entry.linkId)
     local opts = GU.GetOptions and GU.GetOptions() or {}
     return GU.GetFocusColumnDimmed(entry, charData, droppedItemLink, opts, upgradeMaxDelta)
 end
@@ -951,7 +951,7 @@ function GearTab.ResolveEquippableCompareSlot(entry, invSlot)
     if not GU or not GU.CanEquipFocusItemInWeaponSlot then return invSlot end
     local otherHand = OTHER_WEAPON_HAND[invSlot]
     if not otherHand then return invSlot end
-    local charData = DS and DS.GetCharacter and DS:GetCharacter(entry.name, entry.realm)
+    local charData = DS and DS.GetCharacter and DS:GetCharacterFor(entry.name, entry.realm, entry.linkId)
     if GU.CanEquipFocusItemInWeaponSlot(charData, droppedItemLink, invSlot, entry) then
         return invSlot
     end
@@ -2485,7 +2485,7 @@ function GearTab.GetSelectedEquippedCompareLink(list, technique)
     if not GearTab.HasCompareSelection() or not GC or not GC.GetEquippedCompareItem then return nil end
     local entry = GearTab.GetSelectedCompareEntry(list)
     if not entry or not droppedItemLink then return nil end
-    local charData = DS and DS.GetCharacter and DS:GetCharacter(entry.name, entry.realm)
+    local charData = DS and DS.GetCharacter and DS:GetCharacterFor(entry.name, entry.realm, entry.linkId)
     if not charData then return nil end
     return GC.GetEquippedCompareItem(charData, droppedItemLink, {
         technique = technique or GearTab.GetSessionCompareTechnique(),
@@ -3691,7 +3691,7 @@ function GearTab.UpdateGridWithOffset()
 
         if col.upgradeHighlight then col.upgradeHighlight:Hide() end
 
-        local charData = DS and DS.GetCharacter and DS:GetCharacter(entry.name, entry.realm)
+        local charData = DS and DS.GetCharacter and DS:GetCharacterFor(entry.name, entry.realm, entry.linkId)
         for slot = 1, NUM_EQUIPMENT_SLOTS do
             local cell = col.cells[slot]
             cell.isFocusCompareCell = false

@@ -54,14 +54,15 @@ frame.BankView = panels.bank
 frame.MailView = panels.mail
 
 --- Whether the Mail view would list at least one message for this character (scanned or predicted).
-local function HasMail(name, realm)
+local function HasMail(name, realm, linkId)
     local IL = AltArmy.InventoryLayout
-    local char = IL and IL.MailMessages and DS:GetCharacter(name, realm)
+    local char = IL and IL.MailMessages and DS:GetCharacterFor(name, realm, linkId)
     return char ~= nil and #IL.MailMessages(char, time()) > 0
 end
 
 --- The characters the picker offers, under the global realm filter, by realm and name, as dropdown
---- entries that also carry name and realm: { id = CharKey, label, name, realm }.
+--- entries that also carry name and realm: { id = CharKey, label, name, realm, linkId } (a linked account's
+--- character's id says which link, so it never stands for one of ours of the same name).
 local function CharacterEntries()
     local list = SD.GetCharacterList()
     local currentRealm = GetRealmName and GetRealmName() or ""
@@ -74,11 +75,12 @@ local function CharacterEntries()
     local out = {}
     for _, e in ipairs(list) do
         out[#out + 1] = {
-            id = CharKey(e.name, e.realm),
+            id = CharKey(e.name, e.realm) .. (e.linkId and ("" .. e.linkId) or ""),
             label = RF.formatColoredCharacterNameRealm(e.name, e.realm, showRealm, e.classFile),
             name = e.name,
             coloredName = RF.formatColoredCharacterNameRealm(e.name, e.realm, false, e.classFile, false),
             realm = e.realm,
+            linkId = e.linkId,
         }
     end
     return out
@@ -92,7 +94,7 @@ local function PickerEntries()
     if state.activeView ~= "mail" then return entries end
     local withMail, without = {}, {}
     for _, e in ipairs(entries) do
-        if HasMail(e.name, e.realm) then
+        if HasMail(e.name, e.realm, e.linkId) then
             e.label = UI.MAIL_ICON_MARKUP .. " " .. e.label
             withMail[#withMail + 1] = e
         else
@@ -145,7 +147,7 @@ end
 function frame.GetSelectedCharacter()
     local pick = ResolveSelection()
     if not pick then return nil, nil end
-    return DS:GetCharacter(pick.name, pick.realm), pick
+    return DS:GetCharacterFor(pick.name, pick.realm, pick.linkId), pick
 end
 
 local function RefreshActive()

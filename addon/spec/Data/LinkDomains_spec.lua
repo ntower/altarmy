@@ -10,7 +10,14 @@ describe("LinkDomains", function()
       Containers = { { items = { { itemID = 2589, count = 5, link = "|cnIQ1:|Hitem:2589::::|h[Linen Cloth]|h|r" } } } },
       Mails = { { itemID = 1, count = 1, money = 0, subject = "Hi", sender = "Bob", daysLeft = 20 } },
       MailCache = { { money = 50, text = "secret", subject = "Re", sender = "Al", daysLeft = 3 } },
-      levelHistory = { [10] = { gear = {} } },
+      levelHistory = {
+        meta = { bracketDeathCount = 1 },
+        milestones = {
+          [10] = { playedTotal = 3600, playedLevel = 600, reachedAt = 5, zone = "Elwynn", money = 9, gear = { "x" } },
+          [11] = { reachedAt = 6 }, -- imported without played times: nothing to draw
+        },
+        deaths = { { at = 1, level = 9, killerName = "Hogger" } },
+      },
       Auctions = { { itemID = 3 } },
       cooldownGroupChoice = { x = 1 },
       professionsNeedingRecipeScan = { Tailoring = true },
@@ -43,17 +50,32 @@ describe("LinkDomains", function()
     assert.are.equal("Hi", char().Mails[1].subject) -- the source keeps them
   end)
 
-  it("has no domain for level history, auctions or this client's UI state", function()
+  it("has no domain for auctions or this client's UI state", function()
     for _, domain in ipairs(Dom.ORDER) do
       local unit = Dom.Extract(char(), domain)
-      assert.is_nil(unit.levelHistory)
       assert.is_nil(unit.Auctions)
       assert.is_nil(unit.cooldownGroupChoice)
       assert.is_nil(unit.professionsNeedingRecipeScan)
-      assert.is_nil(unit.dataVersions.levelHistory)
       assert.is_nil(unit.dataVersions.auctions)
+      if domain ~= "levels" then
+        assert.is_nil(unit.levelHistory)
+      end
     end
     assert.is_nil(Dom.Extract(char(), "levelHistory"))
+  end)
+
+  it("sends of level history only what the graphs draw: each milestone's played times", function()
+    local unit = Dom.Extract(char(), "levels")
+    assert.are.same({
+      levelHistory = { milestones = { [10] = { playedTotal = 3600, playedLevel = 600 } } },
+      dataVersions = { levelHistory = 1 },
+    }, unit)
+    assert.is_nil(Dom.TrimLevels({ milestones = { [5] = { reachedAt = 1 } } }))
+    assert.is_nil(Dom.TrimLevels(nil))
+    assert.are.same({ milestones = { [2] = { playedTotal = 10 } } }, Dom.TrimLevels({ milestones = {
+      [2] = { playedTotal = 10, playedLevel = -1 }, -- not a time
+      ["3"] = { playedTotal = 20 }, [1.5] = { playedTotal = 30 }, [999] = { playedTotal = 40 }, -- not levels
+    } }))
   end)
 
   it("lists every domain in its send order", function()
