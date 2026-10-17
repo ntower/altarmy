@@ -5,6 +5,7 @@
 --   links[accountId]    = { kind = "own", label, confirmed, linkedAt, lastSyncAt, wowProjectID, interface,
 --                           addonVersion, suspended (why, or nil) }
 --   declined[accountId] = when we said no
+--   pendingUnlinks[accountId] = when we unlinked, until that account hears of it
 --   accounts[accountId] = { Characters = { [realm] = { [guid] = char } }, meta = { CurrencyMeta, ... },
 --                           hashes = { [guid] = { [domain] = hash } }, receivedAt }
 -- A character is kept in the DataStore's own shape (LinkDomains), so DS getters read it as they read ours.
@@ -31,6 +32,7 @@ function S.Ensure()
     end
     data.links = type(data.links) == "table" and data.links or {}
     data.declined = type(data.declined) == "table" and data.declined or {}
+    data.pendingUnlinks = type(data.pendingUnlinks) == "table" and data.pendingUnlinks or {}
     data.accounts = type(data.accounts) == "table" and data.accounts or {}
     return data
 end
@@ -64,6 +66,9 @@ function S.SetLink(id, fields)
     end
     data.links[id] = link
     data.declined[id] = nil
+    if link.confirmed then
+        data.pendingUnlinks[id] = nil -- linked again: nothing to tell it
+    end
     changed()
     return link
 end
@@ -119,8 +124,9 @@ function S.ApplyUnit(id, realm, guid, domain, unit, hash, now)
 end
 
 --- Take one unit as it arrived from `id`: checked (LinkValidate), then kept. Returns true, or false and why.
---- What every way in (a sync, the debug harness) goes through.
-function S.Receive(id, realm, guid, domain, unit, now)
+--- What every way in (a sync, the debug harness) goes through. `hash` is the sender's for the unit (what its
+--- manifests will say), else ours is taken.
+function S.Receive(id, realm, guid, domain, unit, now, hash)
     local V, DS = AltArmy.LinkValidate, AltArmy.DataStore
     local versions = DS and DS._DATA_VERSIONS or {}
     local acct = S.Ensure().accounts[id]
@@ -138,7 +144,10 @@ function S.Receive(id, realm, guid, domain, unit, now)
     if not kept then
         return false, why
     end
-    if not S.ApplyUnit(id, realm, guid, domain, kept, AltArmy.LinkDomains.Hash(kept), now) then
+    if type(hash) ~= "number" then
+        hash = AltArmy.LinkDomains.Hash(kept)
+    end
+    if not S.ApplyUnit(id, realm, guid, domain, kept, hash, now) then
         return false, "noIdentity"
     end
     if DS and DS._MigrateDataVersions then
@@ -148,13 +157,45 @@ function S.Receive(id, realm, guid, domain, unit, now)
 end
 
 --- Take a "meta" unit as it arrived from `id` (checked first); fills in names our account lacks.
-function S.ReceiveMeta(id, unit, ownRoot)
+function S.ReceiveMeta(id, unit, ownRoot, hash)
     local meta, why = AltArmy.LinkValidate.Meta(unit)
     if not meta then
         return false, why
     end
     S.ApplyMeta(id, meta, ownRoot)
+    account(id).metaHash = hash
     return true
+end
+
+--- The hash of the meta unit we hold from `id`.
+function S.MetaHash(id)
+    local acct = S.Ensure().accounts[id]
+    return acct and acct.metaHash or nil
+end
+
+--- The characters we hold from `id`: { [guid] = realm }.
+function S.CharacterRealms(id)
+    local out = {}
+    local acct = S.Ensure().accounts[id]
+    for realm, chars in pairs(acct and acct.Characters or {}) do
+        for guid in pairs(chars) do
+            out[guid] = realm
+        end
+    end
+    return out
+end
+
+--- Unlinked here, to be told to `id` when it is next online (UnlinkSent once it heard).
+function S.MarkUnlinkPending(id, now)
+    S.Ensure().pendingUnlinks[id] = now or true
+end
+
+function S.IsUnlinkPending(id)
+    return S.Ensure().pendingUnlinks[id] ~= nil
+end
+
+function S.UnlinkSent(id)
+    S.Ensure().pendingUnlinks[id] = nil
 end
 
 --- Keep a validated "meta" unit, and fill in the names our own account lacks (never overwriting ours).

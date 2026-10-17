@@ -145,6 +145,10 @@ Data\Link\LinkDomains.lua
 Data\Link\LinkValidate.lua
 Data\Link\LinkStore.lua
 Data\Link\LinkHarness.lua
+Data\Link\LinkCodec.lua
+Data\Link\LinkSync.lua
+Data\Link\LinkSession.lua
+Data\Link\LinkTransport.lua
 Data\Link\LinkProbe.lua
 UI\MinimapSavedVars.lua
 UI\Minimap.lua
@@ -154,6 +158,8 @@ UI\GuildShareOnboarding.lua
 UI\RestedXpQuestRewardConflictDialog.lua
 UI\Options.lua
 UI\CooldownOptions.lua
+UI\LinkAccountDialog.lua
+UI\LinkedAccountsOptions.lua
 UI\QuestRewardIndicators.lua
 UI\GearUpgradeOptions.lua
 UI\ProfitExportDialog.lua

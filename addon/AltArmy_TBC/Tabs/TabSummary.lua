@@ -36,13 +36,6 @@ local ICON_SIZE = 16
 local STATUS_ICON_SIZE = 16
 local STATUS_ICON_GAP = 2
 local MAIN_STAR_TEXTURE = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_1"
--- The badge on a character of the opposite faction (one shown when Options lists that faction too).
--- The badge on a linked account's character (it came over Battle.net).
-local LINKED_TEXTURE = "Interface\\FriendsFrame\\Battlenet-Battleneticon"
-local FACTION_TEXTURES = {
-    Horde = "Interface\\FriendsFrame\\PlusManz-Horde",
-    Alliance = "Interface\\FriendsFrame\\PlusManz-Alliance",
-}
 
 local CC = AltArmy.ClassColor
 local BA = AltArmy.BankAlt
@@ -203,7 +196,8 @@ local columns = {
         Width = 72,
         headerLabel = "Online",
         GetText = function(entry)
-            return SD and SD.FormatLastOnline and SD.FormatLastOnline(entry.lastOnline, isCurrentCharacter(entry)) or ""
+            local online = entry.isOnline or isCurrentCharacter(entry)
+            return SD and SD.FormatLastOnline and SD.FormatLastOnline(entry.lastOnline, online) or ""
         end,
         JustifyH = "RIGHT",
     },
@@ -729,58 +723,6 @@ for i = 1, ROW_POOL_SIZE do
     end)
     row.bankAltHit = bankAltHit
 
-    local factionIcon = row:CreateTexture(nil, "ARTWORK")
-    factionIcon:SetSize(STATUS_ICON_SIZE, STATUS_ICON_SIZE)
-    factionIcon:Hide()
-    row.factionIcon = factionIcon
-
-    local factionHit = CreateFrame("Frame", nil, row)
-    factionHit:SetAllPoints(factionIcon)
-    factionHit:EnableMouse(true)
-    factionHit:Hide()
-    factionHit:SetFrameLevel(row:GetFrameLevel() + 3)
-    factionHit:SetScript("OnEnter", function(self)
-        local e = self.tooltipEntry
-        if e and GameTooltip then
-            GameTooltip:SetOwner(self, "ANCHOR_BOTTOMLEFT")
-            GameTooltip:SetText(e.faction or "", 1, 1, 1)
-            GameTooltip:Show()
-        end
-    end)
-    factionHit:SetScript("OnLeave", function()
-        if GameTooltip then GameTooltip:Hide() end
-    end)
-    row.factionHit = factionHit
-
-    local linkIcon = row:CreateTexture(nil, "ARTWORK")
-    linkIcon:SetSize(STATUS_ICON_SIZE, STATUS_ICON_SIZE)
-    linkIcon:SetTexture(LINKED_TEXTURE)
-    linkIcon:Hide()
-    row.linkIcon = linkIcon
-
-    local linkHit = CreateFrame("Frame", nil, row)
-    linkHit:SetAllPoints(linkIcon)
-    linkHit:EnableMouse(true)
-    linkHit:Hide()
-    linkHit:SetFrameLevel(row:GetFrameLevel() + 3)
-    linkHit:SetScript("OnEnter", function(self)
-        local e = self.tooltipEntry
-        local LS = AltArmy.LinkStore
-        if not (e and GameTooltip and LS) then return end
-        GameTooltip:SetOwner(self, "ANCHOR_BOTTOMLEFT")
-        GameTooltip:SetText("Linked account: " .. LS.Label(e.linkId), 1, 1, 1)
-        local at = LS.ReceivedAt(e.linkId)
-        if at and SD and SD.FormatLastOnline then
-            GameTooltip:AddLine("Received " .. SD.FormatLastOnline(at, false), 0.8, 0.8, 0.8)
-        end
-        GameTooltip:AddLine("Read-only: change it by logging in on that account.", 0.6, 0.6, 0.6, true)
-        GameTooltip:Show()
-    end)
-    linkHit:SetScript("OnLeave", function()
-        if GameTooltip then GameTooltip:Hide() end
-    end)
-    row.linkHit = linkHit
-
     local mainStarIcon = row:CreateTexture(nil, "ARTWORK")
     mainStarIcon:SetSize(STATUS_ICON_SIZE, STATUS_ICON_SIZE)
     mainStarIcon:SetTexture(MAIN_STAR_TEXTURE)
@@ -989,28 +931,9 @@ Update = function()
                         -- a linked account's character is never our main
                         local isMain = not entry.linkId and GSS and GSS.IsConfiguredMain
                             and GSS.IsConfiguredMain(entry.name, entry.realm)
-                        local myFaction = UnitFactionGroup and UnitFactionGroup("player")
-                        local factionTexture = entry.faction and entry.faction ~= myFaction
-                            and FACTION_TEXTURES[entry.faction]
                         local layout = SD.GetNameStatusIconLayout(
-                            ICON_SIZE, STATUS_ICON_SIZE, STATUS_ICON_GAP, isMain, isBankAlt,
-                            factionTexture and true or false, entry.linkId ~= nil
+                            ICON_SIZE, STATUS_ICON_SIZE, STATUS_ICON_GAP, isMain, isBankAlt
                         )
-                        if entry.linkId then
-                            showStatusIcon(rowFrame, rowFrame.linkIcon, rowFrame.linkHit, layout.linkX, {
-                                linkId = entry.linkId,
-                            })
-                        else
-                            hideStatusIcon(rowFrame.linkIcon, rowFrame.linkHit)
-                        end
-                        if factionTexture then
-                            rowFrame.factionIcon:SetTexture(factionTexture)
-                            showStatusIcon(rowFrame, rowFrame.factionIcon, rowFrame.factionHit, layout.factionX, {
-                                faction = entry.faction,
-                            })
-                        else
-                            hideStatusIcon(rowFrame.factionIcon, rowFrame.factionHit)
-                        end
                         if isMain then
                             showStatusIcon(rowFrame, rowFrame.mainStarIcon, rowFrame.mainStarHit, layout.mainX, {
                                 name = entry.name or "",
@@ -1075,8 +998,6 @@ Update = function()
                     rowFrame.mainStarHit.showTooltip = false
                 end
                 hideStatusIcon(rowFrame.bankAltIcon, rowFrame.bankAltHit)
-                hideStatusIcon(rowFrame.factionIcon, rowFrame.factionHit)
-                hideStatusIcon(rowFrame.linkIcon, rowFrame.linkHit)
                 UpdateWellRestedMarker(rowFrame, nil)
                 rowFrame:Hide()
             end

@@ -156,6 +156,12 @@ function D.IsGuildShareEnabled()
     return true
 end
 
+--- Linked accounts (Data/Link/LinkTransport.lua: sync with your other WoW accounts over Battle.net) run only
+--- with debug on until they are tried in game.
+function D.IsLinkedAccountsEnabled()
+    return D.IsEnabled()
+end
+
 --- Verbose guild-share traffic logging. Standalone (does NOT require master enabled).
 function D.IsGuildShareVerbose()
     D.Ensure()

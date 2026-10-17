@@ -16,24 +16,14 @@ local GOLD_ICON = "|TInterface\\MoneyFrame\\UI-GoldIcon:" .. COIN_ICON_SIZE .. "
 local SILVER_ICON = "|TInterface\\MoneyFrame\\UI-SilverIcon:" .. COIN_ICON_SIZE .. ":" .. COIN_ICON_SIZE .. "|t"
 local COPPER_ICON = "|TInterface\\MoneyFrame\\UI-CopperIcon:" .. COIN_ICON_SIZE .. ":" .. COIN_ICON_SIZE .. "|t"
 
---- Layout for Summary name-column status icons after the class icon: the faction badge (a character of
---- the opposite faction), the linked-account badge, then the main star, then bank alt.
---- Returns factionX/linkX/mainX/bankX (nil when hidden) and nameTextLeft for the name font string.
-function AltArmy.SummaryData.GetNameStatusIconLayout(classIconSize, statusIconSize, gap, isMain, isBankAlt,
-                                                     isOtherFaction, isLinked)
+--- Layout for Summary name-column status icons (main star / bank alt) after the class icon.
+--- Returns mainX/bankX (nil when hidden) and nameTextLeft for the name font string.
+function AltArmy.SummaryData.GetNameStatusIconLayout(classIconSize, statusIconSize, gap, isMain, isBankAlt)
     classIconSize = classIconSize or 16
     statusIconSize = statusIconSize or 16
     gap = gap or 2
     local x = classIconSize + gap
-    local factionX, linkX, mainX, bankX
-    if isOtherFaction then
-        factionX = x
-        x = x + statusIconSize + gap
-    end
-    if isLinked then
-        linkX = x
-        x = x + statusIconSize + gap
-    end
+    local mainX, bankX
     if isMain then
         mainX = x
         x = x + statusIconSize + gap
@@ -43,8 +33,6 @@ function AltArmy.SummaryData.GetNameStatusIconLayout(classIconSize, statusIconSi
         x = x + statusIconSize + gap
     end
     return {
-        factionX = factionX,
-        linkX = linkX,
         mainX = mainX,
         bankX = bankX,
         nameTextLeft = x,
@@ -154,6 +142,9 @@ function AltArmy.SummaryData.GetCharacterList()
             local name = DS:GetCharacterName(charData) or charName
             -- a linked account's copy of this character is not the one logged in here
             local isCurrent = not linkId and DS:IsCurrentCharacter(name, realm)
+            -- a linked account's character it is logged in on right now
+            local LS = linkId and AltArmy.LinkSession
+            local linkedOnline = LS and LS.IsOnline and LS.IsOnline(charData.guid) or false
             local level = DS:GetCharacterLevel(charData) or 0
             -- Fractional level (level + xp progress) for display with one decimal, rounded down
             local xp = isCurrent and (UnitXP and UnitXP("player")) or charData.xp
@@ -210,7 +201,8 @@ function AltArmy.SummaryData.GetCharacterList()
                 isMaxLevel = isMaxLevel,
                 money = money,
                 played = played,
-                lastOnline = isCurrent and nil or lastLogout,
+                lastOnline = (isCurrent or linkedOnline) and nil or lastLogout,
+                isOnline = (isCurrent or linkedOnline) and true or nil,
                 class = classLoc or "",
                 classFile = classFile or "",
                 bagSlots = bagSlots,

@@ -392,6 +392,25 @@ describe("DataStoreProfessions", function()
       DS:ScanRecipes()
       assert.are.equal(1, scheduleCount)
     end)
+
+    it("tells linked accounts after scanning trade-skill recipes", function()
+      local noted = 0
+      AltArmy.LinkTransport = { NoteLocalChange = function() noted = noted + 1 end }
+      _G.UnitName = function() return "TestPlayer" end
+      _G.GetRealmName = function() return "TestRealm" end
+      _G.GetTradeSkillLine = function() return "Alchemy", 1, 75 end
+      _G.GetNumTradeSkills = function() return 1 end
+      _G.GetTradeSkillInfo = function() return "Minor Healing Potion", "optimal" end
+      _G.GetTradeSkillRecipeLink = function()
+        return "|Hitem:118:0:0:0:0:0:0:0|h[Minor Healing Potion]|h"
+      end
+      _G.GetTradeSkillItemLink = function() return nil end
+      _G.GetTradeSkillNumReagents = function() return 0 end
+      _G.time = function() return 0 end
+      DS:ScanRecipes()
+      AltArmy.LinkTransport = nil
+      assert.are.equal(1, noted)
+    end)
   end)
 
   describe("HasTradeSkillRecipesApi", function()

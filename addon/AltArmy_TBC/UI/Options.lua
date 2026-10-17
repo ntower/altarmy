@@ -737,6 +737,13 @@ local guildSection = Theme.CreateCollapsibleSection(panel.sharingViewport.child,
     defaultExpanded = true,
     onToggle = onSectionToggled,
 })
+-- Linked accounts: your other WoW accounts (UI/LinkedAccountsOptions.lua fills it; hidden until it does).
+panel.linkedSection = Theme.CreateCollapsibleSection(panel.sharingViewport.child, {
+    text = "Linked accounts",
+    defaultExpanded = true,
+    onToggle = onSectionToggled,
+})
+panel.linkedSection.SetShown(false)
 local auctionSection = Theme.CreateCollapsibleSection(generalScrollChild, {
     text = "Auction House",
     defaultExpanded = true,
@@ -1688,7 +1695,7 @@ local SECTION_PAGES = {
         viewport = generalViewport,
     },
     sharing = {
-        sections = { guildSection },
+        sections = { guildSection, panel.linkedSection },
         viewport = panel.sharingViewport,
     },
 }
@@ -1706,6 +1713,7 @@ function LayoutGeneralSections()
     end
 end
 LayoutGeneralSections()
+panel.LayoutSectionPages = LayoutGeneralSections
 
 --- The page and section a flashed control lives in, and the control (see AltArmy.OpenInterfaceOptions).
 local FLASH_TARGETS = {

@@ -12,8 +12,12 @@ local isViewValid
 
 local MAX_LOGOUT_SENTINEL = 5000000000
 
---- Minutes-since-online sort value: 0 for logged-in character, elapsed seconds otherwise.
+--- Minutes-since-online sort value: 0 for a logged-in character (here, or on a linked account), elapsed
+--- seconds otherwise.
 local function GetLastOnlineSortValue(entry)
+    if entry and entry.isOnline then
+        return 0
+    end
     local DS = AltArmy.DataStore
     if entry and DS and DS.IsCurrentCharacter
         and DS:IsCurrentCharacter(entry.name, entry.realm) then

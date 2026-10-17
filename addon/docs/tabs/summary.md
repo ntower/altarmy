@@ -16,7 +16,7 @@ See levels, rest XP, money, played time, and last online at a glance; pin/hide c
 
 | Column | Notes |
 |--------|--------|
-| Name | Class-colored with class icon; a faction badge (its faction on hover) right after it on a character of the opposite faction (listed when Options shows that faction or other realms); then a Battle.net badge on a linked account's character (its account and when it was received on hover; such rows are read-only, left out of the totals, and get no missing-data warning, main star or bank icon); bank-alt icon when flagged |
+| Name | Class-colored with class icon; bank-alt icon when flagged. A linked account's character is read-only: left out of the totals, with no missing-data warning, main star or bank icon |
 | Level | Fractional level support |
 | Rest XP | Rested experience (cap and accumulation rate widened by the WoW Forever "Well Rested" Legacy Talent, when captured — see [Legacy Talents](../WOW_FOREVER_COMPATIBILITY_RESEARCH.md#legacy-talents-2026-09-21)). A character with a rank in Well Rested shows a green up arrow before the percentage; hovering the cell shows a tooltip with the talent's rank and what it adds |
 | Money | Bags + mail gold |

@@ -443,6 +443,11 @@ function DS:DeleteCharacter(name, realm)
     if AltArmy.Characters and AltArmy.Characters.InvalidateView then
         AltArmy.Characters:InvalidateView()
     end
+    -- linked accounts drop their copy once they hear (a full manifest, debounced)
+    local T = AltArmy.LinkTransport
+    if T and T.NoteDeletion then
+        T.NoteDeletion()
+    end
 end
 
 -- Event frame and dispatch

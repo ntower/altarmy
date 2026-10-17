@@ -23,6 +23,11 @@ local function notifyRecipesChanged()
     end
     -- Presence includes profession ranks + recipe count/hash; coalesce with settings edits.
     scheduleGuildShareBroadcast()
+    -- linked accounts: this character's partial manifest (debounced) carries the new recipes
+    local T = AltArmy and AltArmy.LinkTransport
+    if T and T.NoteLocalChange then
+        T.NoteLocalChange()
+    end
 end
 
 --- Chat debug for cooldown persistence. Enable: /altarmy debug on, then AltArmy > Debug > cooldown scans.
