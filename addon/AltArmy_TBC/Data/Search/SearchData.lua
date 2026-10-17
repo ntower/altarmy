@@ -211,13 +211,14 @@ local function BuildAllContainerSlots()
     if not DS or not DS.ForEachCharacter or not DS.IterateContainerSlots or not DS.GetCharacterName then
         return list
     end
-    DS:ForEachCharacter(function(realm, charName, charData)
+    (DS.ForEachCharacterInScope or DS.ForEachCharacter)(DS, function(realm, charName, charData, linkId)
         if charData and DS.IterateContainerSlots then
             local _, classFile = DS:GetCharacterClass(charData)
             DS:IterateContainerSlots(charData, function(bagID, slot, itemID, count, link)
                 table.insert(list, {
                     characterName = DS:GetCharacterName(charData) or charName,
                     realm = realm,
+                    linkId = linkId,
                     itemID = itemID,
                     itemLink = link,
                     count = count or 1,
@@ -244,6 +245,7 @@ local function BuildAllContainerSlots()
                 table.insert(list, {
                     characterName = characterName,
                     realm = realm,
+                    linkId = linkId,
                     itemID = itemID,
                     itemLink = link,
                     count = 1,
@@ -267,6 +269,7 @@ local function BuildAllContainerSlots()
                         table.insert(list, {
                             characterName = characterName,
                             realm = realm,
+                            linkId = linkId,
                             itemID = m.itemID,
                             itemLink = m.link,
                             count = m.count or 1,
@@ -298,6 +301,7 @@ local function BuildAllContainerSlots()
                     table.insert(list, {
                         characterName = characterName,
                         realm = realm,
+                        linkId = linkId,
                         itemID = itemID,
                         itemLink = link,
                         count = 1,
@@ -326,7 +330,7 @@ local function BuildLocalRecipes()
         or not DS.GetCharacterClass or not DS.GetProfessions then
         return list
     end
-    DS:ForEachCharacter(function(realm, charName, charData)
+    (DS.ForEachCharacterInScope or DS.ForEachCharacter)(DS, function(realm, charName, charData, linkId)
         if charData then
             local professions = DS:GetProfessions(charData)
             if professions then
@@ -345,6 +349,7 @@ local function BuildLocalRecipes()
                                 table.insert(list, {
                                     characterName = characterName,
                                     realm = realm,
+                                    linkId = linkId,
                                     classFile = classFile,
                                     professionName = profName,
                                     skillRank = skillRank,
@@ -413,11 +418,15 @@ local function BuildGuildRecipes()
     return list
 end
 
+-- Ours, then a linked account's, then a guildmate's (as SearchPresent sorts them).
+local function affiliationTier(row)
+    return row.isGuild and 2 or (row.linkId and 1 or 0)
+end
+
 local function CompareRecipeRowsWithinId(a, b)
-    local aGuild = a.isGuild and true or false
-    local bGuild = b.isGuild and true or false
-    if aGuild ~= bGuild then
-        return not aGuild
+    local ta, tb = affiliationTier(a), affiliationTier(b)
+    if ta ~= tb then
+        return ta < tb
     end
     local ca = a.characterName or ""
     local cb = b.characterName or ""

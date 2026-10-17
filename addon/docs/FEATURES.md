@@ -50,7 +50,11 @@ AltArmy TBC is an account-wide alt management addon for TBC Classic that:
 
 ### Realm filtering and character visibility
 
-- Characters shown (Options → General): this realm of your faction always; this realm's other faction and other realms each by a checkbox.
+- Characters shown (Options → General): this realm of your faction always; this realm's other faction and other realms each by a checkbox; linked accounts' characters by a fourth once there is a link.
+
+### Linked accounts (in progress; behind debug)
+
+Your other WoW accounts (the same Battle.net login) send their characters to this one, which shows them read-only beside yours: Summary (a Battle.net badge, its account and when it was received on hover; never in the totals, missing-data warnings, main star or bank icon), Search (items and recipes, after yours and before guildmates', the account's label in teal), Cooldowns and raid lockouts. Never counted as yours: `/networth`, mail alerts, gear upgrade alerts, guild sharing (a linked account shares itself), the profit export and the website upload. Kept in its own SavedVariable, `AltArmyTBC_LinkedData` (`Data/Link/LinkStore.lua`), checked unit by unit (`LinkValidate.lua`) against a whitelist of what is sent (`LinkDomains.lua`: no level history, auction data, mail text or UI state). The sync between clients (`C_BattleNet.SendGameData`) is still to come: `/altarmy debug link fake [n]` and `clear` (debug on) link copies of this account's characters to try it. A character saved before the addon stored GUIDs is sent once it logs in again.
 - Applied across Summary, Gear, Reputation, Search, Cooldowns, and Graphs.
 - Per-tab pin/hide (and related sort) settings on major matrix/list tabs.
 

@@ -4,7 +4,7 @@
 ## Version: 2.2.16
 ## Author: Nick Tower
 ## X-Wago-ID: aNDMjY6o
-## SavedVariables: AltArmyTBC_Options, AltArmyTBC_Data, AltArmyTBC_GearSettings, AltArmyTBC_ReputationSettings, AltArmyTBC_SummarySettings, AltArmyTBC_SearchSettings, AltArmyTBC_GraphSettings, AltArmyTBC_GuildData, AltArmyTBC_SharingSettings, AltArmyTBC_AuctionScans, AltArmyTBC_AuctionBook
+## SavedVariables: AltArmyTBC_Options, AltArmyTBC_Data, AltArmyTBC_GearSettings, AltArmyTBC_ReputationSettings, AltArmyTBC_SummarySettings, AltArmyTBC_SearchSettings, AltArmyTBC_GraphSettings, AltArmyTBC_GuildData, AltArmyTBC_SharingSettings, AltArmyTBC_AuctionScans, AltArmyTBC_AuctionBook, AltArmyTBC_LinkedData
 ## OptionalDeps: Auctionator, TacoTip, GearScoreTBCClassic, RXPGuides, RXPGuides_TBC, NovaInstanceTracker, Questie, ZygorGuidesViewerClassicTBCAnniv
 
 # TBC Classic; verify in-game with: /dump select(4, GetBuildInfo())
@@ -141,6 +141,10 @@ Libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
 Libs\LibDeflate\LibDeflate.lua
 Data\ProfitExport.lua
 Data\Link\LinkDiscovery.lua
+Data\Link\LinkDomains.lua
+Data\Link\LinkValidate.lua
+Data\Link\LinkStore.lua
+Data\Link\LinkHarness.lua
 Data\Link\LinkProbe.lua
 UI\MinimapSavedVars.lua
 UI\Minimap.lua

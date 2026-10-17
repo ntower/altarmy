@@ -17,17 +17,21 @@ local SILVER_ICON = "|TInterface\\MoneyFrame\\UI-SilverIcon:" .. COIN_ICON_SIZE 
 local COPPER_ICON = "|TInterface\\MoneyFrame\\UI-CopperIcon:" .. COIN_ICON_SIZE .. ":" .. COIN_ICON_SIZE .. "|t"
 
 --- Layout for Summary name-column status icons after the class icon: the faction badge (a character of
---- the opposite faction), then the main star, then bank alt.
---- Returns factionX/mainX/bankX (nil when hidden) and nameTextLeft for the name font string.
+--- the opposite faction), the linked-account badge, then the main star, then bank alt.
+--- Returns factionX/linkX/mainX/bankX (nil when hidden) and nameTextLeft for the name font string.
 function AltArmy.SummaryData.GetNameStatusIconLayout(classIconSize, statusIconSize, gap, isMain, isBankAlt,
-                                                     isOtherFaction)
+                                                     isOtherFaction, isLinked)
     classIconSize = classIconSize or 16
     statusIconSize = statusIconSize or 16
     gap = gap or 2
     local x = classIconSize + gap
-    local factionX, mainX, bankX
+    local factionX, linkX, mainX, bankX
     if isOtherFaction then
         factionX = x
+        x = x + statusIconSize + gap
+    end
+    if isLinked then
+        linkX = x
         x = x + statusIconSize + gap
     end
     if isMain then
@@ -40,6 +44,7 @@ function AltArmy.SummaryData.GetNameStatusIconLayout(classIconSize, statusIconSi
     end
     return {
         factionX = factionX,
+        linkX = linkX,
         mainX = mainX,
         bankX = bankX,
         nameTextLeft = x,
@@ -145,9 +150,10 @@ function AltArmy.SummaryData.GetCharacterList()
         return list
     end
 
-    DS:ForEachCharacter(function(realm, charName, charData)
+    (DS.ForEachCharacterInScope or DS.ForEachCharacter)(DS, function(realm, charName, charData, linkId)
             local name = DS:GetCharacterName(charData) or charName
-            local isCurrent = DS:IsCurrentCharacter(name, realm)
+            -- a linked account's copy of this character is not the one logged in here
+            local isCurrent = not linkId and DS:IsCurrentCharacter(name, realm)
             local level = DS:GetCharacterLevel(charData) or 0
             -- Fractional level (level + xp progress) for display with one decimal, rounded down
             local xp = isCurrent and (UnitXP and UnitXP("player")) or charData.xp
@@ -197,6 +203,7 @@ function AltArmy.SummaryData.GetCharacterList()
                 name = name,
                 realm = realm or "",
                 faction = charData.faction,
+                linkId = linkId,
                 level = level,
                 restXp = restRate,
                 wellRestedRank = wellRestedRank,

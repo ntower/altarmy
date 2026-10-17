@@ -88,7 +88,7 @@ function LD.BuildRows(DS, now)
         return rows
     end
 
-    DS:ForEachCharacter(function(realm, charName, char)
+    (DS.ForEachCharacterInScope or DS.ForEachCharacter)(DS, function(realm, charName, char, linkId)
         local list = char and char.RaidLockouts
         if type(list) ~= "table" then
             return
@@ -107,6 +107,7 @@ function LD.BuildRows(DS, now)
                     name = displayName,
                     charKeyName = displayName,
                     realm = realm,
+                    linkId = linkId,
                     classFile = classFile or "",
                     instanceName = entry.name or "?",
                     instanceLabel = LD.FormatInstanceLabel(entry),

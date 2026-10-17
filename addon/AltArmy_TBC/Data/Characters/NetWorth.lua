@@ -256,7 +256,8 @@ function NW.Compute(scaleFactor, opts)
     for _, entry in ipairs(slots) do
         local name = entry.characterName
         local realm = entry.realm
-        if realmAllowed(realm, allRealms, currentRealm) then
+        -- ours alone: a linked account's bags are not our wealth
+        if not entry.linkId and realmAllowed(realm, allRealms, currentRealm) then
             local key = charKey(realm, name)
             local row = byChar[key]
             if not row then

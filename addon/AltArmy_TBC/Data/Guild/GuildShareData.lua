@@ -100,19 +100,27 @@ local function declaredMainName(presence)
     return presence.main
 end
 
---- The player's own characters on `realm` (the DataStore's): by GUID and by name.
+--- The player's own characters on `realm` (the DataStore's), and those of their linked accounts (the same
+--- player's: never guildmates, though each account shares itself with the guild): by GUID and by name.
 local function ownCharacters(realm)
     local byGuid, byName = {}, {}
     local DS = AltArmy.DataStore
     if not (DS and DS.GetCharacters) or not realm then return byGuid, byName end
-    local ok, chars = pcall(DS.GetCharacters, DS, realm)
-    if not ok or type(chars) ~= "table" then return byGuid, byName end
-    for key, char in pairs(chars) do
+    local function add(key, char)
         if type(char) == "table" then
             if isNonEmptyString(char.guid) then byGuid[char.guid] = true end
             local name = isNonEmptyString(char.name) and char.name or (type(key) == "string" and key or nil)
             if name then byName[name] = true end
         end
+    end
+    local ok, chars = pcall(DS.GetCharacters, DS, realm)
+    if ok and type(chars) == "table" then
+        for key, char in pairs(chars) do add(key, char) end
+    end
+    if DS.ForEachLinkedCharacter then
+        pcall(DS.ForEachLinkedCharacter, DS, function(r, key, char)
+            if r == realm then add(key, char) end
+        end)
     end
     return byGuid, byName
 end

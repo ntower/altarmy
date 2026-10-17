@@ -177,6 +177,16 @@ local function SetItemCellTruncated(cell, itemName, countSuffix, iconPrefix, max
     end
 end
 
+-- A linked account's row: its label after the name, in its own colour (guildmates' are blue).
+local LINKED_TAG_COLOR = "|cff7fd8c8"
+local function linkedTag(entry)
+    if not entry.linkId then
+        return ""
+    end
+    local LS = AltArmy.LinkStore
+    return LINKED_TAG_COLOR .. " (" .. (LS and LS.Label(entry.linkId) or "Linked account") .. ")|r"
+end
+
 local function buildCharacterNamePart(entry, showRealmSuffix)
     local name = entry.characterName or ""
     if RF and RF.formatColoredCharacterNameRealm then
@@ -949,7 +959,7 @@ local function fillItemRow(row, entry, showRealmSuffix, rowOpts)
         or (entry.location == "keyring" and "Keyring")
         or "Bags"
     local namePart = buildCharacterNamePart(entry, showRealmSuffix)
-    local suffixText = "|cffffffff (" .. locLabel .. ")|r"
+    local suffixText = linkedTag(entry) .. "|cffffffff (" .. locLabel .. ")|r"
     SetCharacterCellTruncated(row.cells.Character, namePart, suffixText, colWidths.Character or 160)
     row.cells.Total:SetText("")
 end
@@ -1049,6 +1059,8 @@ local function fillRecipeRow(row, entry, showRealmSuffix, rowOpts)
         else
             charSuffix = "|cff8ab4f8 (|r|cff808080Offline|r|cff8ab4f8)|r"
         end
+    elseif entry.linkId then
+        charSuffix = linkedTag(entry)
     end
     SetCharacterCellTruncated(row.cells.Character, namePart, charSuffix, recipeColWidths.Character or 160)
     -- Guildmates: tooltip; click/highlight only when online.

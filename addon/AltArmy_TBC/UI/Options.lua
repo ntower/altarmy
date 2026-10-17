@@ -784,6 +784,7 @@ panel.SCOPE_ROWS = {
     { key = nil, text = "Characters on the same realm and same faction" },
     { key = "otherFaction", text = "Characters on the same realm of the opposite faction" },
     { key = "otherRealms", text = "Characters on other realms" },
+    { key = "linked", text = "Characters from linked accounts", onlyWithLinks = true },
 }
 panel.scopeRows = {}
 for i, def in ipairs(panel.SCOPE_ROWS) do
@@ -813,12 +814,32 @@ for i, def in ipairs(panel.SCOPE_ROWS) do
     panel.scopeRows[i] = row
 end
 
+--- How tall the General section's content is with `rows` scope checkboxes shown.
+function panel.GeneralContentHeight(rows)
+    return Theme.CHAR_LIST_ROW_HEIGHT + 14 + SCOPE_CAPTION_HEIGHT + 6 + rows * (Theme.CHAR_LIST_ROW_HEIGHT + 2)
+end
+
 local function RefreshRealmFilterDropdown()
     local G = AltArmy.GlobalRealmFilter
     local scope = G and G.GetScope and G.GetScope() or {}
-    for _, row in ipairs(panel.scopeRows) do
+    local LS = AltArmy.LinkStore
+    local hasLinks = LS and LS.HasLinks and LS.HasLinks() or false
+    local shown = 0
+    for i, row in ipairs(panel.scopeRows) do
+        local visible = not panel.SCOPE_ROWS[i].onlyWithLinks or hasLinks
+        row:SetShown(visible)
+        if visible then
+            shown = shown + 1
+        end
         if row.scopeKey then
             row.check:SetChecked(scope[row.scopeKey] and true or false)
+        end
+    end
+    if panel.generalSectionRef and shown ~= panel.scopeRowsShown then
+        panel.scopeRowsShown = shown
+        panel.generalSectionRef.SetContentHeight(panel.GeneralContentHeight(shown))
+        if LayoutGeneralSections then
+            LayoutGeneralSections()
         end
     end
 end
@@ -1081,7 +1102,7 @@ local guildChatChannelsDropdown
 
 local guildMainDropdown = Theme.CreateSingleSelectDropdown({
     parent = guildMainControlColumn,
-    dropdownParent = panel,
+    dropdownParent = panel.tabSharing,
     rowHeight = GUILD_IDENTITY_CONTROL_HEIGHT,
     point = "TOPLEFT",
     relativePoint = "TOPLEFT",
@@ -1327,7 +1348,7 @@ anchorGuildSharingLeftHalf(guildChatChannelsColumn, guildChatChannelsControlRow)
 
 guildChatChannelsDropdown = Theme.CreateMultiSelectCheckboxDropdown({
     parent = guildChatChannelsColumn,
-    dropdownParent = panel,
+    dropdownParent = panel.tabSharing,
     rowHeight = GUILD_CHAT_CHANNELS_CONTROL_HEIGHT,
     relativeTo = guildChatChannelsColumn,
     relativePoint = "TOPLEFT",
@@ -1607,8 +1628,9 @@ do
     panel.advancedSection.SetShown(R and R.HasApi and R.HasApi() or false)
 end
 
-generalSection.SetContentHeight(Theme.CHAR_LIST_ROW_HEIGHT + 14 + SCOPE_CAPTION_HEIGHT + 6
-    + #panel.SCOPE_ROWS * (Theme.CHAR_LIST_ROW_HEIGHT + 2))
+panel.generalSectionRef = generalSection
+panel.scopeRowsShown = nil
+RefreshRealmFilterDropdown()
 guildSection.SetContentHeight(GUILD_CONTENT_HEIGHT)
 auctionSection.SetContentHeight(math.max(Theme.CHAR_LIST_ROW_HEIGHT, Theme.OPTIONS_DROPDOWN_ROW_HEIGHT or 24))
 panel.advancedSection.SetContentHeight(Theme.CHAR_LIST_ROW_HEIGHT)
@@ -1985,7 +2007,7 @@ charGuildShareLabel:Hide()
 
 local charGuildShareDropdown = Theme.CreateSingleSelectDropdown({
     parent = tabCharacters,
-    dropdownParent = panel,
+    dropdownParent = tabCharacters,
     relativeTo = charGuildShareLabel,
     relativePoint = "BOTTOMLEFT",
     y = -4,
@@ -2513,6 +2535,13 @@ SlashCmdList.ALTARMY = function(msg)
             AC.RunAndReport()
         elseif AltArmy.Debug and AltArmy.Debug.NotifyChat then
             AltArmy.Debug.NotifyChat("API check is unavailable.")
+        end
+        return
+    end
+    local linkArgs = trimmed:match("^[Dd]ebug [Ll]ink%s*(.*)$")
+    if linkArgs then
+        if AltArmy.LinkHarness and AltArmy.LinkHarness.Command then
+            AltArmy.LinkHarness.Command(linkArgs)
         end
         return
     end

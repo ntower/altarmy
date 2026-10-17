@@ -37,6 +37,8 @@ local STATUS_ICON_SIZE = 16
 local STATUS_ICON_GAP = 2
 local MAIN_STAR_TEXTURE = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_1"
 -- The badge on a character of the opposite faction (one shown when Options lists that faction too).
+-- The badge on a linked account's character (it came over Battle.net).
+local LINKED_TEXTURE = "Interface\\FriendsFrame\\Battlenet-Battleneticon"
 local FACTION_TEXTURES = {
     Horde = "Interface\\FriendsFrame\\PlusManz-Horde",
     Alliance = "Interface\\FriendsFrame\\PlusManz-Alliance",
@@ -750,6 +752,35 @@ for i = 1, ROW_POOL_SIZE do
     end)
     row.factionHit = factionHit
 
+    local linkIcon = row:CreateTexture(nil, "ARTWORK")
+    linkIcon:SetSize(STATUS_ICON_SIZE, STATUS_ICON_SIZE)
+    linkIcon:SetTexture(LINKED_TEXTURE)
+    linkIcon:Hide()
+    row.linkIcon = linkIcon
+
+    local linkHit = CreateFrame("Frame", nil, row)
+    linkHit:SetAllPoints(linkIcon)
+    linkHit:EnableMouse(true)
+    linkHit:Hide()
+    linkHit:SetFrameLevel(row:GetFrameLevel() + 3)
+    linkHit:SetScript("OnEnter", function(self)
+        local e = self.tooltipEntry
+        local LS = AltArmy.LinkStore
+        if not (e and GameTooltip and LS) then return end
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOMLEFT")
+        GameTooltip:SetText("Linked account: " .. LS.Label(e.linkId), 1, 1, 1)
+        local at = LS.ReceivedAt(e.linkId)
+        if at and SD and SD.FormatLastOnline then
+            GameTooltip:AddLine("Received " .. SD.FormatLastOnline(at, false), 0.8, 0.8, 0.8)
+        end
+        GameTooltip:AddLine("Read-only: change it by logging in on that account.", 0.6, 0.6, 0.6, true)
+        GameTooltip:Show()
+    end)
+    linkHit:SetScript("OnLeave", function()
+        if GameTooltip then GameTooltip:Hide() end
+    end)
+    row.linkHit = linkHit
+
     local mainStarIcon = row:CreateTexture(nil, "ARTWORK")
     mainStarIcon:SetSize(STATUS_ICON_SIZE, STATUS_ICON_SIZE)
     mainStarIcon:SetTexture(MAIN_STAR_TEXTURE)
@@ -906,7 +937,8 @@ Update = function()
                 local cell = rowFrame.cells[colName]
                 if colName == "Warning" then
                     local info = { hasMissing = false, instructions = {} }
-                    if SD and SD.GetMissingDataInfo then
+                    -- what to open to fill in missing data is for our own characters only
+                    if SD and SD.GetMissingDataInfo and not entry.linkId then
                         local result = SD.GetMissingDataInfo(entry.name, entry.realm)
                         if result then info = result end
                     end
@@ -927,7 +959,7 @@ Update = function()
                     if colName == "Name" then
                         local showRealmSuffix = (realmFilter == "all")
                             and RF and RF.hasMultipleRealms and RF.hasMultipleRealms(list)
-                        local isBankAlt = BA and BA.Is and BA.Is(entry.name, entry.realm)
+                        local isBankAlt = not entry.linkId and BA and BA.Is and BA.Is(entry.name, entry.realm)
                         local nameDisplayStr
                         if RF and RF.formatColoredCharacterNameRealm then
                             nameDisplayStr = RF.formatColoredCharacterNameRealm(
@@ -954,15 +986,23 @@ Update = function()
                         local nameColW = columns.Name and columns.Name.Width
                             or (NAME_COL_BASE_WIDTH - WARNING_COL_WIDTH)
                         local GSS = AltArmy.GuildShareSettings
-                        local isMain = GSS and GSS.IsConfiguredMain
+                        -- a linked account's character is never our main
+                        local isMain = not entry.linkId and GSS and GSS.IsConfiguredMain
                             and GSS.IsConfiguredMain(entry.name, entry.realm)
                         local myFaction = UnitFactionGroup and UnitFactionGroup("player")
                         local factionTexture = entry.faction and entry.faction ~= myFaction
                             and FACTION_TEXTURES[entry.faction]
                         local layout = SD.GetNameStatusIconLayout(
                             ICON_SIZE, STATUS_ICON_SIZE, STATUS_ICON_GAP, isMain, isBankAlt,
-                            factionTexture and true or false
+                            factionTexture and true or false, entry.linkId ~= nil
                         )
+                        if entry.linkId then
+                            showStatusIcon(rowFrame, rowFrame.linkIcon, rowFrame.linkHit, layout.linkX, {
+                                linkId = entry.linkId,
+                            })
+                        else
+                            hideStatusIcon(rowFrame.linkIcon, rowFrame.linkHit)
+                        end
                         if factionTexture then
                             rowFrame.factionIcon:SetTexture(factionTexture)
                             showStatusIcon(rowFrame, rowFrame.factionIcon, rowFrame.factionHit, layout.factionX, {
@@ -1036,18 +1076,21 @@ Update = function()
                 end
                 hideStatusIcon(rowFrame.bankAltIcon, rowFrame.bankAltHit)
                 hideStatusIcon(rowFrame.factionIcon, rowFrame.factionHit)
+                hideStatusIcon(rowFrame.linkIcon, rowFrame.linkHit)
                 UpdateWellRestedMarker(rowFrame, nil)
                 rowFrame:Hide()
             end
         end
     end
 
-    -- Totals row: Level, Money, Played only
+    -- Totals row: Level, Money, Played only; ours alone (a linked account's gold isn't ours)
     local totalLevel, totalMoney, totalPlayed = 0, 0, 0
     for _, entry in ipairs(list) do
-        totalLevel = totalLevel + (tonumber(entry.level) or 0)
-        totalMoney = totalMoney + (tonumber(entry.money) or 0)
-        totalPlayed = totalPlayed + (tonumber(entry.played) or 0)
+        if not entry.linkId then
+            totalLevel = totalLevel + (tonumber(entry.level) or 0)
+            totalMoney = totalMoney + (tonumber(entry.money) or 0)
+            totalPlayed = totalPlayed + (tonumber(entry.played) or 0)
+        end
     end
     for _, colName in ipairs(columnOrder) do
         local cell = totalsRow.cells[colName]

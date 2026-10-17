@@ -251,7 +251,7 @@ end
 local SAVED_VARIABLES = {
     "AltArmyTBC_Options", "AltArmyTBC_Data", "AltArmyTBC_GearSettings", "AltArmyTBC_ReputationSettings",
     "AltArmyTBC_SummarySettings", "AltArmyTBC_SearchSettings", "AltArmyTBC_GraphSettings", "AltArmyTBC_GuildData",
-    "AltArmyTBC_SharingSettings", "AltArmyTBC_AuctionScans", "AltArmyTBC_AuctionBook",
+    "AltArmyTBC_SharingSettings", "AltArmyTBC_AuctionScans", "AltArmyTBC_AuctionBook", "AltArmyTBC_LinkedData",
 }
 local SERIALIZABLE = { string = true, number = true, boolean = true, table = true }
 local MAX_LISTED = 60

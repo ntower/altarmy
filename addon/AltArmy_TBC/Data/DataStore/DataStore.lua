@@ -333,6 +333,70 @@ function DS:ForEachCharacter(fn)
     end
 end
 
+--- Linked accounts' characters (Data/Link/LinkStore.lua; only links confirmed and not suspended):
+--- fn(realm, key, charData, accountId) — return true to stop early. Read-only: never write to them.
+function DS:ForEachLinkedCharacter(fn)
+    local LS = AltArmy.LinkStore
+    if not fn or not (LS and LS.ForEachCharacter) then return end
+    LS.ForEachCharacter(fn)
+end
+
+--- Our characters, then linked accounts' when the character scope shows them (GlobalRealmFilter) or
+--- `opts.linked` says so: fn(realm, key, charData, linkId) — linkId nil for ours; return true to stop.
+--- For lists the player browses (Summary, Search, Cooldowns); everything that acts on characters keeps
+--- ForEachCharacter, ours alone.
+function DS:ForEachCharacterInScope(fn, opts)
+    if not fn then return end
+    local stopped = false
+    self:ForEachCharacter(function(realm, key, char)
+        if fn(realm, key, char, nil) == true then
+            stopped = true
+            return true
+        end
+    end)
+    if stopped then return end
+    local linked = opts and opts.linked
+    if linked == nil then
+        local G = AltArmy.GlobalRealmFilter
+        local scope = G and G.GetScope and G.GetScope()
+        linked = scope == nil or scope.linked ~= false
+    end
+    if linked then
+        self:ForEachLinkedCharacter(fn)
+    end
+end
+
+--- The linked account a character table came from; nil for our own.
+function DS:GetLinkId(char)
+    local LS = AltArmy.LinkStore
+    return LS and LS.LinkOf and LS.LinkOf(char) or nil
+end
+
+function DS:IsLinkedCharacter(char)
+    return self:GetLinkId(char) ~= nil
+end
+
+--- A character by name (or storage key) on `realm`: ours, else a linked account's. Second return: its link.
+function DS:GetCharacterAny(name, realm)
+    local char = self:GetCharacter(name, realm)
+    if char then return char, nil end
+    local found, foundLink
+    self:ForEachLinkedCharacter(function(r, key, c, linkId)
+        if r == realm and (key == name or c.name == name) then
+            found, foundLink = c, linkId
+            return true
+        end
+    end)
+    return found, foundLink
+end
+
+--- Linked data arrived or was removed: views that list characters redraw.
+function DS:FireLinkedDataChanged()
+    if AltArmy.RefreshCharacterViews then
+        AltArmy.RefreshCharacterViews()
+    end
+end
+
 function DS:HasModuleData(char, moduleName)
     if not char or not moduleName then return false end
     local v = (char.dataVersions and char.dataVersions[moduleName]) or 0

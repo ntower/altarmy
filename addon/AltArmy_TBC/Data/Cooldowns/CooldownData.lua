@@ -1080,7 +1080,7 @@ function CD.BuildRows(DS, options, now)
             local cat = CD.CATEGORIES[catKey]
             if cat then
                 local catOpts = options.categories and options.categories[catKey] or {}
-                DS:ForEachCharacter(function(realm, charName, char)
+                (DS.ForEachCharacterInScope or DS.ForEachCharacter)(DS, function(realm, charName, char, linkId)
                         local displayName = (char and char.name) or charName
                         local include = false
                         if catKey == "transmute" then
@@ -1119,6 +1119,7 @@ function CD.BuildRows(DS, options, now)
                                 charKeyName = displayName,
                                 name = displayName,
                                 realm = realm,
+                                linkId = linkId,
                                 classFile = char and char.classFile or nil,
                                 spellId = spellId,
                                 expiresUnix = expires,

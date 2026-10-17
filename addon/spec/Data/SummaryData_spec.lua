@@ -1609,6 +1609,12 @@ describe("SummaryData", function()
       assert.are.same({ factionX = 18, mainX = 36, bankX = 54, nameTextLeft = 72 }, l)
     end)
 
+    it("puts the linked-account badge after the faction badge", function()
+      assert.are.same({ factionX = 18, linkX = 36, mainX = 54, nameTextLeft = 72 },
+        SD.GetNameStatusIconLayout(16, 16, 2, true, false, true, true))
+      assert.are.same({ linkX = 18, nameTextLeft = 36 }, SD.GetNameStatusIconLayout(16, 16, 2, false, false, false, true))
+    end)
+
     it("leaves no gap for icons not shown", function()
       assert.are.same({ nameTextLeft = 18 }, SD.GetNameStatusIconLayout(16, 16, 2))
       assert.are.same({ factionX = 18, nameTextLeft = 36 }, SD.GetNameStatusIconLayout(16, 16, 2, false, false, true))

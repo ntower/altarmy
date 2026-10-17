@@ -64,6 +64,9 @@ function AltArmy.RefreshCharacterViews()
     if AltArmy.Characters and AltArmy.Characters.InvalidateView then
         AltArmy.Characters:InvalidateView()
     end
+    if AltArmy.SearchData and AltArmy.SearchData.ClearCaches then
+        AltArmy.SearchData.ClearCaches() -- its item and recipe lists include linked accounts' or not
+    end
     if AltArmy.RefreshSummary then
         AltArmy.RefreshSummary()
     end
@@ -153,7 +156,7 @@ local function factionLookup()
         end
         local key = e.realm .. "|" .. name
         if cache[key] == nil then
-            local char = DS:GetCharacter(name, e.realm)
+            local char = DS.GetCharacterAny and DS:GetCharacterAny(name, e.realm) or DS:GetCharacter(name, e.realm)
             cache[key] = char and char.faction or false
         end
         return cache[key] or nil

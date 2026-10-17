@@ -114,14 +114,16 @@ local function BuildItemAggregateGroupFromList(list)
         local realm = entry.realm or ""
         local charName = entry.characterName or ""
         local realmMap = EnsureNestedMap(item.chars, realm)
-        local ch = realmMap[charName]
+        -- a linked account's copy of a character is its own row, never summed into ours
+        local charKey = entry.linkId and (charName .. "" .. entry.linkId) or charName
+        local ch = realmMap[charKey]
         if not ch then
             ch = {
                 classFile = entry.classFile,
                 total = 0,
                 locs = {},
             }
-            realmMap[charName] = ch
+            realmMap[charKey] = ch
         end
 
         local loc = entry.location or "bag"
@@ -138,6 +140,7 @@ local function BuildItemAggregateGroupFromList(list)
                 locKey = LocationSortKey(loc),
                 count = 0,
                 classFile = entry.classFile or ch.classFile,
+                linkId = entry.linkId,
             }
             ch.locs[loc] = locRow
         end
@@ -312,20 +315,30 @@ local function compareRequiredSkill(a, b, ascending)
     return applySortDirection(cmpValues(ordA, ordB), ascending)
 end
 
+-- Whose a row is, in the order rows sort: ours, then a linked account's, then a guildmate's.
+local function affiliationTier(row)
+    if row.isGuild then
+        return 2
+    end
+    if row.linkId then
+        return 1
+    end
+    return 0
+end
+SP.AffiliationTier = affiliationTier
+
 local function compareGuildAffiliation(a, b)
-    local aGuild = a.isGuild and true or false
-    local bGuild = b.isGuild and true or false
-    if aGuild == bGuild then
+    local ta, tb = affiliationTier(a), affiliationTier(b)
+    if ta == tb then
         return 0
     end
-    return aGuild and 1 or -1
+    return ta < tb and -1 or 1
 end
 
 local function compareRecipeRowsWithinId(a, b)
-    local aGuild = a.isGuild and true or false
-    local bGuild = b.isGuild and true or false
-    if aGuild ~= bGuild then
-        return not aGuild
+    local ta, tb = affiliationTier(a), affiliationTier(b)
+    if ta ~= tb then
+        return ta < tb
     end
     local ca = (a.characterName or ""):lower()
     local cb = (b.characterName or ""):lower()

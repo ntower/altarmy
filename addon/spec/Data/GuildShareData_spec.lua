@@ -990,6 +990,16 @@ describe("GuildShareData", function()
       assert.is_false(GSD.IsOwnCharacter({ name = "Frell Blast" }, "Elsewhere"))
     end)
 
+    it("include the player's linked accounts' characters (each shares itself with the guild)", function()
+      AltArmy.DataStore.ForEachLinkedCharacter = function(_, fn)
+        fn("R", "Player-1-BOX", { name = "Stheno Frell", guid = "Player-1-BOX" }, "acct")
+        fn("Elsewhere", "Player-1-FAR", { name = "Far Frell", guid = "Player-1-FAR" }, "acct")
+      end
+      assert.is_true(GSD.IsOwnCharacter({ name = "Anyone", guid = "Player-1-BOX" }, "R"))
+      assert.is_true(GSD.IsOwnCharacter({ name = "Stheno Frell" }, "R"))
+      assert.is_false(GSD.IsOwnCharacter({ name = "Far Frell" }, "R"))
+    end)
+
     it("are never stored from a presence, a card or a link read", function()
       GSD.SaveReceived("Frell Ofelements", P.ParsePresence(presence("Frell Blast", {
         charEntry("Frell Blast"), charEntry("Guildie"),
