@@ -1322,6 +1322,24 @@ function GTD.IsOwnGroup(group, ownMain)
     return group ~= nil and type(ownMain) == "string" and ownMain ~= "" and group.main == ownMain
 end
 
+--- The groups the Guild tab lists: without those made only of characters read by profession link that
+--- nothing groups (`autoGroup`). Their recipes still reach search; only shared Alt Army groups and those
+--- from manual or note mappings are listed.
+function GTD.ListedGroups(groups)
+    local out = {}
+    for _, g in ipairs(groups or {}) do
+        local listed = false
+        for _, m in ipairs(g.members or {}) do
+            if not m.autoGroup then
+                listed = true
+                break
+            end
+        end
+        if listed then out[#out + 1] = g end
+    end
+    return out
+end
+
 --- Filter groups by a search query (empty/nil returns all groups unchanged).
 --- Omits groups with no match on override/preferred/main name, any character name, or profession.
 --- When preferred, override, or main name matches, all characters in the group are shown; otherwise only

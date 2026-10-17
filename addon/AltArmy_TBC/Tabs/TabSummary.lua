@@ -184,6 +184,7 @@ local columns = {
     Money = {
         Width = 125,
         GetText = function(entry) return SD and SD.GetMoneyString and SD.GetMoneyString(entry.money) or "" end,
+        GetMoney = function(entry) return tonumber(entry.money) or 0 end, -- shown in a MoneyCell
         JustifyH = "RIGHT",
     },
     Played = {
@@ -331,10 +332,15 @@ local cellX = 0
 for _, colName in ipairs(columnOrder) do
     local col = columns[colName]
     local w = col and col.Width or 100
-    local cell = totalsRow:CreateFontString(nil, "OVERLAY", Theme.FONTS.body)
+    local cell
+    if col and col.GetMoney then
+        cell = AltArmy.MoneyCell.Create(totalsRow, Theme.FONTS.body, w, TOTALS_ROW_HEIGHT)
+    else
+        cell = totalsRow:CreateFontString(nil, "OVERLAY", Theme.FONTS.body)
+        cell:SetWidth(w)
+        cell:SetJustifyH(col and col.JustifyH or "LEFT")
+    end
     cell:SetPoint("LEFT", totalsRow, "LEFT", cellX, 0)
-    cell:SetWidth(w)
-    cell:SetJustifyH(col and col.JustifyH or "LEFT")
     totalsRow.cells[colName] = cell
     cellX = cellX + w
 end
@@ -627,6 +633,10 @@ for i = 1, ROW_POOL_SIZE do
             cell:SetJustifyH(col and col.JustifyH or "LEFT")
             cell:SetWordWrap(false)
             row.cells[colName] = cell
+        elseif col and col.GetMoney then
+            local cell = AltArmy.MoneyCell.Create(row, Theme.FONTS.body, w, ROW_HEIGHT)
+            cell:SetPoint("LEFT", row, "LEFT", rowCellX, 0)
+            row.cells[colName] = cell
         else
             local cell = row:CreateFontString(nil, "OVERLAY", Theme.FONTS.body)
             cell:SetPoint("LEFT", row, "LEFT", rowCellX, 0)
@@ -634,9 +644,10 @@ for i = 1, ROW_POOL_SIZE do
             cell:SetJustifyH(col and col.JustifyH or "LEFT")
             row.cells[colName] = cell
             if colName == "RestXP" then
-                -- Well Rested: an arrow left of the percentage, and its talent tooltip over the cell.
+                -- Well Rested: an arrow at the column's left edge, and its talent tooltip over the cell.
                 local restArrow = row:CreateTexture(nil, "ARTWORK")
                 restArrow:SetSize(12, 12)
+                restArrow:SetPoint("LEFT", row, "LEFT", rowCellX + 18, 0)
                 SetWellRestedArrowArt(restArrow)
                 restArrow:Hide()
                 row.restArrow = restArrow
@@ -747,15 +758,12 @@ local function GetRow(index)
     return rowPool[index]
 end
 
---- Shows the Well Rested arrow just left of the right-justified Rest XP text, and arms its tooltip,
+--- Shows the Well Rested arrow at the Rest XP column's left edge, and arms its tooltip,
 --- when the entry has a rank; hides both otherwise (entry nil for an empty row).
 local function UpdateWellRestedMarker(rowFrame, entry)
     local arrow, hit = rowFrame.restArrow, rowFrame.restHit
     if not arrow or not hit then return end
     if entry and not entry.isMaxLevel and (tonumber(entry.wellRestedRank) or 0) > 0 then
-        local cell = rowFrame.cells.RestXP
-        arrow:ClearAllPoints()
-        arrow:SetPoint("RIGHT", cell, "RIGHT", -(cell:GetStringWidth() + 2), 0)
         arrow:Show()
         hit.tooltipEntry = entry
         hit:Show()
@@ -949,6 +957,8 @@ Update = function()
                             overlay.fullNameDisplay = nameDisplayStr
                             overlay.wasTruncated = wasTruncated
                         end
+                    elseif col.GetMoney then
+                        cell:SetMoney(col.GetMoney(entry))
                     else
                         cell:SetText(col.GetText(entry))
                         if colName == "RestXP" then
@@ -992,7 +1002,7 @@ Update = function()
             if colName == "Level" then
                 cell:SetText(string.format("%.1f", math.floor(totalLevel * 10) / 10))
             elseif colName == "Money" then
-                cell:SetText(SD and SD.GetMoneyString and SD.GetMoneyString(totalMoney) or "")
+                cell:SetMoney(totalMoney)
             elseif colName == "Played" then
                 cell:SetText(SD and SD.GetTimeString and SD.GetTimeString(totalPlayed) or "")
             else

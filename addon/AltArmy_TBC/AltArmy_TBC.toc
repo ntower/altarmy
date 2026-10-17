@@ -11,6 +11,7 @@
 UI\NativeUI.lua
 UI\Theme.lua
 UI\Text.lua
+UI\MoneyCell.lua
 UI\ScrollRows.xml
 UI\SlideTransition.lua
 UI\MainTabs.lua

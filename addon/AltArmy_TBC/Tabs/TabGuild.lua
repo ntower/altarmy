@@ -4585,7 +4585,7 @@ local function refreshImpl()
     showGuildList()
     Theme.UpdateEditBoxPlaceholderVisibility(searchEdit)
 
-    local groups = GTD.GroupMembersByMain(members)
+    local groups = GTD.ListedGroups(GTD.GroupMembersByMain(members))
     applyGroupUiPrefs(groups)
     local filtered = GTD.FilterGroups(groups, searchText)
     applySearchExpansion(filtered)

@@ -987,6 +987,36 @@ describe("GuildTabData", function()
     end)
   end)
 
+  describe("ListedGroups", function()
+    local function linked(opts)
+      local m = member(opts)
+      m.linkOnly = true
+      m.autoGroup = opts.autoGroup
+      return m
+    end
+
+    it("leaves out groups made only of characters read by link that nothing groups", function()
+      local groups = GTD.GroupMembersByMain({
+        member({ name = "Bossman", main = "Bossman", isMain = true }),
+        member({ name = "Sidekick", main = "Bossman" }),
+        linked({ name = "Linked", main = "Linked", isMain = true, autoGroup = true }),
+        linked({ name = "Noted", main = "Bossman" }),
+      })
+      local out = GTD.ListedGroups(groups)
+      assert.are.equal(1, #out)
+      assert.are.equal("Bossman", out[1].main)
+      assert.are.equal(3, #out[1].members)
+    end)
+
+    it("keeps a group with any member that isn't an auto group", function()
+      local groups = GTD.GroupMembersByMain({
+        linked({ name = "Linked", main = "Linked", isMain = true, autoGroup = true }),
+        member({ name = "Alt", main = "Linked" }),
+      })
+      assert.are.equal(1, #GTD.ListedGroups(groups))
+    end)
+  end)
+
   describe("FilterGroups", function()
     local groups
 

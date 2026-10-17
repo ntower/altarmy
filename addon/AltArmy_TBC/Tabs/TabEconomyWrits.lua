@@ -33,6 +33,8 @@ local UI = {
         craft = "Fill via Craft", perRep = "Total / Rep" },
     sortJustify = { writ = "LEFT", rep = "RIGHT", writPrice = "RIGHT", buy = "RIGHT", craft = "RIGHT",
         perRep = "RIGHT" },
+    -- MoneyCells: the coins lined up down the column.
+    moneyCols = { writPrice = true, buy = true, craft = true, perRep = true },
     headerButtons = {},
     rowPool = {},
     activeRows = {},
@@ -56,12 +58,14 @@ local function Money(copper)
     return AltArmy.SummaryData.GetMoneyString(copper)
 end
 
---- A cost that rests on an estimate, or on units the auction house is short of, with a ~ before it.
+--- "~" before a cost that rests on an estimate, or on units the auction house is short of.
+local function Mark(approx, short)
+    return (approx or (short or 0) > 0) and "~" or ""
+end
+
 local function MoneyMarked(copper, approx, short)
     if copper == nil then return "—" end
-    local text = Money(copper)
-    if approx or (short or 0) > 0 then text = "~" .. text end
-    return text
+    return Mark(approx, short) .. Money(copper)
 end
 
 local function ItemIcon(itemID)
@@ -346,11 +350,16 @@ local function PoolRow()
     row.cells = {}
     local x = 0
     for _, sk in ipairs(UI.sortKeys) do
-        local cell = row:CreateFontString(nil, "OVERLAY", Theme.FONTS.body)
+        local cell
+        if UI.moneyCols[sk] then
+            cell = AltArmy.MoneyCell.Create(row, Theme.FONTS.body, UI.colWidths[sk] - 4, UI.ROW_HEIGHT)
+        else
+            cell = row:CreateFontString(nil, "OVERLAY", Theme.FONTS.body)
+            cell:SetWidth(UI.colWidths[sk] - 4)
+            cell:SetJustifyH(UI.sortJustify[sk])
+            cell:SetWordWrap(false)
+        end
         cell:SetPoint("LEFT", row, "LEFT", x, 0)
-        cell:SetWidth(UI.colWidths[sk] - 4)
-        cell:SetJustifyH(UI.sortJustify[sk])
-        cell:SetWordWrap(false)
         row.cells[sk] = cell
         x = x + UI.colWidths[sk]
     end
@@ -415,12 +424,12 @@ local function RefreshWrits()
         y = y - UI.ROW_HEIGHT
         local c = row.cells
         c.writ:SetText(WritLabel(rd))
-        c.writPrice:SetText(Money(rd.writPrice))
+        c.writPrice:SetMoney(rd.writPrice)
         c.rep:SetText(tostring(rd.rep))
-        c.buy:SetText(MoneyMarked(rd.buy, rd.buyApprox, rd.buyShort))
-        c.craft:SetText(MoneyMarked(rd.craft, rd.craftApprox, rd.craftShort))
+        c.buy:SetMoney(rd.buy, Mark(rd.buyApprox, rd.buyShort))
+        c.craft:SetMoney(rd.craft, Mark(rd.craftApprox, rd.craftShort))
         if rd.perRep then
-            c.perRep:SetText(Money(rd.perRep))
+            c.perRep:SetMoney(rd.perRep)
             c.perRep:SetTextColor(1, 1, 1, 1)
         else
             c.perRep:SetText("—")

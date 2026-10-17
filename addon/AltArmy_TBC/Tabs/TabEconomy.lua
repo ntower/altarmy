@@ -40,6 +40,8 @@ local UI = {
     sortLabels = nil, -- set below: two name the Merchant's Favor icon
     sortJustify = { crate = "LEFT", favor = "RIGHT", price = "RIGHT", buy = "RIGHT", craft = "RIGHT",
         perFavor = "RIGHT" },
+    -- MoneyCells: the coins lined up down the column.
+    moneyCols = { price = true, buy = true, craft = true, perFavor = true },
     headerButtons = {},
     rowPool = {},
     activeRows = {},
@@ -98,12 +100,14 @@ local function Money(copper)
     return AltArmy.SummaryData.GetMoneyString(copper)
 end
 
---- A cost that rests on an estimate, or on units the auction house is short of, with a ~ before it.
+--- "~" before a cost that rests on an estimate, or on units the auction house is short of.
+local function Mark(approx, short)
+    return (approx or (short or 0) > 0) and "~" or ""
+end
+
 local function MoneyMarked(copper, approx, short)
     if copper == nil then return "—" end
-    local text = Money(copper)
-    if approx or (short or 0) > 0 then text = "~" .. text end
-    return text
+    return Mark(approx, short) .. Money(copper)
 end
 
 --- A character's name in their class colour (white when their class isn't known).
@@ -616,11 +620,16 @@ local function PoolRow()
     row.cells = {}
     local x = 0
     for _, sk in ipairs(UI.sortKeys) do
-        local cell = row:CreateFontString(nil, "OVERLAY", Theme.FONTS.body)
+        local cell
+        if UI.moneyCols[sk] then
+            cell = AltArmy.MoneyCell.Create(row, Theme.FONTS.body, UI.colWidths[sk] - 4, UI.ROW_HEIGHT)
+        else
+            cell = row:CreateFontString(nil, "OVERLAY", Theme.FONTS.body)
+            cell:SetWidth(UI.colWidths[sk] - 4)
+            cell:SetJustifyH(UI.sortJustify[sk])
+            cell:SetWordWrap(false)
+        end
         cell:SetPoint("LEFT", row, "LEFT", x, 0)
-        cell:SetWidth(UI.colWidths[sk] - 4)
-        cell:SetJustifyH(UI.sortJustify[sk])
-        cell:SetWordWrap(false)
         row.cells[sk] = cell
         x = x + UI.colWidths[sk]
     end
@@ -702,11 +711,11 @@ local function RefreshWaylaid()
         local c = row.cells
         c.crate:SetText(CrateLabel(rd))
         c.favor:SetText(rd.favor and (rd.favor .. (rd.favorGuess and "?" or "")) or "—")
-        c.price:SetText(Money(rd.price))
-        c.buy:SetText(MoneyMarked(rd.buy, rd.buyApprox))
-        c.craft:SetText(MoneyMarked(rd.craft, rd.craftApprox, rd.craftShort))
+        c.price:SetMoney(rd.price)
+        c.buy:SetMoney(rd.buy, Mark(rd.buyApprox))
+        c.craft:SetMoney(rd.craft, Mark(rd.craftApprox, rd.craftShort))
         if rd.perFavor then
-            c.perFavor:SetText(Money(rd.perFavor))
+            c.perFavor:SetMoney(rd.perFavor)
             c.perFavor:SetTextColor(1, 1, 1, 1)
         else
             c.perFavor:SetText("—")
