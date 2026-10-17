@@ -8,7 +8,7 @@ name: notify-failure
 
 on:
   workflow_run:
-    workflows: [site-check, site-deploy, sync-release, addon-check, addon-release, game-data]
+    workflows: [site-check, site-deploy, sync-release, addon-check, addon-release, addon-comments, game-data]
     types: [completed]
 
 permissions: {}

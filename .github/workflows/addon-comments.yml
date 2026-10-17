@@ -1,0 +1,128 @@
+# Post new comments on the addon's CurseForge page to Discord, in the channel the alerts already post to.
+#
+# CurseForge has no webhook, feed or email for new comments, so this polls what the comments page itself loads:
+# www.curseforge.com/api/v1/mods/<project>/comments?page=N (undocumented, unauthenticated; comments with nested
+# `replies`), up to MAX_PAGES pages each run. Past that, replies to older threads are no longer seen, so the
+# first run that finds more posts one reminder to rethink this (`state/over-limit` keeps it from repeating). The
+# comment ids already seen are kept in the Actions cache between runs; a run without them (the first, or after
+# the cache was evicted) only records what is there and posts nothing. Our own comments
+# (OWN_AUTHOR_ID, Frell) are never posted. A changed endpoint or a blocked request fails the run, which
+# notify-failure reports.
+#
+# Requires: DISCORD_WEBHOOK_URL (secret, as notify-failure), CURSEFORGE_PROJECT_ID (variable, as addon-release).
+
+name: addon-comments
+
+on:
+  schedule:
+    - cron: "41 */3 * * *"
+  workflow_dispatch:
+
+concurrency: addon-comments
+
+permissions: {}
+
+env:
+  OWN_AUTHOR_ID: "121353141"
+  MAX_PAGES: "5"
+  PAGE: https://www.curseforge.com/wow/addons/alt-army/comments
+
+jobs:
+  comments:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restore seen comments
+        uses: actions/cache/restore@v4
+        with:
+          path: state
+          key: addon-comments-${{ github.run_id }}
+          restore-keys: addon-comments-
+
+      - name: Fetch comments and post new ones
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          PROJECT: ${{ vars.CURSEFORGE_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "$WEBHOOK" ] || [ -z "$PROJECT" ]; then
+            echo "::error::DISCORD_WEBHOOK_URL or CURSEFORGE_PROJECT_ID is not set"
+            exit 1
+          fi
+          # Every page: a page is 20 comments, replies included (`pageSize` is ignored), threads newest first
+          # by their first comment, so a reply to an old thread can be on any page.
+          : > pages.jsonl
+          page=0
+          read_count=0
+          total=0
+          while [ "$page" -lt "$MAX_PAGES" ]; do
+            curl --fail-with-body --silent --show-error --retry 3 \
+              -A "Mozilla/5.0 (X11; Linux x86_64) altarmy-comments" -H "Accept: application/json" \
+              "https://www.curseforge.com/api/v1/mods/$PROJECT/comments?page=$page" -o page.json
+            if ! jq -e '(.data | type == "array") and (.pagination.totalCount | type == "number")' page.json \
+                > /dev/null; then
+              echo "::error::Unexpected response from CurseForge's comments endpoint (page $page)"
+              head -c 500 page.json
+              exit 1
+            fi
+            on_page=$(jq '[.data[] | recurse(.replies[]?)] | length' page.json)
+            [ "$on_page" -eq 0 ] && break
+            jq -c '.data[] | recurse(.replies[]?)' page.json >> pages.jsonl
+            read_count=$((read_count + on_page))
+            page=$((page + 1))
+            total=$(jq '.pagination.totalCount' page.json)
+            [ "$read_count" -ge "$total" ] && break
+          done
+          # Every comment and reply once, oldest first.
+          jq -sc 'unique_by(.id) | sort_by(.datePosted) | .[]' pages.jsonl > all.jsonl
+          echo "Read $(wc -l < all.jsonl) of $total comment(s) from $page page(s)"
+
+          mkdir -p state
+          if [ "$read_count" -lt "$total" ] && [ "$page" -ge "$MAX_PAGES" ]; then
+            echo "::warning::$total comments are more than $MAX_PAGES pages: replies to older threads are not seen"
+            if [ ! -f state/over-limit ]; then
+              jq -n --arg url "$PAGE" --arg total "$total" --arg pages "$MAX_PAGES" '
+                {embeds: [{
+                  title: "Alt Army comment alerts need rethinking",
+                  url: $url,
+                  description: ("The CurseForge page has \($total) comments, more than the \($pages) pages (20 each, replies included) the addon-comments workflow reads. New top-level comments are still posted, but replies to older threads are missed from now on. This reminder is sent once."),
+                  color: 14171198
+                }]}' \
+                | curl --fail-with-body --silent --show-error -H "Content-Type: application/json" \
+                    --data @- "$WEBHOOK"
+              touch state/over-limit
+            fi
+          fi
+          if [ ! -f state/seen.txt ]; then
+            jq -r '.id' all.jsonl > state/seen.txt
+            echo "No seen comments: recorded $(wc -l < state/seen.txt) without posting"
+            exit 0
+          fi
+
+          posted=0
+          while IFS= read -r comment; do
+            id=$(jq -r '.id' <<< "$comment")
+            grep -qx "$id" state/seen.txt && continue
+            if [ "$(jq -r '.author.id' <<< "$comment")" != "$OWN_AUTHOR_ID" ]; then
+              jq -n --argjson c "$comment" --arg url "$PAGE" '
+                {embeds: [{
+                  title: (if $c.parentId then "New reply on Alt Army" else "New comment on Alt Army" end),
+                  url: $url,
+                  author: {name: ($c.author.displayName // $c.author.username)},
+                  description: ($c.text | if length > 1500 then .[:1500] + "…" else . end),
+                  timestamp: ($c.datePosted / 1000 | floor | todate),
+                  color: 15885602
+                }]}' \
+                | curl --fail-with-body --silent --show-error -H "Content-Type: application/json" \
+                    --data @- "$WEBHOOK"
+              posted=$((posted + 1))
+            fi
+            echo "$id" >> state/seen.txt
+          done < all.jsonl
+          echo "Posted $posted new comment(s)"
+
+      - name: Save seen comments
+        if: always() && hashFiles('state/seen.txt') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: state
+          key: addon-comments-${{ github.run_id }}-${{ github.run_attempt }}

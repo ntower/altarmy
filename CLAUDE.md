@@ -13,7 +13,10 @@ Conventions for AI agents working in the `altarmy` monorepo: Alt Army, one produ
   addon's side of the contract below), `site-deploy` (prod, after `site-check` on main; staging by hand),
   `sync-release` (`sync-v*` tags), `addon-check` (on `addon/**` changes: `npm run setup:dev`, `npm test`,
   `npm run check` on Ubuntu, the Lua tools cached), `addon-release` (`addon-v*` tags: CurseForge, Wago and a
-  GitHub Release) and `game-data` (daily: `game_data.py`, below; its `GAME_DATA_TOKEN` secret pushes, so the
+  GitHub Release), `addon-comments` (every 3 h: new comments on the CurseForge page, from the page's own
+  undocumented comments endpoint, posted to the alerts' Discord channel; the ids seen kept in the Actions cache;
+  it reads at most 5 pages of 20 and posts one reminder to rethink it once there are more)
+  and `game-data` (daily: `game_data.py`, below; its `GAME_DATA_TOKEN` secret pushes, so the
   workflows a push or tag starts still run). `notify-failure` posts any of those that fails to the alerts' Discord
   channel (its `DISCORD_WEBHOOK_URL` secret; a new workflow joins its list by hand).
 - `.githooks/pre-commit` – the addon's Waylaid Crates and Craftsman's Writs checks, run only for commits touching `addon/` (enabled by
