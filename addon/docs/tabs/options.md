@@ -35,7 +35,8 @@ Options opened on a particular control (for example from the Alt Army scan butto
 | `/altarmy export` | Export for the Alt Army website (see below; there is no button for it) |
 | `/altarmy scan` | Scan the open auction house (same as the **Alt Army scan** button): the kind the scan mode allows now (Options → General → Auction House) |
 | `/altarmy debug on` / `off` | Add the Debug options page / turn it off and enable/suppress debug logging |
-| `/altarmy debug resize on` / `off` | Show/hide the main window's resize grip (the Debug options' **Window resize**); while on, `/altarmy resetsize` restores the stock size |
+| `/altarmy debug resize on` / `off` | Let the main window's resize grip change the width too, not only the height (the Debug options' **Window width resize**) |
+| `/altarmy resetsize` | Restore the main window's stock size |
 
 Additional `debug …` subcommands exist for developers (mail alerts, compare dump, guild share inject, etc.); they are not part of the product feature surface.
 

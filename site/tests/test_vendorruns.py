@@ -8,15 +8,15 @@ CHEAP, FLASK, PATTERN = 1, 2, 3
 def market(ah_open: frozenset[int] | None = None) -> engine.Market:
     items = {
         CHEAP: engine.Item(CHEAP, "Cheap Ring", sell_price=500),
-        FLASK: engine.Item(FLASK, "Flask", sell_price=10),
+        FLASK: engine.Item(FLASK, "Flask", sell_price=10, stack_size=20),
         PATTERN: engine.Item(PATTERN, "Pattern", sell_price=100),
     }
     return engine.Market(items, [], {}, sell_prices={FLASK: 400, PATTERN: 9000}, ah_open=ah_open)
 
 
-def listing(*levels: book.Level, rate: float = 0.0) -> prices.Listing:
+def listing(*levels: book.Level, rate: float = 0.0, stacks: str | None = None) -> prices.Listing:
     units = sum(lv.quantity for lv in levels)
-    return prices.Listing(levels[0].price, units, levels, rate, prices.BLIZZARD, True)
+    return prices.Listing(levels[0].price, units, levels, rate, prices.BLIZZARD, True, stacks=stacks)
 
 
 def test_listings_under_what_a_vendor_pays_are_bought_and_vendored() -> None:
@@ -36,11 +36,17 @@ def test_what_vendors_sell_for_less_than_the_auction_house_pays() -> None:
         Offer(PATTERN, 12, "Quartermaster", "alliance", 1, 3600, "Westfall", 3, 0.0, 0.0),
     ]
     buy = {FLASK: 300, PATTERN: 2000}
-    listings = {FLASK: listing(book.Level(400, 9, 9), rate=6.0)}
+    listings = {FLASK: listing(book.Level(400, 9, 9), rate=6.0, stacks="5:6/0")}
     got = vendorruns.resells(market(), listings, offers, buy, "Horde", FOREVER)
     assert [(r.offer.name, r.units) for r in got] == [("Trader", 1), ("Grocer", 2)]  # a third of 6 a day
-    trader = got[0]
-    assert trader.margin == engine.ah_net(9000) - 2000 - vendorruns.deposit(FOREVER, 100, 1)
+    trader, grocer = got
+    assert trader.margin == engine.ah_net(9000) - 2000 - 100  # the 1s minimum deposit
+    assert grocer.margin == engine.ah_net(400) - 300 - 20  # posted in fives: 1s over 5 units
+    # posted one at a time, the minimum deposit eats the flask's margin
+    singly = {FLASK: listing(book.Level(400, 9, 9), rate=6.0)}
+    assert [r.offer.name for r in vendorruns.resells(market(), singly, offers, buy, "Horde", FOREVER)] == [
+        "Trader"
+    ]
     assert [z for z, _ in vendorruns.by_zone(got)] == ["Barrens", "Orgrimmar"]
     # an item whose AH sale doesn't count yet is left out
     assert (

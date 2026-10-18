@@ -24,3 +24,7 @@ Drawing techniques (line pools, axes, hit targets): [GRAPH_RENDERING_TECHNIQUES.
 ## Settings
 
 `AltArmyTBC_GraphSettings`. Respects the global realm filter.
+
+## Window resize
+
+The plot is drawn at the graph frame's size and redrawn on its every `OnSizeChanged`, so it follows the window's grip live while it is dragged (a trial of the rebuild's speed; `AltArmy.OnWindowResized`, called once the drag ends, is the fallback if it stutters).

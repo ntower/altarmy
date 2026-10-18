@@ -21,7 +21,8 @@ What the site assumes until someone checks it in game, and where the answer goes
 - [ ] **Transmutes.** The cooldowns of Iron to Gold and Mithril to Truesilver (DB2 says 1 hour), and whether
   transmutes share a timer.
 - [ ] **Auction house.** The deposit for 2, 8 and 24 hours, and whether a cancel forfeits it
-  (`GameVersion.auction_hours`; the deposit model is Phase 1).
+  (`GameVersion.auction_hours`; the deposit model is Phase 1). The minimum of 1s an auction is known
+  (`GameVersion.ah_min_deposit`); `ah_deposit_rate`, vanilla's 5% per 2 hours, is not.
 - [ ] **Smelts and stations.** Where the Forever-only smelts are learned; whether the Molten Foundry and
   the tanning rack are deployable (`timing.DEPLOYABLE`).
 - [ ] **Essences.** That lesser and greater essences convert 3:1 both ways.

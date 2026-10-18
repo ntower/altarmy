@@ -46,9 +46,11 @@ function D.Ensure()
     if d.showZygorMissingGuides == nil then
         d.showZygorMissingGuides = false
     end
-    if d.windowResize == nil then
-        d.windowResize = false
+    if d.windowWidthResize == nil then
+        d.windowWidthResize = false
     end
+    -- Legacy SavedVariables key from when the whole resize grip was a debug toggle; no longer read.
+    d.windowResize = nil
     -- Legacy SavedVariables key from the dual-engine experiment; no longer read.
     d.searchEngineV2 = nil
 end
@@ -193,17 +195,17 @@ function D.SetShowZygorMissingGuides(on)
     AltArmyTBC_Options.debug.showZygorMissingGuides = on == true
 end
 
---- When true, the main window shows its bottom-right resize grip and opens at its saved size. Off by
---- default until every tab reflows (only Inventory does). Standalone flag (does not require master
---- debug on).
-function D.IsWindowResizeEnabled()
+--- When true, the main window's bottom-right resize grip changes the width as well as the height.
+--- Off by default until every tab reflows to the width (only Inventory does). Standalone flag (does
+--- not require master debug on).
+function D.IsWindowWidthResizeEnabled()
     D.Ensure()
-    return AltArmyTBC_Options.debug.windowResize == true
+    return AltArmyTBC_Options.debug.windowWidthResize == true
 end
 
-function D.SetWindowResizeEnabled(on)
+function D.SetWindowWidthResizeEnabled(on)
     D.Ensure()
-    AltArmyTBC_Options.debug.windowResize = on == true
+    AltArmyTBC_Options.debug.windowWidthResize = on == true
     if AltArmy.ApplyWindowResize then
         AltArmy.ApplyWindowResize()
     end

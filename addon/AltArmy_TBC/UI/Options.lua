@@ -585,18 +585,18 @@ debugShowZygorMissingHint:SetText(
     "On the Reputation tab, show Zygor guide icons even when Zygor only has trial placeholder "
         .. "guides (they cannot be opened). Paid Zygor installs show icons without this.")
 
--- Window resize (on panel, to spare main-chunk locals). Also /altarmy debug resize on|off.
+-- Window width resize (on panel, to spare main-chunk locals). Also /altarmy debug resize on|off.
 panel.debugWindowResizeCheckbox = Theme.CreateLabeledCheckbox(debugScrollChild, {
     point = "TOPLEFT",
     relativeTo = debugShowZygorMissingHint,
     relativePoint = "BOTTOMLEFT",
     x = 0,
     y = -16,
-    text = "Window resize",
+    text = "Window width resize",
     fullWidthHover = true,
     onClick = function(checked)
-        if AltArmy.Debug and AltArmy.Debug.SetWindowResizeEnabled then
-            AltArmy.Debug.SetWindowResizeEnabled(checked)
+        if AltArmy.Debug and AltArmy.Debug.SetWindowWidthResizeEnabled then
+            AltArmy.Debug.SetWindowWidthResizeEnabled(checked)
         end
     end,
 }).check
@@ -606,9 +606,9 @@ panel.debugWindowResizeHint:SetPoint("TOPLEFT", panel.debugWindowResizeCheckbox,
 panel.debugWindowResizeHint:SetWidth(520)
 panel.debugWindowResizeHint:SetJustifyH("LEFT")
 panel.debugWindowResizeHint:SetText(
-    "Shows the main window's resize grip (bottom right) and opens it at its saved size; /altarmy resetsize "
-        .. "restores the stock size. Only the Inventory tab reflows so far. Off puts the window back to its "
-        .. "stock size and keeps the saved one.")
+    "Lets the main window's resize grip (bottom right) change the width as well as the height. Only the "
+        .. "Inventory tab reflows to the width so far. Off puts the window back to its stock width, at its "
+        .. "height; /altarmy resetsize restores the stock size.")
 
 local function UpdateDebugScrollRange()
     local top = debugScrollChild:GetTop()
@@ -655,7 +655,7 @@ function RefreshDebugCheckboxes()
         panel.debugShowZygorMissingCheckbox:SetChecked(d.showZygorMissingGuides == true)
     end
     if panel.debugWindowResizeCheckbox then
-        panel.debugWindowResizeCheckbox:SetChecked(d.windowResize == true)
+        panel.debugWindowResizeCheckbox:SetChecked(d.windowWidthResize == true)
     end
     ResetDeleteAllHistoryButton()
     ResetClearManualGroupsButton()
@@ -2352,8 +2352,7 @@ SlashCmdList.ALTARMY = function(msg)
         end
         return
     end
-    if lower == "resetsize" and AltArmy.Debug and AltArmy.Debug.IsWindowResizeEnabled
-        and AltArmy.Debug.IsWindowResizeEnabled() then
+    if lower == "resetsize" then
         if AltArmy.ResetWindowSize then
             AltArmy.ResetWindowSize()
         end
@@ -2430,10 +2429,10 @@ SlashCmdList.ALTARMY = function(msg)
     end
     if lower == "debug resize on" or lower == "debug resize off" then
         local on = lower == "debug resize on"
-        if AltArmy.Debug and AltArmy.Debug.SetWindowResizeEnabled then
-            AltArmy.Debug.SetWindowResizeEnabled(on)
+        if AltArmy.Debug and AltArmy.Debug.SetWindowWidthResizeEnabled then
+            AltArmy.Debug.SetWindowWidthResizeEnabled(on)
             if AltArmy.Debug.NotifyChat then
-                AltArmy.Debug.NotifyChat(on and "Window resize enabled" or "Window resize disabled")
+                AltArmy.Debug.NotifyChat(on and "Window width resize enabled" or "Window width resize disabled")
             end
         end
         if panel.RefreshDebugCheckboxes then

@@ -5,8 +5,8 @@
   flagged: a fresh one may be gone before anyone gets there, or the vendor price may be wrong.
 - Bought from a vendor, sold on the AH (`resells`): what spawned vendors sell (`vendor_offers.csv`, from
   vmangos: `vmangos.vendor_offers`) for less than the AH pays after its cut and the deposit, for as many
-  units as a limited vendor stocks, else a share of what the market takes in a day; only items whose AH
-  sale counts (`Market.ah_open`).
+  units as a limited vendor stocks, else a share of what the market takes in a day, posted in the stack size
+  that sold best; only items whose AH sale counts (`Market.ah_open`).
 
 Pure apart from reading the offers file (once per file, as `processing` does).
 """
@@ -116,9 +116,10 @@ class Resell:
     profit: int  # margin x units
 
 
-def deposit(version: GameVersion, vendor_sell_price: int, units: int) -> int:
-    """The deposit posting `units` for a day costs (`GameVersion.ah_deposit_rate`, estimated)."""
-    return math.ceil(vendor_sell_price * units * version.ah_deposit_rate * POST_HOURS / 2)
+def deposit(version: GameVersion, vendor_sell_price: int, stack: int = 1) -> int:
+    """A unit's share of the deposit posting it in a day's auctions of `stack` costs
+    (`GameVersion.ah_deposit`, estimated: at least the auction's minimum over its units)."""
+    return math.ceil(version.ah_deposit(vendor_sell_price, stack, stack, POST_HOURS) / max(1, stack))
 
 
 def resells(
@@ -143,10 +144,11 @@ def resells(
             continue
         if market.ah_open is not None and o.item_id not in market.ah_open:
             continue
-        margin = engine.ah_net(price, market.ah_cut) - cost - deposit(version, item.sell_price, 1)
+        listing = listings.get(o.item_id)
+        stack = min(prices.best_stack(listing) or 1, item.stack_size) if listing is not None else 1
+        margin = engine.ah_net(price, market.ah_cut) - cost - deposit(version, item.sell_price, stack)
         if margin <= 0:
             continue
-        listing = listings.get(o.item_id)
         a_day = prices.demand(listing, days=1) if listing is not None else None
         units = o.max_count or (int(a_day * POST_SHARE) if a_day else 0)
         if units <= 0:

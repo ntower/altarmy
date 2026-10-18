@@ -31,7 +31,7 @@ describe("AltArmy.Debug", function()
         assert.is_false(AltArmyTBC_Options.debug.itemComparison)
         assert.is_false(AltArmyTBC_Options.debug.itemStats)
         assert.is_false(D.IsShowZygorMissingGuides())
-        assert.is_false(D.IsWindowResizeEnabled())
+        assert.is_false(D.IsWindowWidthResizeEnabled())
     end)
 
     it("IsGuildShareEnabled is always on (shipped feature, not a debug toggle)", function()
@@ -194,17 +194,24 @@ describe("AltArmy.Debug", function()
         assert.is_false(D.IsShowZygorMissingGuides())
     end)
 
-    it("IsWindowResizeEnabled is standalone and calls the window's resize hook", function()
+    it("IsWindowWidthResizeEnabled is standalone and calls the window's resize hook", function()
         local applied = {}
-        AltArmy.ApplyWindowResize = function() applied[#applied + 1] = D.IsWindowResizeEnabled() end
+        AltArmy.ApplyWindowResize = function() applied[#applied + 1] = D.IsWindowWidthResizeEnabled() end
         assert.is_false(D.IsEnabled())
-        D.SetWindowResizeEnabled(true)
-        assert.is_true(D.IsWindowResizeEnabled())
-        assert.is_true(AltArmyTBC_Options.debug.windowResize)
-        D.SetWindowResizeEnabled(false)
-        assert.is_false(D.IsWindowResizeEnabled())
+        D.SetWindowWidthResizeEnabled(true)
+        assert.is_true(D.IsWindowWidthResizeEnabled())
+        assert.is_true(AltArmyTBC_Options.debug.windowWidthResize)
+        D.SetWindowWidthResizeEnabled(false)
+        assert.is_false(D.IsWindowWidthResizeEnabled())
         assert.are.same({ true, false }, applied)
         AltArmy.ApplyWindowResize = nil
+    end)
+
+    it("Ensure drops the legacy windowResize key", function()
+        _G.AltArmyTBC_Options = { debug = { windowResize = true } }
+        D.Ensure()
+        assert.is_nil(AltArmyTBC_Options.debug.windowResize)
+        assert.is_false(D.IsWindowWidthResizeEnabled())
     end)
 
     it("AppendComparePanelDump keeps only the newest MAX_COMPARE_PANEL_DUMPS entries", function()

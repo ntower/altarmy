@@ -100,22 +100,53 @@ end)
 
 -- Resize from the bottom-right corner (the chat window's size grabber), never below the stock
 -- 670 x 484; the size is kept in AltArmyTBC_Options.window and applied when the window opens.
--- Tab content stretches with the window (the content area is anchored to its edges). Off until every
--- tab reflows: the Debug options' "Window resize" (/altarmy debug resize on|off) turns it on.
+-- Tab content stretches with the window (the content area is anchored to its edges). The grip changes
+-- the height alone until every tab reflows to the width: the Debug options' "Window width resize"
+-- (/altarmy debug resize on|off) lets it change the width too.
+main:SetResizable(true)
 if main.SetResizeBounds then
     main:SetResizeBounds(FRAME_WIDTH, FRAME_HEIGHT)
 elseif main.SetMinResize then
     main:SetMinResize(FRAME_WIDTH, FRAME_HEIGHT)
 end
 
+--- Whether the grip may change the window's width (the Debug options' "Window width resize").
+local function WidthResizeEnabled()
+    local D = AltArmy.Debug
+    return D and D.IsWindowWidthResizeEnabled and D.IsWindowWidthResizeEnabled() or false
+end
+
+-- Whoever lays content out by the window's size and can't follow it live (the Graphs tab redraws
+-- its plot) hears when a resize has ended: the grip let go, the stock size restored, the saved size
+-- applied. Not called while the grip is being dragged.
+local resizeListeners = {}
+function AltArmy.OnWindowResized(fn)
+    resizeListeners[#resizeListeners + 1] = fn
+end
+local function NotifyWindowResized()
+    for _, fn in ipairs(resizeListeners) do
+        fn(main:GetWidth(), main:GetHeight())
+    end
+end
+
+--- Sets the window's size and tells the listeners when it changed.
+local function SetWindowSize(w, h)
+    local curW, curH = main:GetWidth(), main:GetHeight()
+    if math.abs(curW - w) < 0.5 and math.abs(curH - h) < 0.5 then return end
+    main:SetSize(w, h)
+    NotifyWindowResized()
+end
+
 --- The saved window size, when it is a valid one no smaller than the stock size, clamped to the
---- screen so a size saved on a bigger monitor still opens with its grip reachable.
+--- screen so a size saved on a bigger monitor still opens with its grip reachable. While the width
+--- can't be changed the saved width is passed over: the window is the stock width at the saved height.
 local function SavedWindowSize()
     local o = _G.AltArmyTBC_Options
     local w = type(o) == "table" and type(o.window) == "table" and o.window or nil
     if not w or type(w.width) ~= "number" or type(w.height) ~= "number" then return nil end
     if w.width < FRAME_WIDTH or w.height < FRAME_HEIGHT then return nil end
     local width, height = w.width, w.height
+    if not WidthResizeEnabled() then width = FRAME_WIDTH end
     if UIParent and UIParent.GetWidth then
         local maxW, maxH = UIParent:GetWidth(), UIParent:GetHeight()
         if maxW and maxW > 0 then width = math.min(width, math.max(FRAME_WIDTH, math.floor(maxW))) end
@@ -127,7 +158,40 @@ end
 local function ApplySavedWindowSize()
     local w, h = SavedWindowSize()
     if w then
-        main:SetSize(w, h)
+        SetWindowSize(w, h)
+    else
+        -- Nothing valid saved: the stock size, whatever the window is now (a drag that ended off the
+        -- screen can leave it taller than the screen, its grip out of reach; opening it again fixes it).
+        SetWindowSize(FRAME_WIDTH, FRAME_HEIGHT)
+    end
+end
+
+--- The most the window may grow to from where it stands: down to the screen's bottom edge and, with
+--- the width free, right to its right edge (the drag moves the bottom and right edges; the top-left
+--- corner stays put). Never under the stock size. So the grip can't be dragged off the screen, out
+--- of reach, by a mouse that leaves the game window.
+local function MaxWindowSize()
+    local maxW, maxH = FRAME_WIDTH, FRAME_HEIGHT
+    if UIParent and UIParent.GetWidth then
+        local screenW, screenH = UIParent:GetWidth(), UIParent:GetHeight()
+        local left, top = main:GetLeft(), main:GetTop()
+        if screenW and screenW > 0 then
+            maxW = math.max(FRAME_WIDTH, math.floor(screenW - (left or 0)))
+        end
+        if screenH and screenH > 0 then
+            maxH = math.max(FRAME_HEIGHT, math.floor(math.min(screenH, top or screenH)))
+        end
+    end
+    if not WidthResizeEnabled() then maxW = FRAME_WIDTH end
+    return maxW, maxH
+end
+
+local function ApplyResizeBounds()
+    local maxW, maxH = MaxWindowSize()
+    if main.SetResizeBounds then
+        main:SetResizeBounds(FRAME_WIDTH, FRAME_HEIGHT, maxW, maxH)
+    elseif main.SetMaxResize then
+        main:SetMaxResize(maxW, maxH)
     end
 end
 
@@ -148,39 +212,34 @@ sizeGrip:SetFrameLevel(main:GetFrameLevel() + 200)
 sizeGrip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
 sizeGrip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
 sizeGrip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+-- "BOTTOM" lets the drag move the bottom edge alone (the height); "BOTTOMRIGHT" the corner.
 sizeGrip:SetScript("OnMouseDown", function()
-    main:StartSizing("BOTTOMRIGHT")
+    ApplyResizeBounds() -- from where the window stands now, at this screen size
+    main:StartSizing(WidthResizeEnabled() and "BOTTOMRIGHT" or "BOTTOM")
 end)
 sizeGrip:SetScript("OnMouseUp", function()
     main:StopMovingOrSizing()
     SaveWindowSize()
+    NotifyWindowResized()
 end)
 sizeGrip:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
-    GameTooltip:SetText("Drag to resize", 1, 1, 1)
+    GameTooltip:SetText(WidthResizeEnabled() and "Drag to resize" or "Drag to change the height", 1, 1, 1)
     GameTooltip:Show()
 end)
 sizeGrip:SetScript("OnLeave", function() GameTooltip:Hide() end)
-sizeGrip:Hide()
 
---- Shows the grip and the saved size when the debug option is on; otherwise hides the grip and puts
---- the window back to its stock size, keeping the saved size for when it is turned on again.
+--- Applies the saved size: at the stock width unless the width may be changed. Called when the
+--- window opens and when the Debug options' "Window width resize" flips (so turning it off snaps a
+--- widened window back to the stock width, at its height).
 AltArmy.ApplyWindowResize = function()
-    local D = AltArmy.Debug
-    local on = D and D.IsWindowResizeEnabled and D.IsWindowResizeEnabled() or false
-    main:SetResizable(on)
-    sizeGrip:SetShown(on)
-    if on then
-        ApplySavedWindowSize()
-    else
-        main:SetSize(FRAME_WIDTH, FRAME_HEIGHT)
-    end
+    ApplySavedWindowSize()
 end
 main:HookScript("OnShow", AltArmy.ApplyWindowResize)
 -- Tab content that sits in the window's bottom-right corner keeps clear of the grip.
 AltArmy.WINDOW_GRIP_INSET = 16
 AltArmy.ResetWindowSize = function()
-    main:SetSize(FRAME_WIDTH, FRAME_HEIGHT)
+    SetWindowSize(FRAME_WIDTH, FRAME_HEIGHT)
     SaveWindowSize()
 end
 

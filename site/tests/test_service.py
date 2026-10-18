@@ -1549,6 +1549,12 @@ def test_a_craft_posts_a_third_of_a_days_sales() -> None:
     assert got.per_day == 3 * each - deposit
 
 
+def test_a_crafts_deposit_is_at_least_a_silver_an_auction() -> None:
+    # no vendor buys it: each of the 3 auctions still costs Forever's 1s minimum
+    got = sale(robe_market(0), robe_listing(listed=5, rate=9.0))
+    assert (got.post_units, got.post_stack, got.deposit_est) == (3, 1, 300)
+
+
 def test_a_craft_with_more_listed_under_it_than_sell_a_day_is_full() -> None:
     assert sale(robe_market(500), robe_listing(listed=20, rate=9.0)).group == "full"
     # nothing seen bought: it likely goes to a vendor, nothing posted

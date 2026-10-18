@@ -1620,6 +1620,15 @@ function frame:Redraw()
     RebuildGraph()
 end
 
+-- The plot is drawn at the graph frame's size, so it is drawn again at every size change: live while
+-- the window's grip is dragged (a trial of whether a rebuild per frame is quick enough; if not,
+-- AltArmy.OnWindowResized tells when the drag has ended). A hidden tab redraws on show anyway.
+graphFrame:HookScript("OnSizeChanged", function()
+    if not frame:IsVisible() then return end
+    graphHint:SetWidth(math.max(1, (graphFrame:GetWidth() or 0) - 40))
+    RebuildGraph()
+end)
+
 local function WireOptionLabelClick(row, onEnter, onLeave)
     local check = row.check
     local label = row.label

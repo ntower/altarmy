@@ -79,3 +79,12 @@ def test_a_character_trains_the_ranks_their_level_allows() -> None:
     assert forever.trainable_cap(35) == 300
     assert forever.trainable_cap(0) == forever.max_skill  # level unknown: every rank
     assert versions.VERSIONS["tbc"].trainable_cap(70) == 375
+
+
+def test_an_auctions_deposit_is_at_least_forevers_minimum() -> None:
+    forever = versions.VERSIONS["forever"]
+    assert forever.ah_deposit(500, 3) == 3 * 300  # 5% of 500 per 2 hours, for a day's auction each
+    assert forever.ah_deposit(10, 3) == 3 * 100  # 6c each: the 1s minimum an auction
+    assert forever.ah_deposit(10, 45, stack=20) == 120 + 120 + 100  # two full stacks and the 5 left
+    assert forever.ah_deposit(0, 1) == 100  # nothing a vendor pays still costs the minimum
+    assert versions.VERSIONS["tbc"].ah_deposit(10, 3) == 3 * 6  # no minimum there

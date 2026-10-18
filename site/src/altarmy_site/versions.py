@@ -6,6 +6,7 @@ Alt Army runs on both clients and writes the same `AltArmy_TBC.lua` on each; onl
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -93,9 +94,21 @@ class GameVersion:
     # What posting costs: this share of what a vendor pays for the stack, per 2 hours it is up (vanilla's,
     # until checked in game: 5% for 2 hours, 60% for 24)
     ah_deposit_rate: float = 0.05
+    ah_min_deposit: int = 0  # copper: the least an auction's deposit is (Forever: 1s)
     snapshot_gap: int = 4500  # seconds: an hour and a quarter, so a late snapshot still follows
     # the fixed realms, whose auction houses always exist (empty: realms come from uploads, as on TBC)
     realms: tuple[RealmSpec, ...] = ()
+
+    def ah_deposit(self, vendor_price: int, units: int, stack: int = 1, hours: int = 24) -> int:
+        """What posting `units` in auctions of `stack` for `hours` costs: per auction `ah_deposit_rate`
+        of what a vendor pays for its units per 2 hours, at least `ah_min_deposit` (estimated)."""
+        stack = max(1, stack)
+
+        def one(n: int) -> int:
+            return max(self.ah_min_deposit, math.ceil(vendor_price * n * self.ah_deposit_rate * hours / 2))
+
+        full, rest = divmod(units, stack)
+        return full * one(stack) + (one(rest) if rest else 0)
 
     def canonical_realm(self, name: str) -> RealmSpec | None:
         """The fixed realm a realm name stands for (its name or an alias, ignoring case and spaces)."""
@@ -185,6 +198,7 @@ VERSIONS: dict[str, GameVersion] = {
         first_party_prices=True,
         gated_prices=True,
         retail_bags=True,
+        ah_min_deposit=100,
         reputation_discounts=((6, 10), (7, 10), (8, 10)),  # vanilla's: 10% from Honored, no more after
         # The launch realms' own names go in their aliases on launch day
         realms=(

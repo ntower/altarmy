@@ -7,7 +7,6 @@ Auctionator, both through uploads (`uploads.py`), or from characters made by han
 from __future__ import annotations
 
 import json
-import math
 import threading
 import time
 import weakref
@@ -1016,9 +1015,10 @@ def craft_sale(
         post = min(post, int((listing.resolved_2d or 0) * POST_SHARE))
     post //= 1 + copied
     ahead = prices.ahead(listing, sell_price)
+    post_stack = None if stack is None or item is None else min(stack, item.stack_size)
     deposit = None
-    if item is not None and item.sell_price > 0 and post:
-        deposit = math.ceil(item.sell_price * post * version.ah_deposit_rate * POST_HOURS / 2)
+    if item is not None and post:
+        deposit = version.ah_deposit(item.sell_price, post, post_stack or 1, POST_HOURS) or None
     group = (
         "losing"
         if made.profit < 0
@@ -1034,7 +1034,7 @@ def craft_sale(
         group,
         sell_price,
         post,
-        None if stack is None or item is None else min(stack, item.stack_size),
+        post_stack,
         deposit,
         no_floor,
         launch,
