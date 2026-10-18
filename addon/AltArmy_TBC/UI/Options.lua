@@ -542,8 +542,9 @@ panel.debugClearAuctionBtn:SetScript("OnClick", function(self)
     local B = AltArmy and AltArmy.AuctionBook
     local count = B and B.Clear and B.Clear() or 0
     local econ = AltArmy.TabFrames and AltArmy.TabFrames.Economy
-    if econ and econ.RefreshWaylaid and econ:IsShown() then
-        econ.RefreshWaylaid()
+    if econ and econ:IsShown() then
+        if econ.RefreshWaylaid then econ.RefreshWaylaid() end
+        if econ.RefreshWrits then econ.RefreshWrits() end
     end
     if AltArmy.Debug and AltArmy.Debug.NotifyChat then
         AltArmy.Debug.NotifyChat(string.format("Cleared %d auction house scan(s).", count))
@@ -729,6 +730,12 @@ end
 
 local generalSection = Theme.CreateCollapsibleSection(generalScrollChild, {
     text = "General",
+    defaultExpanded = true,
+    onToggle = onSectionToggled,
+})
+-- Look and Feel: the window's scale. On panel, not a main-chunk local (Lua 5.1's 200-local limit).
+panel.lookSection = Theme.CreateCollapsibleSection(generalScrollChild, {
+    text = "Look and Feel",
     defaultExpanded = true,
     onToggle = onSectionToggled,
 })
@@ -1634,6 +1641,57 @@ function panel.RefreshAdvancedOptions()
     panel.autoReadRecipesRow.check:SetChecked(not (R and R.IsEnabled) or R.IsEnabled())
 end
 panel.RefreshAdvancedOptions()
+
+-- Look and Feel, side by side, half the width each: Window Scale, a percentage in steps of 5
+-- (AltArmyTBC_Options.windowScale, 1 = 100%; AltArmy.SetWindowScale applies it to the main window as it
+-- moves), and Font size, points (AltArmyTBC_Options.fontSize; Theme.SetFontSize resizes every text role).
+-- Font size is hidden, and the saved size not applied, until the tabs lay out for other sizes than 12
+-- (text wraps at some): FONT_SIZE_OPTION turns it back on.
+panel.FONT_SIZE_OPTION = false
+panel.windowScaleRow = Theme.CreateOptionsSlider(panel.lookSection.content, {
+    point = "TOPLEFT",
+    relativeTo = panel.lookSection.content,
+    relativePoint = "TOPLEFT",
+    x = 0,
+    y = 0,
+    right = { relativeTo = panel.lookSection.content, relativePoint = "TOP", x = -4, y = 0 },
+    text = "Window Scale",
+    min = math.floor((AltArmy.WINDOW_SCALE_MIN or 0.5) * 100 + 0.5),
+    max = math.floor((AltArmy.WINDOW_SCALE_MAX or 2) * 100 + 0.5),
+    step = 5,
+    value = 100,
+    format = function(v) return string.format("%d%%", v) end,
+    onChange = function(percent)
+        if AltArmy.SetWindowScale then
+            AltArmy.SetWindowScale(percent / 100)
+        end
+    end,
+})
+panel.fontSizeRow = Theme.CreateOptionsSlider(panel.lookSection.content, {
+    point = "TOPLEFT",
+    relativeTo = panel.lookSection.content,
+    relativePoint = "TOP",
+    x = 4,
+    y = 0,
+    right = { relativeTo = panel.lookSection.content, relativePoint = "TOPRIGHT", x = 0, y = 0 },
+    text = "Font size",
+    min = Theme.FONT_SIZE_MIN,
+    max = Theme.FONT_SIZE_MAX,
+    step = 1,
+    value = Theme.DEFAULT_FONT_SIZE,
+    format = function(v) return tostring(v) end,
+    onChange = function(size)
+        Theme.SetFontSize(size)
+    end,
+})
+panel.fontSizeRow:SetShown(panel.FONT_SIZE_OPTION)
+function panel.RefreshLookAndFeel()
+    local scale = AltArmy.GetWindowScale and AltArmy.GetWindowScale() or 1
+    panel.windowScaleRow.SetValue(math.floor(scale * 100 + 0.5))
+    panel.fontSizeRow.SetValue(Theme.GetFontSize())
+end
+panel.RefreshLookAndFeel()
+panel.lookSection.SetContentHeight(Theme.OPTIONS_SLIDER_ROW_HEIGHT)
 do
     local R = AltArmy.OwnRecipeRead
     panel.advancedSection.SetShown(R and R.HasApi and R.HasApi() or false)
@@ -1695,7 +1753,7 @@ end
 -- The scrolling pages built of collapsible sections: General, and Sharing (the Guild section).
 local SECTION_PAGES = {
     general = {
-        sections = { generalSection, auctionSection, panel.advancedSection },
+        sections = { generalSection, panel.lookSection, auctionSection, panel.advancedSection },
         viewport = generalViewport,
     },
     sharing = {
@@ -2263,6 +2321,9 @@ pageGeneral:HookScript("OnShow", function()
     if panel.RefreshAdvancedOptions then
         panel.RefreshAdvancedOptions()
     end
+    if panel.RefreshLookAndFeel then
+        panel.RefreshLookAndFeel()
+    end
 end)
 
 -- ---------------------------------------------------------------------------
@@ -2318,6 +2379,12 @@ reg:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_LOGIN" then
         reg:UnregisterEvent("PLAYER_LOGIN")
         registerOptionsPanel()
+        if panel.FONT_SIZE_OPTION and Theme.ApplyFontSize then
+            Theme.ApplyFontSize() -- the saved font size, now that the saved variables are in
+        end
+        if panel.RefreshLookAndFeel then
+            panel.RefreshLookAndFeel()
+        end
         RefreshCharacterList()
         UpdateCharSettings()
         if panel.minimapCheckbox then

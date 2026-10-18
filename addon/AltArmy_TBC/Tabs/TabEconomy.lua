@@ -402,29 +402,50 @@ waylaidPanel:HookScript("OnHide", function()
 end)
 
 -- No scan of this auction house yet: a message and the automatic scan checkbox, in place of the table.
-local empty = CreateFrame("Frame", nil, inner)
-empty:SetSize(440, 120)
-empty:SetPoint("CENTER", inner, "CENTER", 0, 20)
-local emptyLabel = empty:CreateFontString(nil, "OVERLAY", Theme.FONTS.emptyState)
-emptyLabel:SetPoint("TOPLEFT", empty, "TOPLEFT", 0, 0)
-emptyLabel:SetPoint("TOPRIGHT", empty, "TOPRIGHT", 0, 0)
-emptyLabel:SetJustifyH("CENTER")
-emptyLabel:SetWordWrap(true)
--- CreateLabeledCheckbox stretches its row to its parent's right edge: give it a narrow holder to center.
-local checkHolder = CreateFrame("Frame", nil, empty)
-checkHolder:SetSize(340, Theme.CHAR_LIST_ROW_HEIGHT)
-checkHolder:SetPoint("TOP", emptyLabel, "BOTTOM", 0, -18)
-local autoScanRow = Theme.CreateLabeledCheckbox(checkHolder, {
-    point = "TOPLEFT",
-    relativeTo = checkHolder,
-    relativePoint = "TOPLEFT",
-    text = "Scan the auction house automatically when it opens",
-    onClick = function(checked)
+-- `what` names what the view prices ("Waylaid Crate"; the Writs view builds one too, TabEconomyWrits.lua).
+local function CreateEmptyState(parent, what)
+    local empty = CreateFrame("Frame", nil, parent)
+    empty:SetSize(440, 120)
+    empty:SetPoint("CENTER", parent, "CENTER", 0, 20)
+    local label = empty:CreateFontString(nil, "OVERLAY", Theme.FONTS.emptyState)
+    label:SetPoint("TOPLEFT", empty, "TOPLEFT", 0, 0)
+    label:SetPoint("TOPRIGHT", empty, "TOPRIGHT", 0, 0)
+    label:SetJustifyH("CENTER")
+    label:SetWordWrap(true)
+    -- CreateLabeledCheckbox stretches its row to its parent's right edge: give it a narrow holder to center.
+    local checkHolder = CreateFrame("Frame", nil, empty)
+    checkHolder:SetSize(340, Theme.CHAR_LIST_ROW_HEIGHT)
+    checkHolder:SetPoint("TOP", label, "BOTTOM", 0, -18)
+    local autoScanRow = Theme.CreateLabeledCheckbox(checkHolder, {
+        point = "TOPLEFT",
+        relativeTo = checkHolder,
+        relativePoint = "TOPLEFT",
+        text = "Scan the auction house automatically when it opens",
+        onClick = function(checked)
+            local S = AltArmy.AuctionScan
+            if S and S.SetAutoScanEnabled then S.SetAutoScanEnabled(checked) end
+        end,
+    })
+    empty:Hide()
+
+    local state = {}
+    --- Show the message for this realm and faction, the checkbox synced with the setting.
+    function state.Show(realm, faction)
         local S = AltArmy.AuctionScan
-        if S and S.SetAutoScanEnabled then S.SetAutoScanEnabled(checked) end
-    end,
-})
-empty:Hide()
+        label:SetText("No auction house scan yet for " .. realm .. " (" .. faction .. ").\n\n"
+            .. "Visit an auction house and press the Alt Army scan button to see what each " .. what
+            .. " costs to buy and fill.")
+        autoScanRow.check:SetChecked(S and S.IsAutoScanEnabled and S.IsAutoScanEnabled() or false)
+        empty:Show()
+    end
+    function state.Hide()
+        empty:Hide()
+    end
+    return state
+end
+frame.CreateEmptyState = CreateEmptyState
+
+local emptyState = CreateEmptyState(inner, "Waylaid Crate")
 
 local function ReleaseRows()
     for i = #UI.activeRows, 1, -1 do
@@ -643,16 +664,8 @@ local function CurrentScan()
 end
 
 local function ShowEmpty(realm, faction)
-    local S = AltArmy.AuctionScan
-    emptyLabel:SetText("No auction house scan yet for " .. realm .. " (" .. faction .. ").\n\n"
-        .. "Visit an auction house and press the Alt Army scan button above it (or type /altarmy scan) "
-        .. "to see what each Waylaid Crate costs to buy and fill.")
-    autoScanRow.check:SetChecked(S and S.IsAutoScanEnabled and S.IsAutoScanEnabled() or false)
-    empty:Show()
-    statusLabel:Hide()
-    footer.SetSummary(false)
-    UI.scanBtn:Hide()
-    UI.autoScanHolder:Hide()
+    emptyState.Show(realm, faction)
+    footer.Hide()
     headerRow:Hide()
     listViewport:Hide()
 end
@@ -668,7 +681,7 @@ local function RefreshWaylaid()
     if not UI.cache or UI.cache.scan ~= scan then
         UI.cache = { scan = scan, book = Book.Decode(scan.items) }
     end
-    empty:Hide()
+    emptyState.Hide()
     statusLabel:Show()
     UI.autoScanHolder:Show()
     headerRow:Show()

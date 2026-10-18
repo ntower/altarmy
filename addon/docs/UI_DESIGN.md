@@ -15,7 +15,7 @@ Background research is in [WOW_FOREVER_NATIVE_UI_RESEARCH.md](WOW_FOREVER_NATIVE
 
 | Piece | Implementation |
 |-------|----------------|
-| Shell | `PortraitFrameTemplate`, 670 × 484 (Forever's `CHARACTER_FRAME_HEIGHT`). A bottom-right resize grip (the chat window's `UI-ChatIM-SizeGrabber` art) changes the height; it changes the width too only with the Debug options' **Window width resize** on (`/altarmy debug resize on`). Provides the rock background, NineSlice border, close button, portrait circle and title bar. |
+| Shell | `PortraitFrameTemplate`, 670 × 484 (Forever's `CHARACTER_FRAME_HEIGHT`), scaled by the General options' Look and Feel **Window Scale** (50% to 200%). A bottom-right resize grip (the chat window's `UI-ChatIM-SizeGrabber` art) changes the height; it changes the width too only with the Debug options' **Window width resize** on (`/altarmy debug resize on`). Provides the rock background, NineSlice border, close button, portrait circle and title bar. |
 | Title / portrait | `SetTitle("Alt Army - <Tab>")` and `SetPortraitToAsset(icon)` on every tab switch. Both come from `UI/MainTabs.lua`. |
 | Tabs | `UI/SideTabs.lua`: icon flyouts anchored like CharacterFrame's mode tabs. Forever uses `LargeSideTabButtonTemplate`; TBC uses spellbook skill-line tab art. On Forever, Reputation and Graphs use CharacterFrame's own Reputation / Statistics side-tab icons (`INV_SideTab_*_c60`). Guild shows the player's guild crest (`UI/GuildCrest.lua`), falling back to the tabard icon. |
 | Sub-view tabs | `UI/TopTabs.lua`: spellbook-style tabs hanging from a panel top into the toolbar row Forever uses `TabSystemTemplate` + `TabSystemTopButtonTemplate` square icon tabs, added without an icon and dressed up by `TopTabs.lua` itself (`TopTabs.SQUARE`: the spellbook tab atlases and width), because Blizzard's `SetSquareMode` writes a tab-spacing variable shared by every tab system and tainted from an addon (see [ARCHITECTURE.md](ARCHITECTURE.md#blizzards-code-and-taint)). TBC doesn't load TabSystem, so it uses classic text top tabs (`PanelTopTabButtonTemplate` + `PanelTemplates_SelectTab`). Anchor the tab row's BOTTOMLEFT at the tab frame's TOPLEFT + `AltArmy.MainToolbarInsetX`. Economy's Currency sub-view uses CharacterFrame's Currency side-tab icon (`Interface\Icons\INV_SideTab_Currency_c60`); Economy is Forever-only, so it needs no bundled copy. |
@@ -61,9 +61,9 @@ Rules:
 
 ## Typography
 
-Use `Theme.FONTS.<role>` for every FontString, font object and EditBox font. A spec (`spec/UI/ThemeFonts_spec.lua`) fails on new `"GameFont…"` literals in UI code.
+Use `Theme.FONTS.<role>` for every FontString, font object and EditBox font. A spec (`spec/UI/ThemeFonts_spec.lua`) fails on new `"GameFont…"` literals in UI code. `Theme.BASE_FONTS` names the Blizzard font each role is drawn like; in game `Theme.FONTS.<role>` is `AltArmyFont_<role>`, the addon's own font object made from it with `CreateFont`, so the General options' Look and Feel **Font size** (9 to 18, `Theme.SetFontSize`) resizes every font string of a role at once, each role keeping its ratio to the body size (`Theme.FontSizeFor`); in unit tests, with no `CreateFont`, the Blizzard font itself.
 
-Like native panels (Character, Reputation, Skills), all AltArmy text is 12pt, including grids, column headers, footnotes and button labels. Only Gear upgrade badges and quest-reward glyphs use a 10pt base. Sizes are the same on Forever and TBC Anniversary: Small 10, Normal/Highlight 12, Med3 14, Large 16.
+Like native panels (Character, Reputation, Skills), all AltArmy text is 12pt by default, including grids, column headers, footnotes and button labels. Only Gear upgrade badges and quest-reward glyphs use a 10pt base. Sizes are the same on Forever and TBC Anniversary: Small 10, Normal/Highlight 12, Med3 14, Large 16. Rows and columns are laid out for 12pt: a larger font size can clip or crowd them.
 
 | Role | Font object | Use for |
 |------|-------------|---------|

@@ -29,6 +29,7 @@ still on the drop prompt returns to Grid; a focused item stays in Upgrade Check.
 ## Grid
 
 - Hover tooltips on equipped items; shift-click inserts item links into chat.
+- An empty slot shows the game's own empty-slot art (the character pane's grey silhouette for that slot, `Data/Gear/EmptySlotArt.lua`), dimmed and without a quality glow; it has no tooltip.
 - Character ordering: primary/secondary sort, show self first, pin/hide.
 - Appearance: icon size (small/medium/large), spacing (compact/normal/comfortable).
 - Score-sort row: sort columns by character level, average item level, time played, or gear score (TacoTip / GearScoreTBCClassic when loaded).

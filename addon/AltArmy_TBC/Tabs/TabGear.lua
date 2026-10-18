@@ -217,6 +217,9 @@ end
 
 local ITEM_GLOW_ALPHA = 0.4
 local ITEM_ICON_INSET = 2
+-- Empty cells show the game's empty-slot art, dimmed so a real item reads brighter
+local EMPTY_SLOT_DIM = 0.7
+local EMPTY_SLOT_ALPHA = 0.6
 -- CENTER→TOPRIGHT: negative x = left, negative y = down
 local UPGRADE_BADGE_OFFSET_X = -(ITEM_ICON_INSET + 4)
 local UPGRADE_BADGE_OFFSET_Y = -(ITEM_ICON_INSET + 4)
@@ -1175,9 +1178,16 @@ function GearTab.GetQualityGlowColor(quality)
     return 1, 0.5, 0
 end
 
+--- An empty cell shows the game's empty-slot art for its inventory slot, dimmed and without a glow.
+--- A cell whose item the client hasn't cached yet still shows nothing.
 function GearTab.ApplyItemCellVisual(cell, item, gray, alpha)
     local fade = alpha or 1
     local texPath = GearTab.GetItemTexture(item)
+    local ESA = AltArmy.EmptySlotArt
+    local emptyPath = nil
+    if item == nil and ESA and ESA.TextureFor then
+        emptyPath = ESA.TextureFor(cell.inventorySlot)
+    end
     if texPath then
         cell.texture:SetTexture(texPath)
         cell.texture:Show()
@@ -1186,6 +1196,10 @@ function GearTab.ApplyItemCellVisual(cell, item, gray, alpha)
         else
             cell.texture:SetVertexColor(fade, fade, fade, fade)
         end
+    elseif emptyPath then
+        cell.texture:SetTexture(emptyPath)
+        cell.texture:SetVertexColor(EMPTY_SLOT_DIM, EMPTY_SLOT_DIM, EMPTY_SLOT_DIM, EMPTY_SLOT_ALPHA * fade)
+        cell.texture:Show()
     else
         cell.texture:SetTexture(nil)
         cell.texture:Hide()

@@ -15,7 +15,7 @@ local Writs = AltArmy.Writs
 local Book = AltArmy.AuctionBook
 local DS = AltArmy.DataStore
 if not (Theme and W and WC and Writs and Book and DS and AltArmy.CraftPlan and AltArmy.CraftContext
-    and frame.CreateScanFooter) then return end
+    and frame.CreateScanFooter and frame.CreateEmptyState) then return end
 
 local panel = frame.WritsView
 local inner = Theme.CreatePanelInnerContent(panel)
@@ -95,6 +95,9 @@ end
 local footer = frame.CreateScanFooter(inner)
 local statusLabel = footer.status
 frame.UpdateWritsScanButton = footer.UpdateScanButton
+
+-- No scan of this auction house yet: the Waylaid view's message and checkbox, in place of the table.
+local emptyState = frame.CreateEmptyState(inner, "Craftsman's Writ")
 
 -- "Filter" dropdown in the main toolbar row (where the header search sits), parented to this view's panel so
 -- it shows only here. Its entries are re-read on every open and toggle.
@@ -375,15 +378,21 @@ end
 local function RefreshWrits()
     ReleaseRows()
     local scan, realm, faction = CurrentScan()
-    local book = {}
-    if scan then
-        if not UI.cache or UI.cache.scan ~= scan then
-            UI.cache = { scan = scan, book = Book.Decode(scan.items) }
-        end
-        book = UI.cache.book
-    else
+    if not scan then
         UI.cache = nil
+        emptyState.Show(realm, faction)
+        footer.Hide()
+        headerRow:Hide()
+        listViewport:Hide()
+        return
     end
+    if not UI.cache or UI.cache.scan ~= scan then
+        UI.cache = { scan = scan, book = Book.Decode(scan.items) }
+    end
+    local book = UI.cache.book
+    emptyState.Hide()
+    headerRow:Show()
+    listViewport:Show()
     local ctx
     ctx, UI.classOf = AltArmy.CraftContext.Build(DS, realm, faction, book, Writs)
     local orders = AltArmy.WritOrders and AltArmy.WritOrders.Orders() or nil
@@ -393,22 +402,15 @@ local function RefreshWrits()
     table.sort(rows, function(a, b) return WC.Compare(a, b, o.writsSortKey, o.writsSortAscending) end)
     UpdateHeaderSortIndicators()
 
-    local color = { 1, 1, 1 }
-    if scan then
-        local now = GetServerTime and GetServerTime() or time()
-        statusLabel:SetText(W.AgeText(scan.t, now, AltArmy.SummaryData.GetTimeString, scan.summary))
-        local level = W.AgeLevel(scan.t, now)
-        color = level == "old" and Theme.COLORS.warningBlocking
-            or level == "stale" and Theme.COLORS.warningCaution
-            or color
-    else
-        -- Short, to leave the middle to the scan button: the docs and the empty cells say the rest.
-        statusLabel:SetText("No scan yet: vendor and craft routes only")
-        color = Theme.COLORS.warningCaution
-    end
+    local now = GetServerTime and GetServerTime() or time()
+    statusLabel:SetText(W.AgeText(scan.t, now, AltArmy.SummaryData.GetTimeString, scan.summary))
+    local level = W.AgeLevel(scan.t, now)
+    local color = level == "old" and Theme.COLORS.warningBlocking
+        or level == "stale" and Theme.COLORS.warningCaution
+        or { 1, 1, 1 }
     statusLabel:SetTextColor(color[1], color[2], color[3], 1)
     footer.Show()
-    footer.SetSummary(scan and scan.summary)
+    footer.SetSummary(scan.summary)
 
     local totalW = TotalColWidth()
     scrollChild:SetSize(totalW, math.max(1, #rows) * UI.ROW_HEIGHT)

@@ -48,6 +48,7 @@ Data\DataStore\DataStoreLevelHistory.lua
 Data\DataStore\LevelProgressData.lua
 Data\DataStore\DataStoreContainers.lua
 Data\DataStore\DataStoreEquipment.lua
+Data\Gear\EmptySlotArt.lua
 Data\Gear\ItemUsability.lua
 Data\Gear\GearScore.lua
 Data\Gear\ItemStats.lua

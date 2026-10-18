@@ -12,7 +12,8 @@ local Theme = AltArmy.Theme
 -- Normal/Highlight 12, Med3 14, Large 16). Like native panels (Character / Reputation / Skills),
 -- all text is 12pt: labels and column headers gold Normal, rows / values white Highlight. Only
 -- icon badge glyphs use a Small base. Use Theme.FONTS.<role>, never a GameFont literal, in UI code.
-Theme.FONTS = {
+-- The Blizzard font each text role is drawn like.
+Theme.BASE_FONTS = {
     pageTitle = "GameFontNormalHuge",       -- Interface Options page header
     headline = "GameFontHighlightLarge",    -- dialog headline
     title = "GameFontNormalMed3",           -- panel / settings / dialog titles
@@ -23,6 +24,74 @@ Theme.FONTS = {
     badge = "GameFontNormalSmall",          -- Gear upgrade glyphs on item icons (scaled x2)
     count = "NumberFontNormal",             -- stack counts on item slots (ItemButtonTemplate's Count)
 }
+
+-- Theme.FONTS names the font object each role uses. In game it is AltArmyFont_<role>, our own font
+-- made from the Blizzard one (CreateFont), so Theme.SetFontSize can resize every font string of the
+-- role at once (the General options' Look and Feel "Font size"); where no font can be made (unit
+-- tests, a client without the Blizzard font) it is the Blizzard font itself.
+Theme.FONTS = {}
+local ownFonts = {} -- role -> { font, path, size (the Blizzard font's), flags }
+for role, base in pairs(Theme.BASE_FONTS) do
+    local baseFont = _G[base]
+    local name = "AltArmyFont_" .. role
+    local own
+    if _G.CreateFont and type(baseFont) == "table" and baseFont.GetFont then
+        local path, size, flags = baseFont:GetFont()
+        if path and size then
+            own = _G.CreateFont(name)
+            if own.SetFontObject then
+                own:SetFontObject(baseFont) -- colour, shadow and justification come along
+            end
+            own:SetFont(path, size, flags or "")
+            ownFonts[role] = { font = own, path = path, size = size, flags = flags or "" }
+        end
+    end
+    Theme.FONTS[role] = own and name or base
+end
+
+-- The font size (the body role's; the other roles keep their ratio to it): AltArmyTBC_Options.fontSize,
+-- unset at the client's own (DEFAULT_FONT_SIZE: the body font's, 12 on Forever and TBC Anniversary).
+Theme.FONT_SIZE_MIN = 9
+Theme.FONT_SIZE_MAX = 18
+local bodyBaseSize = ownFonts.body and ownFonts.body.size or 12
+
+local function clampFontSize(size)
+    return math.max(Theme.FONT_SIZE_MIN, math.min(Theme.FONT_SIZE_MAX, size))
+end
+Theme.DEFAULT_FONT_SIZE = clampFontSize(math.floor(bodyBaseSize + 0.5))
+
+--- A role's size when the body is `fontSize`: its Blizzard size scaled by the same ratio, whole points.
+function Theme.FontSizeFor(baseSize, fontSize, bodyDefault)
+    bodyDefault = bodyDefault or bodyBaseSize
+    if not bodyDefault or bodyDefault <= 0 then bodyDefault = 12 end
+    return math.max(1, math.floor(baseSize * fontSize / bodyDefault + 0.5))
+end
+
+--- The saved font size, clamped; the default when nothing valid is saved.
+function Theme.GetFontSize()
+    local o = _G.AltArmyTBC_Options
+    local s = type(o) == "table" and o.fontSize or nil
+    if type(s) ~= "number" or s ~= s then return Theme.DEFAULT_FONT_SIZE end
+    return clampFontSize(math.floor(s + 0.5))
+end
+
+--- Sizes every role's font for the saved font size (at login, once the saved variables are in).
+function Theme.ApplyFontSize()
+    local size = Theme.GetFontSize()
+    for _, own in pairs(ownFonts) do
+        own.font:SetFont(own.path, Theme.FontSizeFor(own.size, size), own.flags)
+    end
+end
+
+--- Saves a font size (clamped; unset at the default) and applies it.
+function Theme.SetFontSize(size)
+    if type(size) ~= "number" or size ~= size then return end
+    size = clampFontSize(math.floor(size + 0.5))
+    if type(_G.AltArmyTBC_Options) == "table" then
+        _G.AltArmyTBC_Options.fontSize = size ~= Theme.DEFAULT_FONT_SIZE and size or nil
+    end
+    Theme.ApplyFontSize()
+end
 
 Theme.HOVER_TINT_BG = "Interface\\Tooltips\\UI-Tooltip-Background"
 Theme.HOVER_TINT_ALPHA = 0.22
@@ -2192,6 +2261,119 @@ function Theme.CreateLabeledCheckbox(parent, opts)
     row.check = check
     row.label = label
     row.hoverRegion = hoverRegion
+    return row
+end
+
+Theme.OPTIONS_SLIDER_ROW_HEIGHT = 44 -- label line, the slider, its end labels
+Theme.OPTIONS_SLIDER_WIDTH = 200
+
+--- Settings-row slider: a label with the value beside it, the slider under them (the stock
+--- UI-SliderBar art, as OptionsSliderTemplate draws it, built here so no client needs the template)
+--- and its ends labelled. Values snap to `step`; `format(value)` words the value ("100%").
+--- opts: point/relativeTo/relativePoint/x/y (as CreateLabeledCheckbox), right = { relativeTo,
+---   relativePoint, x, y } (the row's TOPRIGHT anchor; else its right edge is the parent's), text,
+---   min, max, step (1), value, width (else the slider stretches to the row, SLIDER_INSET in from
+---   each side), format(v) -> string, onChange(v): called when a drag or click moved the value,
+---   never by SetValue.
+--- Returns the row: { slider, label, valueText, SetValue(v) (sets without onChange), GetValue() }.
+function Theme.CreateOptionsSlider(parent, opts)
+    opts = opts or {}
+    local minV, maxV = opts.min or 0, opts.max or 1
+    local step = opts.step or 1
+    local format = opts.format or function(v) return tostring(v) end
+
+    local row = CreateFrame("Frame", nil, parent)
+    if opts.relativeTo then
+        row:SetPoint(opts.point or "TOPLEFT", opts.relativeTo, opts.relativePoint or "TOPLEFT",
+            opts.x or 0, opts.y or 0)
+    else
+        row:SetPoint(opts.point or "TOPLEFT", parent, opts.relativePoint or "TOPLEFT", opts.x or 0, opts.y or 0)
+    end
+    row:SetHeight(Theme.OPTIONS_SLIDER_ROW_HEIGHT)
+    if opts.right then
+        row:SetPoint("TOPRIGHT", opts.right.relativeTo or parent, opts.right.relativePoint or "TOPRIGHT",
+            opts.right.x or 0, opts.right.y or 0)
+    else
+        row:SetPoint("RIGHT", parent, "RIGHT", 0, 0)
+    end
+
+    local label = row:CreateFontString(nil, "OVERLAY", Theme.FONTS.body)
+    label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+    label:SetText(opts.text or "")
+
+    local valueText = row:CreateFontString(nil, "OVERLAY", Theme.FONTS.heading)
+    valueText:SetPoint("LEFT", label, "RIGHT", 8, 0)
+
+    local SLIDER_INSET = 4
+    local slider = CreateFrame("Slider", nil, row, "BackdropTemplate")
+    slider:SetPoint("TOPLEFT", label, "BOTTOMLEFT", SLIDER_INSET, -6)
+    slider:SetSize(opts.width or Theme.OPTIONS_SLIDER_WIDTH, 17)
+    if not opts.width then
+        -- Stretched to the row: its width follows the row's (the label's height may change with the
+        -- font, so the width alone is set, not a right anchor).
+        row:HookScript("OnSizeChanged", function(_, w)
+            if w and w > 0 then
+                slider:SetWidth(math.max(40, w - 2 * SLIDER_INSET))
+            end
+        end)
+    end
+    slider:SetOrientation("HORIZONTAL")
+    if slider.SetBackdrop then
+        slider:SetBackdrop({
+            bgFile = "Interface\\Buttons\\UI-SliderBar-Background",
+            edgeFile = "Interface\\Buttons\\UI-SliderBar-Border",
+            tile = true, tileSize = 8, edgeSize = 8,
+            insets = { left = 3, right = 3, top = 6, bottom = 6 },
+        })
+    end
+    slider:SetThumbTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
+    slider:SetMinMaxValues(minV, maxV)
+    slider:SetValueStep(step)
+    if slider.SetObeyStepOnDrag then
+        slider:SetObeyStepOnDrag(true)
+    end
+    slider:EnableMouse(true)
+
+    local lowText = slider:CreateFontString(nil, "OVERLAY", Theme.FONTS.body)
+    lowText:SetPoint("TOPLEFT", slider, "BOTTOMLEFT", -2, 2)
+    lowText:SetText(format(minV))
+    local highText = slider:CreateFontString(nil, "OVERLAY", Theme.FONTS.body)
+    highText:SetPoint("TOPRIGHT", slider, "BOTTOMRIGHT", 2, 2)
+    highText:SetText(format(maxV))
+
+    local function snapped(v)
+        local n = math.floor((v - minV) / step + 0.5)
+        return math.max(minV, math.min(maxV, minV + n * step))
+    end
+
+    local current = snapped(opts.value or minV)
+    local setting = false
+    slider:SetScript("OnValueChanged", function(_, v)
+        local snappedValue = snapped(v)
+        valueText:SetText(format(snappedValue))
+        if setting or snappedValue == current then return end
+        current = snappedValue
+        if opts.onChange then
+            opts.onChange(snappedValue)
+        end
+    end)
+
+    --- Shows `v` without calling onChange (the saved value when the page opens).
+    function row.SetValue(v)
+        current = snapped(v)
+        setting = true
+        slider:SetValue(current)
+        setting = false
+        valueText:SetText(format(current))
+    end
+    function row.GetValue()
+        return current
+    end
+    row.SetValue(current)
+
+    row.slider = slider
+    row.label = label
+    row.valueText = valueText
     return row
 end
 

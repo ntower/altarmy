@@ -110,6 +110,31 @@ elseif main.SetMinResize then
     main:SetMinResize(FRAME_WIDTH, FRAME_HEIGHT)
 end
 
+-- The window's scale (the General options' Look and Feel "Window Scale"): the whole window and
+-- everything in it, as RXPGuides scales its guide window. Kept in AltArmyTBC_Options.windowScale
+-- (1 = 100%), applied when the window opens and when the slider moves.
+AltArmy.WINDOW_SCALE_MIN = 0.5
+AltArmy.WINDOW_SCALE_MAX = 2
+
+--- The saved scale, clamped; 1 when nothing valid is saved.
+function AltArmy.GetWindowScale()
+    local o = _G.AltArmyTBC_Options
+    local s = type(o) == "table" and o.windowScale or nil
+    if type(s) ~= "number" or s ~= s then return 1 end
+    return math.max(AltArmy.WINDOW_SCALE_MIN, math.min(AltArmy.WINDOW_SCALE_MAX, s))
+end
+
+--- The screen's size in the window's own units (its scale divides UIParent's), for clamping.
+local function ScreenSize()
+    if not (UIParent and UIParent.GetWidth) then return nil end
+    local w, h = UIParent:GetWidth(), UIParent:GetHeight()
+    local scale = main:GetScale()
+    if not scale or scale <= 0 then scale = 1 end
+    if w and w > 0 then w = w / scale else w = nil end
+    if h and h > 0 then h = h / scale else h = nil end
+    return w, h
+end
+
 --- Whether the grip may change the window's width (the Debug options' "Window width resize").
 local function WidthResizeEnabled()
     local D = AltArmy.Debug
@@ -147,11 +172,9 @@ local function SavedWindowSize()
     if w.width < FRAME_WIDTH or w.height < FRAME_HEIGHT then return nil end
     local width, height = w.width, w.height
     if not WidthResizeEnabled() then width = FRAME_WIDTH end
-    if UIParent and UIParent.GetWidth then
-        local maxW, maxH = UIParent:GetWidth(), UIParent:GetHeight()
-        if maxW and maxW > 0 then width = math.min(width, math.max(FRAME_WIDTH, math.floor(maxW))) end
-        if maxH and maxH > 0 then height = math.min(height, math.max(FRAME_HEIGHT, math.floor(maxH))) end
-    end
+    local maxW, maxH = ScreenSize()
+    if maxW then width = math.min(width, math.max(FRAME_WIDTH, math.floor(maxW))) end
+    if maxH then height = math.min(height, math.max(FRAME_HEIGHT, math.floor(maxH))) end
     return width, height
 end
 
@@ -172,15 +195,13 @@ end
 --- of reach, by a mouse that leaves the game window.
 local function MaxWindowSize()
     local maxW, maxH = FRAME_WIDTH, FRAME_HEIGHT
-    if UIParent and UIParent.GetWidth then
-        local screenW, screenH = UIParent:GetWidth(), UIParent:GetHeight()
-        local left, top = main:GetLeft(), main:GetTop()
-        if screenW and screenW > 0 then
-            maxW = math.max(FRAME_WIDTH, math.floor(screenW - (left or 0)))
-        end
-        if screenH and screenH > 0 then
-            maxH = math.max(FRAME_HEIGHT, math.floor(math.min(screenH, top or screenH)))
-        end
+    local screenW, screenH = ScreenSize() -- GetLeft/GetTop are in the window's units too
+    local left, top = main:GetLeft(), main:GetTop()
+    if screenW then
+        maxW = math.max(FRAME_WIDTH, math.floor(screenW - (left or 0)))
+    end
+    if screenH then
+        maxH = math.max(FRAME_HEIGHT, math.floor(math.min(screenH, top or screenH)))
     end
     if not WidthResizeEnabled() then maxW = FRAME_WIDTH end
     return maxW, maxH
@@ -229,13 +250,31 @@ sizeGrip:SetScript("OnEnter", function(self)
 end)
 sizeGrip:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
---- Applies the saved size: at the stock width unless the width may be changed. Called when the
---- window opens and when the Debug options' "Window width resize" flips (so turning it off snaps a
---- widened window back to the stock width, at its height).
+--- Applies the saved scale, then the saved size: at the stock width unless the width may be changed.
+--- Called when the window opens and when the Debug options' "Window width resize" flips (so turning
+--- it off snaps a widened window back to the stock width, at its height).
 AltArmy.ApplyWindowResize = function()
+    local scale = AltArmy.GetWindowScale()
+    if math.abs((main:GetScale() or 1) - scale) > 0.0005 then
+        main:SetScale(scale)
+    end
     ApplySavedWindowSize()
 end
 main:HookScript("OnShow", AltArmy.ApplyWindowResize)
+
+--- Saves and applies a window scale (1 = 100%; clamped). The size is applied again after it, since
+--- the screen holds less of a bigger window, and the resize listeners hear of the change.
+function AltArmy.SetWindowScale(scale)
+    if type(scale) ~= "number" or scale ~= scale then return end
+    scale = math.max(AltArmy.WINDOW_SCALE_MIN, math.min(AltArmy.WINDOW_SCALE_MAX, scale))
+    if type(_G.AltArmyTBC_Options) == "table" then
+        _G.AltArmyTBC_Options.windowScale = scale ~= 1 and scale or nil
+    end
+    if math.abs((main:GetScale() or 1) - scale) < 0.0005 then return end
+    main:SetScale(scale)
+    ApplySavedWindowSize()
+    NotifyWindowResized()
+end
 -- Tab content that sits in the window's bottom-right corner keeps clear of the grip.
 AltArmy.WINDOW_GRIP_INSET = 16
 AltArmy.ResetWindowSize = function()

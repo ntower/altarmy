@@ -1914,6 +1914,62 @@ describe("AltArmy.Theme", function()
         end)
     end)
 
+    describe("CreateOptionsSlider", function()
+        it("snaps to the step, words the value and tells of moves but not of SetValue", function()
+            local parent = makeStubFrame()
+            local changes = {}
+            local row = Theme.CreateOptionsSlider(parent, {
+                text = "Window Scale",
+                min = 50,
+                max = 200,
+                step = 5,
+                value = 100,
+                format = function(v) return v .. "%" end,
+                onChange = function(v) changes[#changes + 1] = v end,
+            })
+            assert.are.equal("Window Scale", row.label._text)
+            assert.are.equal("100%", row.valueText._text)
+            assert.are.same({ 50, 200 }, { row.slider:GetMinMaxValues() })
+            assert.are.equal(100, row.GetValue())
+
+            row.slider:SetValue(123) -- a drag: snapped to 125
+            assert.are.equal(125, row.GetValue())
+            assert.are.equal("125%", row.valueText._text)
+            assert.are.same({ 125 }, changes)
+
+            row.slider:SetValue(126) -- the same step: no change told
+            assert.are.same({ 125 }, changes)
+
+            row.SetValue(75) -- the saved value shown: no change told
+            assert.are.equal(75, row.GetValue())
+            assert.are.equal("75%", row.valueText._text)
+            assert.are.same({ 125 }, changes)
+
+            row.slider:SetValue(500) -- past the end: clamped
+            assert.are.equal(200, row.GetValue())
+            assert.are.same({ 125, 200 }, changes)
+        end)
+
+        it("stretches the slider to the row unless given a width, and takes a right anchor", function()
+            local parent = makeStubFrame()
+            local row = Theme.CreateOptionsSlider(parent, {
+                text = "Font size", min = 9, max = 18, value = 12,
+                right = { relativeTo = parent, relativePoint = "TOP", x = -4, y = 0 },
+            })
+            local found
+            for _, pt in ipairs(row._points) do
+                if pt[1] == "TOPRIGHT" then found = pt end
+            end
+            assert.are.same({ "TOPRIGHT", parent, "TOP", -4, 0 }, found)
+            row._scripts.OnSizeChanged(row, 300, 44)
+            assert.are.equal(292, row.slider:GetWidth())
+
+            local fixed = Theme.CreateOptionsSlider(parent, { text = "x", min = 0, max = 1, width = 120 })
+            assert.are.equal(120, fixed.slider:GetWidth())
+            assert.is_nil(fixed._scripts.OnSizeChanged)
+        end)
+    end)
+
     describe("CreateLabeledCheckbox", function()
         it("uses character-list checkbox size and hover region", function()
             local parent = makeStubFrame()
