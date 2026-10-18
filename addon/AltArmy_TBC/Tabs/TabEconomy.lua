@@ -298,8 +298,7 @@ local function UpdateHeaderSortIndicators()
     local o = W.EnsureOptions()
     for _, sk in ipairs(UI.sortKeys) do
         local btn = UI.headerButtons[sk]
-        btn.label:SetText(Theme.FormatSortHeaderLabel(UI.sortLabels[sk], sk == o.waylaidSortKey,
-            o.waylaidSortAscending))
+        Theme.SetSortHeaderLabel(btn.label, UI.sortLabels[sk], sk == o.waylaidSortKey, o.waylaidSortAscending)
     end
 end
 

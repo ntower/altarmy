@@ -264,7 +264,7 @@ local function UpdateHeaderSortIndicators()
         local btn = headerButtons and headerButtons[sk]
         if btn and btn.label then
             local base = SORT_HEADER_LABEL[sk]
-            btn.label:SetText(Theme.FormatSortHeaderLabel(base, sk == currentSortKey, sortAscending))
+            Theme.SetSortHeaderLabel(btn.label, base, sk == currentSortKey, sortAscending)
         end
     end
 end

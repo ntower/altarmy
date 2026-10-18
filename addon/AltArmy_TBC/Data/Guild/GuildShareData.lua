@@ -582,6 +582,33 @@ function GSD.ClearLinkProbe(realm, guid, skillLine)
     if probes then probes[skillLine] = nil end
 end
 
+--- Forget every profession read from a window whose recipe list was another profession's: a read taken
+--- before the client refreshed the list (a guildmate's First Aid stored as their Cooking, seen 2026-10-18),
+--- stored before OwnRecipeRead checked for it. The planner reads them again. Returns how many were dropped.
+function GSD.DropForeignLinkReads()
+    local RI = AltArmy.RecipeInfo
+    if not (RI and RI.RecipesFitProfession and RI.IsAvailable and RI.IsAvailable()) then return 0 end
+    local dropped = 0
+    for _, rt in pairs(ensure().chars) do
+        for _, entry in pairs(rt) do
+            local profs = type(entry) == "table" and entry.Professions or nil
+            if type(profs) == "table" then
+                for key, prof in pairs(profs) do
+                    if type(prof) == "table" and prof.linkReadAt and type(prof.Recipes) == "table" then
+                        local ids = {}
+                        for id in pairs(prof.Recipes) do ids[#ids + 1] = id end
+                        if not RI.RecipesFitProfession(ids, prof.key or key) then
+                            profs[key] = nil
+                            dropped = dropped + 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return dropped
+end
+
 --- Remember that a member hasn't got a profession (the server answered its link with an empty window), and
 --- forget any stored copy of it read from their window before (they dropped it). Asked again after
 --- LINK_REREAD_SEC or when their level moved. Returns true when a stored profession was removed.

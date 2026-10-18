@@ -157,6 +157,29 @@ function RI.ResolveProfessionKey(professionName)
     return found or nil
 end
 
+--- Whether a profession window's recipe list is that profession's. A window opened while the client still
+--- holds the list of the one before (a guildmate's First Aid, say, when their Cooking is asked for) describes
+--- the new profession but lists the old one's recipes until the server's list arrives, so a list is trusted
+--- only when no more of the ids the bundled data knows belong to another profession than to this one.
+--- Without data, a key or any known id there is nothing to check. Returns fits, known, foreign.
+function RI.RecipesFitProfession(ids, professionKey)
+    if not RI.IsAvailable() or type(professionKey) ~= "string" or professionKey == ""
+        or type(ids) ~= "table" then
+        return true, 0, 0
+    end
+    local inData, foreign = 0, 0
+    for _, id in ipairs(ids) do
+        local record = RI.GetRecipe(id)
+        if record and record.professionKey then
+            inData = inData + 1
+            if record.professionKey ~= professionKey then
+                foreign = foreign + 1
+            end
+        end
+    end
+    return foreign * 2 <= inData, inData, foreign
+end
+
 local function sortedIndex(keyOf)
     local index = {}
     local spells = {}

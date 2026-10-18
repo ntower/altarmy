@@ -165,22 +165,21 @@ function AltArmy.SummaryData.GetCharacterList()
             if not isMaxLevel and DL and DL.GetWellRestedRank then
                 wellRestedRank = DL.GetWellRestedRank(charData)
             end
-            local restRate
-            if isMaxLevel then
-                restRate = 0
-            elseif isCurrent and UnitXPMax and GetXPExhaustion then
-                local playerXpMax = UnitXPMax("player") or 0
-                local restXP = GetXPExhaustion() or 0
-                if playerXpMax <= 0 then
-                    restRate = 0
-                else
-                    local restMultiplier = (DL and DL.GetRestXpMultiplier and DL.GetRestXpMultiplier(charData)) or 1
-                    local maxRest = playerXpMax * 1.5 * restMultiplier
-                    restRate = math.min(100, (restXP / maxRest) * 100)
+            local restInfo
+            if not isMaxLevel and DS.GetRestXpInfo then
+                local live
+                if isCurrent and UnitXPMax and GetXPExhaustion then
+                    live = {
+                        restXP = GetXPExhaustion() or 0,
+                        xpMax = UnitXPMax("player") or 0,
+                        resting = IsResting and IsResting() or false,
+                    }
                 end
-            else
-                restRate = (DS.GetRestXp and DS:GetRestXp(charData)) or 0
+                restInfo = DS:GetRestXpInfo(charData, live)
+                -- a linked account's character online now: its rest as last synced, growing or not
+                if restInfo and linkedOnline then restInfo.secondsToFull = nil end
             end
+            local restRate = restInfo and math.min(100, (restInfo.current / restInfo.max) * 100) or 0
             local bagSlots = (DS.GetNumBagSlots and DS:GetNumBagSlots(charData)) or 0
             local bagFree = (DS.GetNumFreeBagSlots and DS:GetNumFreeBagSlots(charData)) or 0
             local equipmentCount = 0
@@ -197,8 +196,14 @@ function AltArmy.SummaryData.GetCharacterList()
                 linkId = linkId,
                 level = level,
                 restXp = restRate,
+                restMax = restInfo and restInfo.max or nil,
+                restCurrent = restInfo and restInfo.current or nil,
+                restSecondsToFull = restInfo and restInfo.secondsToFull or nil,
                 wellRestedRank = wellRestedRank,
                 isMaxLevel = isMaxLevel,
+                -- logged out outside an inn or city (false, not nil: unknown from before it was saved)
+                notResting = not (isCurrent or linkedOnline) and not isMaxLevel
+                    and charData.isResting == false or nil,
                 money = money,
                 played = played,
                 lastOnline = (isCurrent or linkedOnline) and nil or lastLogout,
@@ -579,19 +584,66 @@ function AltArmy.SummaryData.PresentMissingDataTooltip(owner, anchor, name, real
     return showInstructionsTooltip(owner, anchor, title, lines)
 end
 
---- Tooltip for a Rest XP that includes the "Well Rested" legacy talent (entry.wellRestedRank > 0):
---- the talent's name, rank and what it adds.
+local function colorCode(r, g, b)
+    return string.format("|cFF%02x%02x%02x", math.floor(r * 255), math.floor(g * 255), math.floor(b * 255))
+end
+
+--- Whole XP amount with thousands separators ("12,345").
+local function formatXp(amount)
+    local digits = tostring(math.floor((tonumber(amount) or 0) + 0.5))
+    local out = digits:reverse():gsub("(%d%d%d)", "%1,"):reverse()
+    return (out:gsub("^,", ""))
+end
+
+--- Tooltip over a Summary row's Rest XP cell: the name in class colour; the most rest XP it can hold, what
+--- it has and how long until full; then the "Well Rested" talent when it has a rank, and a warning when it
+--- logged out outside a resting area (entry.notResting).
 --- @return boolean true if a tooltip was shown
-function AltArmy.SummaryData.PresentWellRestedTooltip(owner, anchor, entry)
-    local rank = entry and tonumber(entry.wellRestedRank) or 0
-    if not GameTooltip or not owner or rank <= 0 then return false end
-    local DL = AltArmy.DataStoreLegacy or {}
-    local percent = math.floor(rank * (DL.REST_TALENT_PERCENT_PER_RANK or 0.04) * 100 + 0.5)
+function AltArmy.SummaryData.PresentRestXpTooltip(owner, anchor, entry)
+    if not GameTooltip or not owner or not entry then return false end
+    local CC = AltArmy.ClassColor
+    local r, g, b = 1, 1, 1
+    if CC and CC.getRGBOr then
+        r, g, b = CC.getRGBOr(entry.classFile, r, g, b)
+    end
+    local name = entry.name or ""
     GameTooltip:SetOwner(owner, anchor)
     GameTooltip:ClearLines()
-    GameTooltip:AddLine("Well Rested", 1, 1, 1)
-    GameTooltip:AddLine(string.format("Rank %d/%d", rank, DL.REST_TALENT_MAX_RANK or 5), 1, 0.82, 0)
-    GameTooltip:AddLine(string.format("Rested XP cap and accumulation +%d%%", percent), 0.2, 1, 0.2, true)
+    GameTooltip:AddLine(name, r, g, b)
+    if entry.isMaxLevel then
+        GameTooltip:AddLine("No rest XP at max level", 1, 0.82, 0)
+    elseif entry.restMax then
+        local seconds = entry.restSecondsToFull
+        local timeText
+        if seconds == nil then
+            timeText = entry.isOnline and "--" or "Unknown"
+        elseif seconds <= 0 then
+            timeText = "Now"
+        else
+            timeText = AltArmy.SummaryData.GetTimeString(math.ceil(seconds))
+        end
+        GameTooltip:AddLine("Max Rest XP: " .. formatXp(entry.restMax), 1, 1, 1)
+        GameTooltip:AddLine("Current Rest XP: " .. formatXp(entry.restCurrent), 1, 1, 1)
+        GameTooltip:AddLine("Time until fully rested: " .. timeText, 1, 1, 1)
+    else
+        GameTooltip:AddLine("Rest XP unknown: log in with this character", 1, 0.82, 0)
+    end
+    local rank = tonumber(entry.wellRestedRank) or 0
+    if rank > 0 and not entry.isMaxLevel then
+        local DL = AltArmy.DataStoreLegacy or {}
+        local percent = math.floor(rank * (DL.REST_TALENT_PERCENT_PER_RANK or 0.04) * 100 + 0.5)
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddDoubleLine("Well Rested", string.format("Rank %d/%d", rank, DL.REST_TALENT_MAX_RANK or 5),
+            1, 1, 1, 1, 0.82, 0)
+        GameTooltip:AddLine(string.format("Rested XP cap and accumulation +%d%%", percent), 0.2, 1, 0.2, true)
+    end
+    if entry.notResting then
+        local theme = AltArmy.Theme and AltArmy.Theme.COLORS
+        local err = theme and theme.warningBlocking or { 1.00, 0.40, 0.30, 1.00 }
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine(colorCode(r, g, b) .. name .. "|r" .. colorCode(err[1], err[2], err[3])
+            .. " is not in a resting area|r", 1, 1, 1, true)
+    end
     GameTooltip:Show()
     return true
 end

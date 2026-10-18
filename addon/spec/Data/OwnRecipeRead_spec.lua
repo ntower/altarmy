@@ -422,6 +422,34 @@ describe("OwnRecipeRead", function()
         end)
     end)
 
+    describe("First Aid (WoW Forever)", function()
+        local recipes = { [100] = { color = 1 } }
+
+        it("is read from the slot other clients give Archaeology", function()
+            profs[3] = { name = "First Aid", rank = 84, max = 150, numSpells = 1, offset = 40, line = 129 }
+            spellbook[41] = 3273
+            _G.GetProfessions = function() return 1, 2, 3, nil, 5, nil end
+            DS._GetCurrentCharTable().Professions = {
+                Tailoring = { rank = 150, Recipes = recipes },
+                Alchemy = { rank = 75, Recipes = recipes },
+            }
+            login()
+            assert.are.same({ "trade:Player-1-ABC:3273:129" }, links)
+        end)
+
+        it("isn't confused with Archaeology, which has nothing to read", function()
+            profs[3] = { name = "Archaeology", rank = 50, max = 75, numSpells = 1, offset = 40, line = 794 }
+            spellbook[41] = 78670
+            _G.GetProfessions = function() return 1, 2, 3, nil, 5, nil end
+            DS._GetCurrentCharTable().Professions = {
+                Tailoring = { rank = 150, Recipes = recipes },
+                Alchemy = { rank = 75, Recipes = recipes },
+            }
+            login()
+            assert.are.same({}, links)
+        end)
+    end)
+
     describe("after learning a recipe", function()
         it("reads that profession again", function()
             R.OnRecipeLearned("Alchemy")
@@ -601,6 +629,32 @@ describe("OwnRecipeRead", function()
             R.Enqueue(guildJob())
             windowOpens({ name = "Alice", profession = "Alchemy" })
             assert.are.equal("wrong profession", results[1].outcome)
+        end)
+
+        it("waits while the window still lists another profession's recipes", function()
+            require("RecipeInfo")
+            local RI = AltArmy.RecipeInfo
+            local savedData = AltArmy.RecipeData
+            -- Alice's First Aid was read just before; the Cooking window describes Cooking but lists it still.
+            AltArmy.RecipeData = { recipes = {
+                [100] = { "firstAid", 1251, 1, 30, 45, "starter", false },
+                [300] = { "firstAid", 2581, 40, 50, 100, "trainer", false },
+            } }
+            RI.ClearCaches()
+            R.Enqueue(guildJob())
+            windowOpens({ name = "Alice" })
+            assert.are.equal(0, #results)
+            -- The window's own list arrives.
+            AltArmy.RecipeData = { recipes = {
+                [100] = { "tailoring", 2996, 1, 25, 50, "starter", false },
+                [300] = { "tailoring", 2997, 1, 25, 50, "starter", false },
+            } }
+            RI.ClearCaches()
+            windowOpens({ name = "Alice" })
+            AltArmy.RecipeData = savedData
+            RI.ClearCaches()
+            assert.are.equal("ok", results[1].outcome)
+            assert.are.same({ 100, 300 }, results[1].result.ids)
         end)
 
         it("doesn't trust a linked window that names nobody, and says so at the timeout", function()

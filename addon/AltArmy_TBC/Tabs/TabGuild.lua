@@ -1002,7 +1002,7 @@ local function updateListHeaderSortIndicators()
     for key, btn in pairs(listHeaderButtons) do
         if btn.label then
             local base = LIST_HEADER_LABEL[key] or key
-            btn.label:SetText(Theme.FormatSortHeaderLabel(base, key == listSortKey, listSortAscending))
+            Theme.SetSortHeaderLabel(btn.label, base, key == listSortKey, listSortAscending)
         end
     end
 end
@@ -2871,7 +2871,7 @@ local function updateRecipeHeaderSortIndicators()
     for key, btn in pairs(recipeHeaderButtons) do
         if btn.label then
             local base = RECIPE_HEADER_LABEL[key] or key
-            btn.label:SetText(Theme.FormatSortHeaderLabel(base, key == recipeSortKey, recipeSortAscending))
+            Theme.SetSortHeaderLabel(btn.label, base, key == recipeSortKey, recipeSortAscending)
         end
     end
 end

@@ -80,6 +80,7 @@ read_globals = {
     "UnitXP",
     "UnitXPMax",
     "GetXPExhaustion",
+    "IsResting",
     "GetMoney",
     -- Time
     "time",

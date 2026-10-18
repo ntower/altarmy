@@ -94,7 +94,7 @@ local function UpdateHeaderSortIndicators(headerRow)
     local o = IO.EnsureOptions()
     for key, cell in pairs(headerRow.cells) do
         local label = cell.label or cell
-        label:SetText(Theme.FormatSortHeaderLabel(UI.colLabels[key], key == o.mailSortKey, o.mailSortAscending))
+        Theme.SetSortHeaderLabel(label, UI.colLabels[key], key == o.mailSortKey, o.mailSortAscending)
     end
 end
 

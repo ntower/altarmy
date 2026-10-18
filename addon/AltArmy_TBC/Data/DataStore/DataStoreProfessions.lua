@@ -774,23 +774,39 @@ local function ApplyProfessionSlot(char, currentNames, index, isPrimary, isSecon
     return CollectProfessionEntry(char, currentNames, name, rank, maxRank, isPrimary, isSecondary)
 end
 
+local SPELL_ID_ARCHAEOLOGY = 78670
+
+--- Whether a GetProfessions() slot's name is Archaeology, the one profession with nothing to store here
+--- (not in TBC or Forever content).
+local function IsArchaeology(name)
+    if type(name) ~= "string" or name == "" then return false end
+    if HasSpellInfoApi() and DS.CompatGetSpellInfo(SPELL_ID_ARCHAEOLOGY) == name then return true end
+    local label = _G.PROFESSIONS_ARCHAEOLOGY
+    return name == "Archaeology" or (type(label) == "string" and name == label)
+end
+
 --- Fallback scan for clients missing GetNumSkillLines/GetSkillLineInfo (e.g. WoW Forever — see
 --- docs/WOW_FOREVER_COMPATIBILITY_RESEARCH.md, "Seventh"). GetProfessions() returns spell-tab
 --- indices (nil when not learned) for the primary/secondary profession slots; GetProfessionInfo
 --- resolves each to name/rank/maxRank. Unlike the legacy loop this needs no window open first —
---- it's a direct query, not a UI-panel snapshot. Archaeology is skipped: not present in TBC/Forever
---- content. First Aid's inclusion as GetProfessions()'s 6th return is unconfirmed on Forever
---- (real retail dropped it in Patch 8.0.1, Classic-family clients kept it); read defensively.
+--- it's a direct query, not a UI-panel snapshot. The first two slots are the primaries; every other
+--- slot is a secondary skill, told apart by name rather than position: WoW Forever reports First Aid
+--- in the third slot, where clients with Archaeology have that (seen in game 2026-10-18: a character
+--- with two primaries, First Aid and Cooking got slots 1, 2, 3 and 5), and the sixth stays empty.
+--- Archaeology alone is skipped.
 local function ScanProfessionLinksViaGetProfessions(char, currentNames)
-    local prof1Index, prof2Index, _, fishIndex, cookIndex, firstAidIndex = GetProfessions()
-    local name1, changed1 = ApplyProfessionSlot(char, currentNames, prof1Index, true, false)
-    local name2, changed2 = ApplyProfessionSlot(char, currentNames, prof2Index, true, false)
-    local _, changedCook = ApplyProfessionSlot(char, currentNames, cookIndex, false, true)
-    local _, changedFish = ApplyProfessionSlot(char, currentNames, fishIndex, false, true)
-    local _, changedFirstAid = ApplyProfessionSlot(char, currentNames, firstAidIndex, false, true)
-    if name1 then char.Prof1 = name1 end
-    if name2 then char.Prof2 = name2 end
-    local presenceChanged = changed1 or changed2 or changedCook or changedFish or changedFirstAid
+    local slots = { GetProfessions() }
+    local presenceChanged = false
+    for slot = 1, 6 do
+        local index = slots[slot]
+        if type(index) == "number" and not IsArchaeology((GetProfessionInfo(index))) then
+            local isPrimary = slot <= 2
+            local name, changed = ApplyProfessionSlot(char, currentNames, index, isPrimary, not isPrimary)
+            if changed then presenceChanged = true end
+            if name and slot == 1 then char.Prof1 = name end
+            if name and slot == 2 then char.Prof2 = name end
+        end
+    end
     return presenceChanged, true
 end
 
@@ -812,6 +828,7 @@ function DS:ScanProfessionLinks()
         presenceChanged, skillLinesReady = ScanProfessionLinksViaGetProfessions(char, currentNames)
     end
 
+    self:MarkForeignRecipeListsStale(char)
     if PruneDroppedProfessions(char, currentNames, skillLinesReady) then
         notifyRecipesChanged()
     elseif presenceChanged then
@@ -957,6 +974,17 @@ local function tradeSkillFlag(fnName)
     return a == true, b
 end
 
+--- Whether a profession window's learned recipe ids belong to the profession it names (by the bundled recipe
+--- data, RecipeInfo.RecipesFitProfession); true when nothing can tell.
+function DS.RecipesFitProfessionWindow(recipeIDs, professionName)
+    local RI = AltArmy and AltArmy.RecipeInfo
+    local SS = AltArmy and AltArmy.SearchSettings
+    if not (RI and RI.RecipesFitProfession and SS and SS.ResolveProfessionKey) then return true end
+    local ok, key = pcall(SS.ResolveProfessionKey, professionName)
+    if not ok or not key then return true end
+    return RI.RecipesFitProfession(recipeIDs, key) == true
+end
+
 --- True when the open window is not this character's own profession: a guild or NPC crafting window,
 --- or another player's linked profession (a chat link the player clicked, OwnRecipeRead reading a
 --- guildmate, or another addon reading players in the background). The player's own link, which
@@ -1003,6 +1031,17 @@ local function ScanRecipesViaTradeSkillUI(char)
 
     local recipeIDs = C_TradeSkillUI.GetAllRecipeIDs()
     if not recipeIDs or #recipeIDs == 0 then return nil end
+    local learned, learnedIDs = {}, {}
+    for _, recipeID in ipairs(recipeIDs) do
+        local recipeInfo = C_TradeSkillUI.GetRecipeInfo(recipeID)
+        if recipeInfo and recipeInfo.learned then
+            learned[#learned + 1] = { recipeID, recipeInfo }
+            learnedIDs[#learnedIDs + 1] = recipeID
+        end
+    end
+    -- The window may describe this profession while still listing the one open before (another profession's
+    -- recipes, as OwnRecipeRead's reads open windows back to back); its own list comes with a later event.
+    if not DS.RecipesFitProfessionWindow(learnedIDs, tradeskillName) then return nil end
     prof.Recipes = prof.Recipes or {}
     for k in pairs(prof.Recipes) do prof.Recipes[k] = nil end
 
@@ -1013,33 +1052,31 @@ local function ScanRecipesViaTradeSkillUI(char)
     local CD = AltArmy and AltArmy.CooldownData
     local gt = GetTime and GetTime() or 0
     local wall = time and time() or 0
-    for _, recipeID in ipairs(recipeIDs) do
-        local recipeInfo = C_TradeSkillUI.GetRecipeInfo(recipeID)
-        if recipeInfo and recipeInfo.learned then
-            local color = RelativeDifficultyToColor[recipeInfo.relativeDifficulty] or 1
-            local resultItemID
-            if hasOutputApi then
-                local ok, outputInfo = pcall(C_TradeSkillUI.GetRecipeOutputItemData, recipeID)
-                if ok and outputInfo then
-                    resultItemID = outputInfo.itemID
-                end
+    for _, pair in ipairs(learned) do
+        local recipeID, recipeInfo = pair[1], pair[2]
+        local color = RelativeDifficultyToColor[recipeInfo.relativeDifficulty] or 1
+        local resultItemID
+        if hasOutputApi then
+            local ok, outputInfo = pcall(C_TradeSkillUI.GetRecipeOutputItemData, recipeID)
+            if ok and outputInfo then
+                resultItemID = outputInfo.itemID
             end
-            -- name comes straight from GetRecipeInfo: recipeID here isn't reliably a spell ID,
-            -- so search's later GetSpellInfo/GetItemInfo(recipeID) guess can miss or misresolve it.
-            prof.Recipes[recipeID] = {
-                color = color, resultItemID = resultItemID, primaryRecipeID = recipeID, name = recipeInfo.name,
-            }
-            if getRecipeCooldown and CD and CD.IsTrackedSpellId and CD.IsTrackedSpellId(recipeID) then
-                local ok, remaining, isDay = pcall(getRecipeCooldown, recipeID)
-                if ok then
-                    PersistCooldownExpiry(char, recipeID, remaining, isDay, gt, wall, "TradeSkillUI", "tradeskill")
-                    LogCooldownScanDebug(string.format(
-                        "TradeSkillUI recipe=%d cd=%s -> expUnix=%s",
-                        recipeID,
-                        tostring(remaining),
-                        tostring(char.ProfCooldownExpiry[recipeID] and char.ProfCooldownExpiry[recipeID].expiresAtUnix)
-                    ))
-                end
+        end
+        -- name comes straight from GetRecipeInfo: recipeID here isn't reliably a spell ID,
+        -- so search's later GetSpellInfo/GetItemInfo(recipeID) guess can miss or misresolve it.
+        prof.Recipes[recipeID] = {
+            color = color, resultItemID = resultItemID, primaryRecipeID = recipeID, name = recipeInfo.name,
+        }
+        if getRecipeCooldown and CD and CD.IsTrackedSpellId and CD.IsTrackedSpellId(recipeID) then
+            local ok, remaining, isDay = pcall(getRecipeCooldown, recipeID)
+            if ok then
+                PersistCooldownExpiry(char, recipeID, remaining, isDay, gt, wall, "TradeSkillUI", "tradeskill")
+                LogCooldownScanDebug(string.format(
+                    "TradeSkillUI recipe=%d cd=%s -> expUnix=%s",
+                    recipeID,
+                    tostring(remaining),
+                    tostring(char.ProfCooldownExpiry[recipeID] and char.ProfCooldownExpiry[recipeID].expiresAtUnix)
+                ))
             end
         end
     end
@@ -1427,6 +1464,28 @@ function DS:MarkProfessionRecipesStale(char, professionName)
         return
     end
     markAllCraftableProfessionRecipesStale(needing, char)
+end
+
+--- Forget recipe lists stored for the wrong profession (a window scanned before the client refreshed its list
+--- from the one open before: another profession's recipes under this one's name) and mark those professions
+--- stale, so the window is read again. Returns how many were cleared.
+function DS:MarkForeignRecipeListsStale(char)
+    char = char or GetCurrentCharTable()
+    if not char or type(char.Professions) ~= "table" then return 0 end
+    local cleared = 0
+    for profName, prof in pairs(char.Professions) do
+        if type(prof) == "table" and type(prof.Recipes) == "table" and next(prof.Recipes) ~= nil then
+            local ids = {}
+            for id in pairs(prof.Recipes) do ids[#ids + 1] = id end
+            if not DS.RecipesFitProfessionWindow(ids, profName) then
+                prof.Recipes = {}
+                self:MarkProfessionRecipesStale(char, profName)
+                cleared = cleared + 1
+            end
+        end
+    end
+    if cleared > 0 then notifyRecipesChanged() end
+    return cleared
 end
 
 --- Clear the Summary rescan warning for one profession after a successful recipe scan.

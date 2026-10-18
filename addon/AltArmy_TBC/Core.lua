@@ -24,6 +24,8 @@ local MainTabs = AltArmy.MainTabs
 -- Height matches Forever's native CharacterFrame (CHARACTER_FRAME_HEIGHT = 484).
 local FRAME_WIDTH = 670
 local FRAME_HEIGHT = 484
+-- The grip never makes the window taller than twice the stock height.
+local MAX_FRAME_HEIGHT = FRAME_HEIGHT * 2
 local TAB_HEIGHT = 22 -- toolbar control height (settings button)
 local CONTENT_INSET = 8
 -- Toolbar row sits under the title bar, right of the portrait circle; content starts below it.
@@ -99,7 +101,8 @@ dragRegion:SetScript("OnDragStop", function()
 end)
 
 -- Resize from the bottom-right corner (the chat window's size grabber), never below the stock
--- 670 x 484; the size is kept in AltArmyTBC_Options.window and applied when the window opens.
+-- 670 x 484 and never taller than twice the stock height (MAX_FRAME_HEIGHT); the size is kept in
+-- AltArmyTBC_Options.window and applied when the window opens.
 -- Tab content stretches with the window (the content area is anchored to its edges). The grip changes
 -- the height alone until every tab reflows to the width: the Debug options' "Window width resize"
 -- (/altarmy debug resize on|off) lets it change the width too.
@@ -163,14 +166,15 @@ local function SetWindowSize(w, h)
 end
 
 --- The saved window size, when it is a valid one no smaller than the stock size, clamped to the
---- screen so a size saved on a bigger monitor still opens with its grip reachable. While the width
---- can't be changed the saved width is passed over: the window is the stock width at the saved height.
+--- screen so a size saved on a bigger monitor still opens with its grip reachable, and to twice the
+--- stock height. While the width can't be changed the saved width is passed over: the window is the
+--- stock width at the saved height.
 local function SavedWindowSize()
     local o = _G.AltArmyTBC_Options
     local w = type(o) == "table" and type(o.window) == "table" and o.window or nil
     if not w or type(w.width) ~= "number" or type(w.height) ~= "number" then return nil end
     if w.width < FRAME_WIDTH or w.height < FRAME_HEIGHT then return nil end
-    local width, height = w.width, w.height
+    local width, height = w.width, math.min(w.height, MAX_FRAME_HEIGHT)
     if not WidthResizeEnabled() then width = FRAME_WIDTH end
     local maxW, maxH = ScreenSize()
     if maxW then width = math.min(width, math.max(FRAME_WIDTH, math.floor(maxW))) end
@@ -191,17 +195,17 @@ end
 
 --- The most the window may grow to from where it stands: down to the screen's bottom edge and, with
 --- the width free, right to its right edge (the drag moves the bottom and right edges; the top-left
---- corner stays put). Never under the stock size. So the grip can't be dragged off the screen, out
---- of reach, by a mouse that leaves the game window.
+--- corner stays put), and never taller than twice the stock height. Never under the stock size. So
+--- the grip can't be dragged off the screen, out of reach, by a mouse that leaves the game window.
 local function MaxWindowSize()
-    local maxW, maxH = FRAME_WIDTH, FRAME_HEIGHT
+    local maxW, maxH = FRAME_WIDTH, MAX_FRAME_HEIGHT
     local screenW, screenH = ScreenSize() -- GetLeft/GetTop are in the window's units too
     local left, top = main:GetLeft(), main:GetTop()
     if screenW then
         maxW = math.max(FRAME_WIDTH, math.floor(screenW - (left or 0)))
     end
     if screenH then
-        maxH = math.max(FRAME_HEIGHT, math.floor(math.min(screenH, top or screenH)))
+        maxH = math.max(FRAME_HEIGHT, math.floor(math.min(MAX_FRAME_HEIGHT, screenH, top or screenH)))
     end
     if not WidthResizeEnabled() then maxW = FRAME_WIDTH end
     return maxW, maxH

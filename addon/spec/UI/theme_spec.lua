@@ -145,6 +145,7 @@ describe("AltArmy.Theme", function()
                 GetParent = function(self) return self._parent end,
                 SetWidth = function() end,
                 SetJustifyH = function(self, h) self._justifyH = h end,
+                GetJustifyH = function(self) return self._justifyH or "LEFT" end,
                 SetJustifyV = function(self, v) self._justifyV = v end,
                 SetWordWrap = function(self, on) self._wordWrap = on end,
                 Show = function(self) self._shown = true end,
@@ -1129,16 +1130,94 @@ describe("AltArmy.Theme", function()
     end)
 
     describe("sort header arrows", function()
-        it("returns the base label when the column is not sorted", function()
-            assert.are.equal("Item", Theme.FormatSortHeaderLabel("Item", false, true))
+        local function makeLabel(justify)
+            local btn = makeStubFrame()
+            local label = btn:CreateFontString(nil, "OVERLAY")
+            label:SetJustifyH(justify)
+            return btn, label
+        end
+
+        it("sets the label and draws no arrow when the column is not sorted", function()
+            local btn, label = makeLabel("LEFT")
+            Theme.SetSortHeaderLabel(label, "Item", false, true)
+            assert.are.equal("Item", label._text)
+            assert.are.equal(0, #btn._textures)
         end)
 
-        it("appends ^ when sorted ascending", function()
-            assert.are.equal("Recipe ^", Theme.FormatSortHeaderLabel("Recipe", true, true))
+        it("draws Blizzard's sort arrow texture pointing up after a left-justified label when ascending", function()
+            local btn, label = makeLabel("LEFT")
+            Theme.SetSortHeaderLabel(label, "Recipe", true, true)
+            assert.are.equal("Recipe", label._text)
+            local arrow = btn._textures[1]
+            assert.is_not_nil(arrow)
+            assert.are.equal(Theme.SORT_ARROW.texture, arrow._texture)
+            assert.are.equal(Theme.SORT_ARROW.width, arrow._width)
+            assert.are.equal(Theme.SORT_ARROW.height, arrow._height)
+            assert.are.same({ 0, 0.5625, 1, 0 }, arrow._texCoord)
+            assert.is_true(arrow:IsShown())
+            local gap = label:GetStringWidth() + Theme.SORT_ARROW.gap
+            assert.are.same({ "LEFT", label, "LEFT", gap, 0 }, arrow._points[1])
         end)
 
-        it("appends v when sorted descending", function()
-            assert.are.equal("Skill v", Theme.FormatSortHeaderLabel("Skill", true, false))
+        it("points the arrow down when descending", function()
+            local btn, label = makeLabel("LEFT")
+            Theme.SetSortHeaderLabel(label, "Skill", true, false)
+            assert.are.same({ 0, 0.5625, 0, 1 }, btn._textures[1]._texCoord)
+        end)
+
+        it("puts the arrow before the text of a right-justified label", function()
+            local btn, label = makeLabel("RIGHT")
+            Theme.SetSortHeaderLabel(label, "Skill", true, true)
+            local gap = label:GetStringWidth() + Theme.SORT_ARROW.gap
+            assert.are.same({ "RIGHT", label, "RIGHT", -gap, 0 }, btn._textures[1]._points[1])
+        end)
+
+        it("puts the arrow after the text of a centred label", function()
+            local btn, label = makeLabel("CENTER")
+            Theme.SetSortHeaderLabel(label, "Name", true, true)
+            local gap = label:GetStringWidth() / 2 + Theme.SORT_ARROW.gap
+            assert.are.same({ "LEFT", label, "CENTER", gap, 0 }, btn._textures[1]._points[1])
+        end)
+
+        describe("SetSortArrowButton", function()
+            local R = 0.5625
+
+            it("draws the arrow centred on the button, pointing right", function()
+                local btn = makeStubFrame()
+                Theme.SetSortArrowButton(btn, "right")
+                local arrow = btn._textures[1]
+                assert.are.equal(Theme.SORT_ARROW.texture, arrow._texture)
+                assert.are.same({ 0, 0, R, 0, 0, 1, R, 1 }, arrow._texCoord)
+                assert.are.equal(12, arrow._width)
+                assert.are.equal(14, arrow._height)
+                assert.are.same({ "CENTER", btn, "CENTER", 1, 0 }, arrow._points[1])
+                assert.is_true(arrow:IsShown())
+            end)
+
+            it("points left, up and down, reusing one texture", function()
+                local btn = makeStubFrame()
+                Theme.SetSortArrowButton(btn, "left")
+                assert.are.same({ 0, 1, R, 1, 0, 0, R, 0 }, btn._textures[1]._texCoord)
+                assert.are.same({ { "CENTER", btn, "CENTER", -1, 0 } }, btn._textures[1]._points)
+                Theme.SetSortArrowButton(btn, "up")
+                assert.are.same({ 0, R, 1, 0 }, btn._textures[1]._texCoord)
+                assert.are.same({ { "CENTER", btn, "CENTER", 0, 0 } }, btn._textures[1]._points)
+                assert.are.equal(14, btn._textures[1]._width)
+                assert.are.equal(12, btn._textures[1]._height)
+                Theme.SetSortArrowButton(btn, "down")
+                assert.are.same({ 0, R, 0, 1 }, btn._textures[1]._texCoord)
+                assert.are.equal(1, #btn._textures)
+            end)
+        end)
+
+        it("reuses one arrow per label and hides it when the column stops being sorted", function()
+            local btn, label = makeLabel("LEFT")
+            Theme.SetSortHeaderLabel(label, "Recipe", true, true)
+            Theme.SetSortHeaderLabel(label, "Recipe", true, false)
+            Theme.SetSortHeaderLabel(label, "Recipe", false, false)
+            assert.are.equal(1, #btn._textures)
+            assert.is_false(btn._textures[1]:IsShown())
+            assert.are.equal("Recipe", label._text)
         end)
     end)
 

@@ -553,6 +553,12 @@ function GLR.OnEvent(event, ...)
     if event == "PLAYER_ENTERING_WORLD" then
         local isInitialLogin, isReloadingUi = ...
         if (isInitialLogin or isReloadingUi) and not state.loginArmed and C_Timer and C_Timer.After then
+            local GSD = AltArmy.GuildShareData
+            local dropped = GSD and GSD.DropForeignLinkReads and GSD.DropForeignLinkReads() or 0
+            if dropped > 0 then
+                log(string.format("LINK dropped %d read(s) holding another profession's recipes", dropped))
+                notifyChanged()
+            end
             state.loginArmed = true
             C_Timer.After(GLR.LOGIN_DELAY, function()
                 state.loginArmed = false

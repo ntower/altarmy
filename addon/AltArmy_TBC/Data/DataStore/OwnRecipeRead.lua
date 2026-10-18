@@ -109,6 +109,8 @@ R.KEY_BY_SKILL_LINE = {
 }
 R.SKILL_LINE_BY_KEY = {}
 for skillLine, key in pairs(R.KEY_BY_SKILL_LINE) do R.SKILL_LINE_BY_KEY[key] = skillLine end
+-- Archaeology's skill line: the profession GetProfessions()' third slot holds on clients that have it.
+R.ARCHAEOLOGY_SKILL_LINE = 794
 
 local CONCEALED_SCALE = 0.01
 
@@ -216,15 +218,21 @@ local function candidateSpells(numSpells, offset, skillLine)
     return spells
 end
 
---- One job per profession with recipes: { kind = "own", name, skillLine, spells }.
+--- One job per profession with recipes: { kind = "own", name, skillLine, spells }. Every GetProfessions() slot
+--- is read: WoW Forever reports First Aid in the third, where other clients have Archaeology (skipped by its
+--- skill line; Forever has none).
 local function professionJobs()
     local jobs = {}
     local slots = { GetProfessions() }
     for i = 1, 6 do
         local index = slots[i]
-        if i ~= 3 and type(index) == "number" then -- 3 is Archaeology
-            local name, _, rank, _, numSpells, offset, skillLine = GetProfessionInfo(index)
+        local name, rank, numSpells, offset, skillLine
+        if type(index) == "number" then
+            local info = { GetProfessionInfo(index) }
+            name, rank, numSpells, offset, skillLine = info[1], info[3], info[5], info[6], info[7]
             name = DS.NormalizeProfessionName and DS.NormalizeProfessionName(name) or name
+        end
+        if type(index) == "number" and skillLine ~= R.ARCHAEOLOGY_SKILL_LINE then
             if type(name) == "string" and type(skillLine) == "number" and not R.LINKABLE_SKILL_LINES[skillLine] then
                 unreadableNames[name:lower()] = true
             elseif type(name) == "string" and name ~= "" and (tonumber(rank) or 0) > 0
@@ -537,6 +545,12 @@ function R._ScanLinkedWindow(api, job)
         end
     end
     table.sort(ids)
+    -- A window that already describes the asked-for profession may still list the read before's recipes
+    -- (a guildmate's First Aid under another's Cooking, seen 2026-10-18); the list refreshes with its own event.
+    local RI = AltArmy.RecipeInfo
+    if RI and RI.RecipesFitProfession and not RI.RecipesFitProfession(ids, key or expectedKey) then
+        return "wait"
+    end
     if #ids == 0 and (tonumber(info.maxSkillLevel) or 0) == 0 and (tonumber(info.skillLevel) or 0) == 0 then
         return "absent", { guid = job.guid, name = job.name, skillLine = job.skillLine, key = key or expectedKey }
     end

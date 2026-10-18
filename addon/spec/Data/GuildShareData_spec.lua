@@ -1063,6 +1063,36 @@ describe("GuildShareData", function()
       return out
     end
 
+    it("drops reads whose recipe list was another profession's, and reads them again", function()
+      package.path = package.path .. ";AltArmy_TBC/Data/Recipes/?.lua"
+      require("RecipeInfo")
+      local RI = AltArmy.RecipeInfo
+      AltArmy.RecipeData = { recipes = {
+        [3275] = { "firstAid", 1251, 1, 30, 45, "starter", false },
+        [3276] = { "firstAid", 2581, 40, 50, 100, "trainer", false },
+        [2538] = { "cooking", 2679, 1, 45, 85, "starter", false },
+      } }
+      RI.ClearCaches()
+      -- A Cooking read taken before the window's list refreshed from the First Aid read before it.
+      read({ profKey = "cooking", profName = "Cooking", skillLine = 185, rank = 37, maxRank = 75,
+        ids = { 3275, 3276 } })
+      read({ profKey = "firstAid", profName = "First Aid", skillLine = 129, rank = 84, maxRank = 150,
+        ids = { 3275, 3276 } })
+      read({ ids = { 100, 300 } }) -- Tailoring, nothing the data knows
+      assert.are.equal(1, GSD.DropForeignLinkReads())
+      local entry = GSD.GetCharacter("Nia", "R")
+      assert.is_nil(entry.Professions.cooking)
+      assert.is_not_nil(entry.Professions.firstAid.Recipes[3276])
+      assert.is_not_nil(entry.Professions.tailoring.Recipes[300])
+      assert.are.equal(0, GSD.DropForeignLinkReads())
+      local again = false
+      for _, n in ipairs(needs()) do if n == "cooking:probe" then again = true end end
+      assert.is_true(again)
+      AltArmy.RecipeData = nil
+      RI.ClearCaches()
+      assert.are.equal(0, GSD.DropForeignLinkReads())
+    end)
+
     it("makes an entry for a character nobody shares, in the shape the Guild tab and search read", function()
       local entry = read()
       assert.are.equal(entry, GSD.GetCharacter("Player-1-N", "R"))

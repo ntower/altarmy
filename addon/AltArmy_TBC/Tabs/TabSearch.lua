@@ -1527,8 +1527,8 @@ local function LayoutSearchHeaderButtons(buttonsByCol, headerRow, order, widths,
             btn:SetWidth(w)
             btn:SetHeight(UI.HEADER_HEIGHT)
             local base = labelTextForCol and labelTextForCol(colName) or colName
-            btn.label:SetText(Theme.FormatSortHeaderLabel(base, sortState and sortState.key == colName,
-                sortState and sortState.ascending))
+            Theme.SetSortHeaderLabel(btn.label, base, sortState and sortState.key == colName,
+                sortState and sortState.ascending)
         end
         x = x + w
     end

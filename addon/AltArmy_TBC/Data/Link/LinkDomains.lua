@@ -24,7 +24,7 @@ Dom.ORDER = { "identity", "equipment", "professions", "containers", "reputations
 Dom.DOMAINS = {
     identity = {
         fields = { "name", "realm", "guid", "faction", "race", "raceFile", "class", "classFile", "sex", "level",
-            "xp", "xpMax", "restXP", "money", "played", "playedThisLevel", "lastLogout", "lastUpdate",
+            "xp", "xpMax", "restXP", "money", "played", "playedThisLevel", "lastLogout", "isResting", "lastUpdate",
             "guildName", "bagInfo", "bankInfo", "Prof1", "Prof2" },
         versions = { "character", "guildMembership" },
     },

@@ -934,4 +934,58 @@ describe("DataStore", function()
       assert.are.equal(0, #trackedLookups)
     end)
   end)
+  describe("resting state", function()
+    local eventHandler, resting, savedIsResting, savedTime
+
+    before_each(function()
+      eventHandler = nil
+      resting = false
+      savedIsResting, savedTime = _G.IsResting, _G.time
+      _G.IsResting = function() return resting end
+      _G.time = function() return 1000 end
+      _G.CreateFrame = function()
+        return {
+          RegisterEvent = function() end,
+          SetScript = function(_, script, handler)
+            if script == "OnEvent" then eventHandler = handler end
+          end,
+        }
+      end
+      _G.UnitGUID = function(unit)
+        if unit == "player" then return "Player-1-2" end
+      end
+      _G.UnitName = function() return "Alice" end
+      _G.GetRealmName = function() return "R1" end
+      _G.AltArmyTBC_Data = { Characters = {} }
+      package.loaded["DataStore"] = nil
+      require("DataStore")
+    end)
+    after_each(function() _G.IsResting, _G.time = savedIsResting, savedTime end)
+
+    local function char() return AltArmy.DataStore._GetCurrentCharTable() end
+
+    it("is saved whenever it changes", function()
+      resting = true
+      eventHandler(nil, "PLAYER_UPDATE_RESTING")
+      assert.is_true(char().isResting)
+      resting = false
+      eventHandler(nil, "PLAYER_UPDATE_RESTING")
+      assert.is_false(char().isResting)
+    end)
+
+    it("keeps what it tracked when the logout says not resting", function()
+      resting = true
+      eventHandler(nil, "ZONE_CHANGED")
+      resting = false
+      eventHandler(nil, "PLAYER_LOGOUT")
+      assert.is_true(char().isResting)
+    end)
+
+    it("believes a logout that says resting", function()
+      eventHandler(nil, "ZONE_CHANGED_NEW_AREA")
+      resting = true
+      eventHandler(nil, "PLAYER_LOGOUT")
+      assert.is_true(char().isResting)
+    end)
+  end)
 end)

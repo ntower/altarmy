@@ -33,6 +33,10 @@ local SECTION_GAP = Theme.SECTION_GAP
 
 local CLASS_ICON_SHEET = "Interface\\WorldStateFrame\\Icons-Classes"
 local ICON_SIZE = 16
+local REST_ICON_WIDTH = 12 -- the Rest XP column's icon right of the percent: "!" or the Well Rested arrow
+-- The Rest XP percent ends this far left of its column's edge, room for the icon, on every row when any
+-- character shown has an icon; flush right when none has.
+local REST_TEXT_INSET = 10
 local STATUS_ICON_SIZE = 16
 local STATUS_ICON_GAP = 2
 local MAIN_STAR_TEXTURE = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_1"
@@ -78,7 +82,7 @@ local function showStatusIcon(row, icon, hit, x, tooltipEntry)
     end
 end
 
---- Green up arrow before a Rest XP that includes the "Well Rested" legacy talent: the bags' upgrade
+--- Green up arrow after a Rest XP that includes the "Well Rested" legacy talent: the bags' upgrade
 --- arrow where the client has that atlas, else the green stream arrow flipped to point up.
 local function SetWellRestedArrowArt(tex)
     local NUI = AltArmy.NativeUI
@@ -268,7 +272,7 @@ local function UpdateHeaderSortIndicators()
             local col = columns[cn]
             local sorted = columnToSortKey[cn] == currentSortKey
             local label = (sorted and col and col.sortedHeaderLabel) or (col and col.headerLabel) or cn
-            b.label:SetText(Theme.FormatSortHeaderLabel(label, sorted, sortAscending))
+            Theme.SetSortHeaderLabel(b.label, label, sorted, sortAscending)
         end
     end
 end
@@ -648,27 +652,34 @@ for i = 1, ROW_POOL_SIZE do
             cell:SetJustifyH(col and col.JustifyH or "LEFT")
             row.cells[colName] = cell
             if colName == "RestXP" then
-                -- Well Rested: an arrow just left of the widest Rest XP ("100.0%"), so every row's
-                -- lines up whatever the text's width at the current scale, and its talent tooltip over the cell.
+                -- Every row's percent ends the same distance in, icon or not, so they stay aligned:
+                -- the inset is set per update (UpdateRestXpCell), for the whole list at once.
+                row.restCellWidth = w
+                -- One icon just right of the percent, which stays put: a yellow "!" when the character
+                -- logged out outside a resting area, else the Well Rested arrow when it has the talent.
                 local restArrow = row:CreateTexture(nil, "ARTWORK")
-                restArrow:SetSize(12, 12)
+                restArrow:SetSize(REST_ICON_WIDTH, REST_ICON_WIDTH)
+                restArrow:SetPoint("LEFT", cell, "RIGHT", 0, 0)
                 SetWellRestedArrowArt(restArrow)
                 restArrow:Hide()
                 row.restArrow = restArrow
-                local restMeasure = row:CreateFontString(nil, "OVERLAY", Theme.FONTS.body)
-                restMeasure:SetPoint("LEFT", row, "LEFT", rowCellX, 0)
-                restMeasure:SetText("100.0%")
-                restMeasure:SetAlpha(0) -- invisible, not hidden: a never-shown string may measure 0 wide
-                row.restMeasure = restMeasure
+                local notRestingMark = row:CreateFontString(nil, "OVERLAY", Theme.FONTS.body)
+                notRestingMark:SetPoint("LEFT", cell, "RIGHT", 3, 0)
+                notRestingMark:SetText("!")
+                local caution = Theme.COLORS.warningCaution
+                notRestingMark:SetTextColor(caution[1], caution[2], caution[3], 1)
+                notRestingMark:Hide()
+                row.notRestingMark = notRestingMark
+                -- One tooltip over the whole cell and its icon: rest XP, Well Rested, the resting warning.
                 local restHit = CreateFrame("Frame", nil, row)
                 restHit:SetPoint("LEFT", row, "LEFT", rowCellX, 0)
-                restHit:SetSize(w, ROW_HEIGHT)
+                restHit:SetSize(w + 3 + REST_ICON_WIDTH, ROW_HEIGHT)
                 restHit:EnableMouse(true)
                 restHit:SetFrameLevel(row:GetFrameLevel() + 3)
                 restHit:Hide()
                 restHit:SetScript("OnEnter", function(self)
-                    if self.tooltipEntry and SD and SD.PresentWellRestedTooltip then
-                        SD.PresentWellRestedTooltip(self, "ANCHOR_BOTTOMLEFT", self.tooltipEntry)
+                    if self.tooltipEntry and SD and SD.PresentRestXpTooltip then
+                        SD.PresentRestXpTooltip(self, "ANCHOR_BOTTOMLEFT", self.tooltipEntry)
                     end
                 end)
                 restHit:SetScript("OnLeave", function()
@@ -767,27 +778,40 @@ local function GetRow(index)
     return rowPool[index]
 end
 
---- Gap between the Well Rested arrow and the widest Rest XP text.
-local REST_ARROW_GAP = 0
+--- Arms the Rest XP cell's tooltip and shows its one icon: the "!" when the character logged out outside
+--- a resting area (with Well Rested or not), else the Well Rested arrow when it has a rank, else none
+--- (entry nil: an empty row, all hidden).
+--- Which icon a Rest XP cell shows: "warn", "wellRested" or nil.
+local function RestXpIcon(entry)
+    if not entry then return nil end
+    if entry.notResting == true then return "warn" end
+    if not entry.isMaxLevel and (tonumber(entry.wellRestedRank) or 0) > 0 then return "wellRested" end
+    return nil
+end
 
---- Shows the Well Rested arrow just left of where "100.0%" would start, and arms its tooltip,
---- when the entry has a rank; hides both otherwise (entry nil for an empty row).
-local function UpdateWellRestedMarker(rowFrame, entry)
-    local arrow, hit = rowFrame.restArrow, rowFrame.restHit
-    if not arrow or not hit then return end
-    if entry and not entry.isMaxLevel and (tonumber(entry.wellRestedRank) or 0) > 0 then
-        -- Measured on every update: the text's width moves with the window's scale.
-        local textWidth = rowFrame.restMeasure and rowFrame.restMeasure:GetStringWidth() or 0
-        arrow:ClearAllPoints()
-        arrow:SetPoint("RIGHT", rowFrame.cells.RestXP, "RIGHT", -(textWidth + REST_ARROW_GAP), 0)
-        arrow:Show()
-        hit.tooltipEntry = entry
-        hit:Show()
-    else
-        arrow:Hide()
-        hit.tooltipEntry = nil
-        hit:Hide()
+--- Whether any character in the list shows a Rest XP icon (then every row's percent is inset).
+local function AnyRestXpIcon(list)
+    for i = 1, #list do
+        if RestXpIcon(list[i]) then return true end
     end
+    return false
+end
+
+--- inset: how far left of the column's edge the percent ends (REST_TEXT_INSET or 0, the same for all rows).
+local function UpdateRestXpCell(rowFrame, entry, inset)
+    local hit, mark, arrow = rowFrame.restHit, rowFrame.notRestingMark, rowFrame.restArrow
+    local width = rowFrame.restCellWidth
+    if width and rowFrame.cells.RestXP then
+        rowFrame.cells.RestXP:SetWidth(width - (inset or 0))
+    end
+    if hit then
+        hit.tooltipEntry = entry
+        hit:SetShown(entry ~= nil)
+        if width then hit:SetWidth(width - (inset or 0) + 3 + REST_ICON_WIDTH) end
+    end
+    local icon = RestXpIcon(entry)
+    if mark then mark:SetShown(icon == "warn") end
+    if arrow then arrow:SetShown(icon == "wellRested") end
 end
 
 --- Update visible rows from the character list using current vertical scrollbar position.
@@ -825,6 +849,7 @@ Update = function()
     for i = 1, #pinned do list[#list + 1] = pinned[i] end
     for i = 1, #rest do list[#list + 1] = rest[i] end
     local numItems = #list
+    local restInset = AnyRestXpIcon(list) and REST_TEXT_INSET or 0
 
     -- Horizontal scroll need drives list viewport height (totals row sits lower when bar hidden).
     local horzLayoutChanged = SyncSummaryHorizontalScrollLayout()
@@ -980,7 +1005,7 @@ Update = function()
                     else
                         cell:SetText(col.GetText(entry))
                         if colName == "RestXP" then
-                            UpdateWellRestedMarker(rowFrame, entry)
+                            UpdateRestXpCell(rowFrame, entry, restInset)
                         end
                     end
                 end
@@ -1001,7 +1026,7 @@ Update = function()
                     rowFrame.mainStarHit.showTooltip = false
                 end
                 hideStatusIcon(rowFrame.bankAltIcon, rowFrame.bankAltHit)
-                UpdateWellRestedMarker(rowFrame, nil)
+                UpdateRestXpCell(rowFrame, nil, restInset)
                 rowFrame:Hide()
             end
         end

@@ -190,10 +190,6 @@ function SSR.CreateCornerControls(parent, opts)
     sortBtn:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, bottomInset)
     sortBtn:SetSize(btnSize, btnSize)
     if Theme and Theme.SkinButton then Theme.SkinButton(sortBtn) end
-    local sortBtnText = sortBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    sortBtnText:SetPoint("CENTER", sortBtn, "CENTER", 0, 0)
-    sortBtnText:SetJustifyH("CENTER")
-    sortBtnText:SetTextColor(1, 0.82, 0, 1)
 
     local staticLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     staticLabel:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 4, bottomInset)
@@ -289,7 +285,7 @@ function SSR.CreateCornerControls(parent, opts)
 
     local function updateSortButton()
         local descending = opts.getDescending and opts.getDescending() ~= false
-        sortBtnText:SetText(descending and ">" or "<")
+        Theme.SetSortArrowButton(sortBtn, descending and "right" or "left")
     end
 
     -- The direction button can be hidden by the caller (e.g. while another sort is overriding it);

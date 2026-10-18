@@ -53,7 +53,7 @@ Data flows in one direction:
    - Reads from DataStore only (no direct SavedVariables access).  
    - Builds a flat list of character entries for the Summary tab.  
    - Entry shape: `name`, `realm`, `level`, `restXp`, `wellRestedRank`, `money`, `played`, `lastOnline` (raw values: copper, seconds, timestamps).  
-   - Provides display helpers: `GetMoneyString`, `GetTimeString`, `FormatLastOnline`, `FormatRestXp`, `PresentWellRestedTooltip`.  
+   - Provides display helpers: `GetMoneyString`, `GetTimeString`, `FormatLastOnline`, `FormatRestXp`, `PresentRestXpTooltip`.  
    - Aggregates missing-data warnings via `GetMissingDataInfo`.
 
 3. **Characters.lua** — List and view  

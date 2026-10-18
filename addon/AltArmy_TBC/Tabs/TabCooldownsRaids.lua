@@ -81,11 +81,7 @@ local function UpdateHeaderSortIndicators()
     for _, sk in ipairs(UI.sortKeys) do
         local btn = UI.headerButtons[sk]
         if btn and btn.label then
-            btn.label:SetText(Theme.FormatSortHeaderLabel(
-                UI.sortLabels[sk],
-                sk == UI.currentSortKey,
-                UI.sortAscending
-            ))
+            Theme.SetSortHeaderLabel(btn.label, UI.sortLabels[sk], sk == UI.currentSortKey, UI.sortAscending)
         end
     end
 end

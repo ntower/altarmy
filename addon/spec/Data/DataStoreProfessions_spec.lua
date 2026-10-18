@@ -575,6 +575,45 @@ describe("DataStoreProfessions", function()
       [100] = { recipeID = 100, categoryID = 1, name = "Untracked", learned = true, relativeDifficulty = 3 },
     }
 
+    it("doesn't store a window still listing another profession's recipes (WoW Forever)", function()
+      local savedSS = AltArmy.SearchSettings
+      AltArmy.SearchSettings = {
+        ResolveProfessionKey = function(name)
+          return ({ Cooking = "cooking", ["First Aid"] = "firstAid" })[name]
+        end,
+      }
+      AltArmy.RecipeData = {
+        recipes = {
+          [3275] = { "firstAid", 1251, 1, 30, 45, "starter", false },
+          [3276] = { "firstAid", 2581, 40, 50, 100, "trainer", false },
+        },
+      }
+      AltArmy.RecipeInfo.ClearCaches()
+      local firstAid = {
+        [3275] = { recipeID = 3275, name = "Linen Bandage", learned = true, relativeDifficulty = 3 },
+        [3276] = { recipeID = 3276, name = "Heavy Linen Bandage", learned = true, relativeDifficulty = 2 },
+      }
+      -- The Cooking window opened right after a First Aid read: it describes Cooking, lists First Aid.
+      mockTradeSkillUI({ professionName = "Cooking", skillLevel = 37, maxSkillLevel = 75,
+        recipeIDs = { 3275, 3276 }, recipes = firstAid })
+      DS:ScanRecipes()
+      local char = _G.AltArmyTBC_Data.Characters.TestRealm.TestPlayer
+      assert.is_nil(next(char.Professions.Cooking.Recipes))
+      assert.is_nil(char.lastUpdate)
+      -- Its own list arrives: stored. The First Aid window stores the same ids under First Aid.
+      mockTradeSkillUI({ professionName = "Cooking", skillLevel = 37, maxSkillLevel = 75,
+        recipeIDs = { 2538 }, recipes = { [2538] = { recipeID = 2538, name = "Charred Wolf Meat", learned = true } } })
+      DS:ScanRecipes()
+      assert.is_not_nil(char.Professions.Cooking.Recipes[2538])
+      mockTradeSkillUI({ professionName = "First Aid", skillLevel = 84, maxSkillLevel = 150,
+        recipeIDs = { 3275, 3276 }, recipes = firstAid })
+      DS:ScanRecipes()
+      assert.is_not_nil(char.Professions["First Aid"].Recipes[3276])
+      AltArmy.SearchSettings = savedSS
+      AltArmy.RecipeData = nil
+      AltArmy.RecipeInfo.ClearCaches()
+    end)
+
     it("persists tracked recipe cooldowns from GetRecipeCooldown", function()
       _G.time = function() return 1000 end
       mockTradeSkillUI({
@@ -1271,6 +1310,74 @@ describe("DataStoreProfessions", function()
       assert.is_not_nil(char.Professions.Comprehension)
       assert.is_not_nil(char.Professions.Comprehension.Recipes[1302508])
       assert.are.equal(24, char.Professions.Comprehension.rank)
+    end)
+
+    it("reads First Aid from the slot other clients give Archaeology (WoW Forever)", function()
+      mockGetProfessions({
+        [1] = { name = "Tailoring", rank = 112, maxRank = 150 },
+        arch = { name = "First Aid", rank = 84, maxRank = 150 },
+        [4] = { name = "Cooking", rank = 37, maxRank = 75 },
+      })
+      DS:ScanProfessionLinks()
+      local char = _G.AltArmyTBC_Data.Characters.TestRealm.TestPlayer
+      local firstAid = char.Professions["First Aid"]
+      assert.is_not_nil(firstAid)
+      assert.are.equal(84, firstAid.rank)
+      assert.are.equal(150, firstAid.maxRank)
+      assert.is_true(firstAid.isSecondary)
+      assert.is_nil(firstAid.isPrimary)
+      assert.are.equal("Tailoring", char.Prof1)
+      assert.is_nil(char.Prof2)
+      assert.are.equal(37, char.Professions.Cooking.rank)
+    end)
+
+    it("still skips Archaeology, by name", function()
+      mockGetProfessions({
+        [1] = { name = "Tailoring", rank = 112, maxRank = 150 },
+        arch = { name = "Archaeology", rank = 50, maxRank = 75 },
+      })
+      DS:ScanProfessionLinks()
+      local char = _G.AltArmyTBC_Data.Characters.TestRealm.TestPlayer
+      assert.is_nil(char.Professions.Archaeology)
+      assert.is_not_nil(char.Professions.Tailoring)
+    end)
+
+    it("clears a recipe list stored under the wrong profession and marks it stale", function()
+      local savedSS = AltArmy.SearchSettings
+      AltArmy.SearchSettings = {
+        ResolveProfessionKey = function(name)
+          return ({ Cooking = "cooking", ["First Aid"] = "firstAid" })[name]
+        end,
+      }
+      AltArmy.RecipeData = {
+        recipes = {
+          [3275] = { "firstAid", 1251, 1, 30, 45, "starter", false },
+          [3276] = { "firstAid", 2581, 40, 50, 100, "trainer", false },
+          [2538] = { "cooking", 2679, 1, 45, 85, "starter", false },
+        },
+      }
+      AltArmy.RecipeInfo.ClearCaches()
+      _G.AltArmyTBC_Data.Characters.TestRealm = {
+        TestPlayer = {
+          Professions = {
+            Cooking = { rank = 37, maxRank = 75, Recipes = { [3275] = { color = 1 }, [3276] = { color = 1 } } },
+            ["First Aid"] = { rank = 84, maxRank = 150, Recipes = { [3275] = { color = 1 }, [3276] = { color = 1 } } },
+          },
+        },
+      }
+      mockGetProfessions({
+        arch = { name = "First Aid", rank = 84, maxRank = 150 },
+        [4] = { name = "Cooking", rank = 37, maxRank = 75 },
+      })
+      DS:ScanProfessionLinks()
+      AltArmy.SearchSettings = savedSS
+      AltArmy.RecipeData = nil
+      AltArmy.RecipeInfo.ClearCaches()
+      local char = _G.AltArmyTBC_Data.Characters.TestRealm.TestPlayer
+      assert.is_nil(next(char.Professions.Cooking.Recipes))
+      assert.is_true(char.professionsNeedingRecipeScan.Cooking)
+      assert.is_not_nil(char.Professions["First Aid"].Recipes[3276])
+      assert.is_nil(char.professionsNeedingRecipeScan["First Aid"])
     end)
 
     it("schedules a guild-share broadcast when profession presence changes", function()

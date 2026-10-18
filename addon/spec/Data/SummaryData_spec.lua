@@ -81,38 +81,90 @@ describe("SummaryData", function()
       assert.are.equal(0, byName.Capped.wellRestedRank)
       assert.are.equal(0, byName.Plain.wellRestedRank)
     end)
+
+    it("marks a character that logged out outside a resting area, not at max level or unknown", function()
+      local byName = listFor({
+        Outside = { name = "Outside", level = 20, xp = 0, xpMax = 1000, isResting = false },
+        Inn = { name = "Inn", level = 20, xp = 0, xpMax = 1000, isResting = true },
+        Old = { name = "Old", level = 20, xp = 0, xpMax = 1000 },
+        Capped = { name = "Capped", level = DS.MAX_LEVEL, isResting = false },
+      })
+      assert.is_true(byName.Outside.notResting)
+      assert.is_nil(byName.Inn.notResting)
+      assert.is_nil(byName.Old.notResting)
+      assert.is_nil(byName.Capped.notResting)
+    end)
   end)
 
-  describe("PresentWellRestedTooltip", function()
-    local savedTooltip, tip
-
-    local function fakeTooltip()
-      local t = { lines = {} }
-      function t:SetOwner(owner, anchor) self.owner, self.anchor = owner, anchor end
-      function t:ClearLines() self.lines = {} end
-      function t:AddLine(text) self.lines[#self.lines + 1] = text end
-      function t:Show() self.shown = true end
-      return t
-    end
+  describe("PresentRestXpTooltip", function()
+    local savedTooltip, savedColors, savedSecondsToTime, tip
 
     before_each(function()
-      savedTooltip = _G.GameTooltip
-      tip = fakeTooltip()
+      savedTooltip, savedColors, savedSecondsToTime = _G.GameTooltip, _G.RAID_CLASS_COLORS, _G.SecondsToTime
+      tip = { lines = {} }
+      function tip:SetOwner(owner, anchor) self.owner, self.anchor = owner, anchor end
+      function tip:ClearLines() self.lines = {} end
+      function tip:AddLine(text) self.lines[#self.lines + 1] = text end
+      function tip:AddDoubleLine(left, right) self.lines[#self.lines + 1] = left .. " | " .. right end
+      function tip:Show() self.shown = true end
       _G.GameTooltip = tip
+      _G.SecondsToTime = nil
+      _G.RAID_CLASS_COLORS = { MAGE = { r = 0.25, g = 0.78, b = 0.92 } }
+      package.path = package.path .. ";AltArmy_TBC/Data/?.lua"
+      require("ClassColor")
     end)
-    after_each(function() _G.GameTooltip = savedTooltip end)
+    after_each(function()
+      _G.GameTooltip, _G.RAID_CLASS_COLORS, _G.SecondsToTime = savedTooltip, savedColors, savedSecondsToTime
+    end)
 
-    it("names the talent, its rank and what it adds", function()
-      assert.is_true(SD.PresentWellRestedTooltip("owner", "ANCHOR_BOTTOMLEFT", { wellRestedRank = 2 }))
-      assert.are.same({ "Well Rested", "Rank 2/5", "Rested XP cap and accumulation +8%" }, tip.lines)
-      assert.are.equal("owner", tip.owner)
+    local function entry(fields)
+      local e = { name = "Frell", classFile = "MAGE", restMax = 12345, restCurrent = 4567.4,
+        restSecondsToFull = 2 * 86400 + 3 * 3600 }
+      for k, v in pairs(fields or {}) do e[k] = v end
+      return e
+    end
+
+    it("shows the name, the rest XP amounts and the time until full", function()
+      assert.is_true(SD.PresentRestXpTooltip("owner", "ANCHOR_BOTTOMLEFT", entry()))
+      assert.are.same({ "Frell", "Max Rest XP: 12,345", "Current Rest XP: 4,567",
+        "Time until fully rested: 2d 3h" }, tip.lines)
       assert.are.equal("ANCHOR_BOTTOMLEFT", tip.anchor)
       assert.is_true(tip.shown)
     end)
 
-    it("shows nothing without a rank", function()
-      assert.is_false(SD.PresentWellRestedTooltip("owner", "ANCHOR_BOTTOMLEFT", { wellRestedRank = 0 }))
-      assert.is_nil(tip.shown)
+    it("follows with Well Rested and its rank on one line", function()
+      SD.PresentRestXpTooltip("owner", "ANCHOR_BOTTOMLEFT", entry({ wellRestedRank = 2 }))
+      assert.are.same({ " ", "Well Rested | Rank 2/5", "Rested XP cap and accumulation +8%" },
+        { tip.lines[5], tip.lines[6], tip.lines[7] })
+    end)
+
+    it("ends with the warning, name in class colour, when it logged out outside a resting area", function()
+      SD.PresentRestXpTooltip("owner", "ANCHOR_BOTTOMLEFT", entry({ notResting = true }))
+      assert.are.equal("|cFF3fc6eaFrell|r|cFFff664c is not in a resting area|r", tip.lines[#tip.lines])
+    end)
+
+    it("shows both Well Rested and the warning when it has the talent and logged out outside", function()
+      SD.PresentRestXpTooltip("owner", "ANCHOR_BOTTOMLEFT", entry({ notResting = true, wellRestedRank = 5 }))
+      assert.are.same({
+        "Frell", "Max Rest XP: 12,345", "Current Rest XP: 4,567", "Time until fully rested: 2d 3h",
+        " ", "Well Rested | Rank 5/5", "Rested XP cap and accumulation +20%",
+        " ", "|cFF3fc6eaFrell|r|cFFff664c is not in a resting area|r",
+      }, tip.lines)
+    end)
+
+    it("says Now when full and -- online outside a resting area", function()
+      SD.PresentRestXpTooltip("owner", "ANCHOR_BOTTOMLEFT", entry({ restSecondsToFull = 0 }))
+      assert.are.equal("Time until fully rested: Now", tip.lines[4])
+      local online = entry({ isOnline = true })
+      online.restSecondsToFull = nil
+      SD.PresentRestXpTooltip("owner", "ANCHOR_BOTTOMLEFT", online)
+      assert.are.equal("Time until fully rested: --", tip.lines[4])
+    end)
+
+    it("still shows at max level", function()
+      assert.is_true(SD.PresentRestXpTooltip("owner", "ANCHOR_BOTTOMLEFT",
+        { name = "Frell", isMaxLevel = true, wellRestedRank = 0 }))
+      assert.are.same({ "Frell", "No rest XP at max level" }, tip.lines)
     end)
   end)
 

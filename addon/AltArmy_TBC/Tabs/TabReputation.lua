@@ -616,9 +616,6 @@ local function GetFactionLabelRow(i)
         row.sortBtn:SetSize(FACTION_SORT_BTN_SIZE, FACTION_SORT_BTN_SIZE)
         row.sortBtn:SetPoint("RIGHT", row, "RIGHT", -2, 2)
         Theme.SkinButton(row.sortBtn)
-        row.sortBtn.text = row.sortBtn:CreateFontString(nil, "OVERLAY", Theme.FONTS.body)
-        row.sortBtn.text:SetPoint("CENTER", row.sortBtn, "CENTER", 0, 0)
-        row.sortBtn.text:SetTextColor(1, 0.82, 0, 1)
         row.sortBtn:Hide()
         if row.sortBtn.RegisterForClicks then
             row.sortBtn:RegisterForClicks("LeftButtonUp")
@@ -737,7 +734,7 @@ local function UpdateFactionLabels(factionRows, numRows)
 
         if isSorted then
             row.text:SetTextColor(1, 0.82, 0, 1)
-            row.sortBtn.text:SetText(factionSortHighFirst and ">" or "<")
+            Theme.SetSortArrowButton(row.sortBtn, factionSortHighFirst and "right" or "left")
             row.sortBtn:Show()
         else
             row.text:SetTextColor(1, 1, 1, 1)
@@ -805,19 +802,16 @@ local function PopulateHeaderColumn(c, entry, ctx)
         classR, classG, classB = 1, 0.82, 0
     end
     headerCol.classR, headerCol.classG, headerCol.classB = classR, classG, classB
-    local hdrSuffix = isColSorted and Theme.GetSortArrowSuffix(not columnSortHighFirst) or ""
     local baseHeaderMax = dims.columnWidth - 4
-    local headerMax = (hdrSuffix ~= "") and (baseHeaderMax - 14) or baseHeaderMax
+    -- The name is centred, so the sorted column's arrow (after the name) needs its width free on both sides.
+    local arrowReserve = 2 * (Theme.SORT_ARROW.width + Theme.SORT_ARROW.gap)
+    local headerMax = isColSorted and (baseHeaderMax - arrowReserve) or baseHeaderMax
     headerCol.header:SetTextColor(classR, classG, classB, 1)
     local shown = displayName
     if TruncateFontString then
         shown = TruncateFontString(headerCol.header, displayName, headerMax)
-    else
-        headerCol.header:SetText(displayName)
     end
-    if hdrSuffix ~= "" then
-        headerCol.header:SetText(shown .. hdrSuffix)
-    end
+    Theme.SetSortHeaderLabel(headerCol.header, shown, isColSorted, not columnSortHighFirst)
     headerCol.truncated = (shown ~= displayName)
     local RF = ctx.RF
     local showRealmSuffix = ctx.showRealmSuffix

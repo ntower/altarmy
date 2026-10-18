@@ -1174,20 +1174,89 @@ function Theme.StyleGridHeader(texture)
     texture:SetColorTexture(hdr[1], hdr[2], hdr[3], hdr[4])
 end
 
---- Ascending/descending suffix for a sorted grid column header (^ = low→high, v = high→low).
-function Theme.GetSortArrowSuffix(ascending)
-    return ascending and " ^" or " v"
+--- The yellow sort arrow Blizzard's column headers draw (the Who frame, the auction house; Altoholic's too):
+--- one texture, pointing down, flipped vertically for ascending. `gap` is the space between text and arrow.
+Theme.SORT_ARROW = {
+    texture = "Interface\\Buttons\\UI-SortArrow",
+    width = 9,
+    height = 8,
+    gap = 3,
+    -- On a sort-direction button (Theme.SetSortArrowButton) it is drawn larger: across its base, along its point.
+    buttonWidth = 14,
+    buttonHeight = 12,
+    buttonNudge = 1, -- a left or right arrow sits this far off centre, towards where it points
+}
+
+--- Point a sort arrow texture "up", "down", "left" or "right" and size it to match. The art points down in
+--- the left 0.5625 of the file: up flips it, and left and right turn it a quarter (each corner's coords given).
+local function PointSortArrow(arrow, direction, across, along)
+    local spec, r = Theme.SORT_ARROW, 0.5625
+    across, along = across or spec.width, along or spec.height
+    if direction == "left" or direction == "right" then
+        arrow:SetSize(along, across)
+        if direction == "right" then
+            arrow:SetTexCoord(0, 0, r, 0, 0, 1, r, 1)
+        else
+            arrow:SetTexCoord(0, 1, r, 1, 0, 0, r, 0)
+        end
+    else
+        arrow:SetSize(across, along)
+        if direction == "up" then
+            arrow:SetTexCoord(0, r, 1, 0)
+        else
+            arrow:SetTexCoord(0, r, 0, 1)
+        end
+    end
 end
 
---- Append a sort-direction indicator when `isSorted`; otherwise return the base label unchanged.
-function Theme.FormatSortHeaderLabel(baseLabel, isSorted, ascending)
-    if not baseLabel then
-        return ""
+--- Show the sort arrow centred on a small sort-direction button, pointing `direction` ("up", "down", "left",
+--- "right"). The texture is made once per button.
+function Theme.SetSortArrowButton(btn, direction)
+    if not btn then return end
+    local arrow = btn.altArmySortArrow
+    if not arrow then
+        arrow = btn:CreateTexture(nil, "OVERLAY")
+        arrow:SetTexture(Theme.SORT_ARROW.texture)
+        btn.altArmySortArrow = arrow
     end
+    local nudge = Theme.SORT_ARROW.buttonNudge
+    local x = (direction == "right" and nudge) or (direction == "left" and -nudge) or 0
+    arrow:ClearAllPoints()
+    arrow:SetPoint("CENTER", btn, "CENTER", x, 0)
+    PointSortArrow(arrow, direction, Theme.SORT_ARROW.buttonWidth, Theme.SORT_ARROW.buttonHeight)
+    arrow:Show()
+end
+
+--- Set a sortable column header's text and, when `isSorted`, show the sort arrow beside it (up = low→high,
+--- down = high→low), else hide it. The arrow is a texture on the label's parent, made once per label; it sits
+--- after the text of a left- or centre-justified label and before the text of a right-justified one, so it
+--- stays inside the header's cell.
+function Theme.SetSortHeaderLabel(label, baseLabel, isSorted, ascending)
+    if not label then return end
+    label:SetText(baseLabel or "")
+    local arrow = label.altArmySortArrow
     if not isSorted then
-        return baseLabel
+        if arrow then arrow:Hide() end
+        return
     end
-    return baseLabel .. Theme.GetSortArrowSuffix(ascending)
+    local spec = Theme.SORT_ARROW
+    if not arrow then
+        arrow = label:GetParent():CreateTexture(nil, "OVERLAY")
+        arrow:SetTexture(spec.texture)
+        label.altArmySortArrow = arrow
+    end
+    PointSortArrow(arrow, ascending and "up" or "down")
+    local textWidth = label:GetStringWidth() or 0
+    local justify = label.GetJustifyH and label:GetJustifyH() or "LEFT"
+    arrow:ClearAllPoints()
+    if justify == "RIGHT" then
+        arrow:SetPoint("RIGHT", label, "RIGHT", -(textWidth + spec.gap), 0)
+    elseif justify == "CENTER" then
+        arrow:SetPoint("LEFT", label, "CENTER", textWidth / 2 + spec.gap, 0)
+    else
+        arrow:SetPoint("LEFT", label, "LEFT", textWidth + spec.gap, 0)
+    end
+    arrow:Show()
 end
 
 --- Opaque gridHeaderBg fill for a pinned row/column label area (Gear slots, Reputation factions).

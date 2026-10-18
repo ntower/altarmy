@@ -485,9 +485,6 @@ local function GetLabelRow(i)
     row.sortBtn:SetSize(UI.ROW_HEIGHT - 2, UI.ROW_HEIGHT - 2)
     row.sortBtn:SetPoint("RIGHT", row, "RIGHT", -2, 0)
     Theme.SkinButton(row.sortBtn)
-    row.sortBtn.text = row.sortBtn:CreateFontString(nil, "OVERLAY", Theme.FONTS.body)
-    row.sortBtn.text:SetPoint("CENTER", row.sortBtn, "CENTER", 0, 0)
-    row.sortBtn.text:SetTextColor(UI.GOLD[1], UI.GOLD[2], UI.GOLD[3], 1)
     row.sortBtn:SetScript("OnClick", function(self)
         local parent = self:GetParent()
         ToggleRowSort(parent.row and parent.row.currencyID)
@@ -533,7 +530,7 @@ local function UpdateLabels()
             local sorted = state.rowSortID == r.currencyID
             if sorted then
                 lab.text:SetTextColor(UI.GOLD[1], UI.GOLD[2], UI.GOLD[3], 1)
-                lab.sortBtn.text:SetText(state.rowSortHighFirst and ">" or "<")
+                Theme.SetSortArrowButton(lab.sortBtn, state.rowSortHighFirst and "right" or "left")
                 lab.sortBtn:Show()
                 lab.text:SetPoint("RIGHT", lab.sortBtn, "LEFT", -2, 0)
                 maxW = maxW - UI.ROW_HEIGHT

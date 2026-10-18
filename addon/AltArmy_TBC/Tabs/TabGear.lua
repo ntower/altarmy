@@ -1483,14 +1483,10 @@ local scoreSortBtn = CreateFrame("Button", nil, headerCornerColumn)
 scoreSortBtn:SetPoint("BOTTOMRIGHT", headerCornerColumn, "BOTTOMRIGHT", 0, SCORE_ROW_HEADER_BOTTOM_INSET)
 scoreSortBtn:SetSize(GearTab.GetScoreSortBtnSize(), GearTab.GetScoreSortBtnSize())
 Theme.SkinButton(scoreSortBtn)
-local scoreSortBtnText = scoreSortBtn:CreateFontString(nil, "OVERLAY", Theme.FONTS.body)
-scoreSortBtnText:SetPoint("CENTER", scoreSortBtn, "CENTER", 0, 0)
-scoreSortBtnText:SetJustifyH("CENTER")
-scoreSortBtnText:SetTextColor(1, 0.82, 0, 1)
 
 function GearTab.UpdateScoreSortButton()
     local descending = GearTab.GetGearSettings().scoreSortDescending ~= false
-    scoreSortBtnText:SetText(descending and ">" or "<")
+    Theme.SetSortArrowButton(scoreSortBtn, descending and "right" or "left")
     if GearTab.ApplyScoreSortLayout then
         GearTab.ApplyScoreSortLayout()
     end

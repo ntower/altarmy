@@ -55,6 +55,46 @@ describe("DataStoreCharacter", function()
       local expected = math.min(100, (750 / maxRest) * 100)
       assert.are.equal(expected, DS:GetRestXp(char))
     end)
+
+    describe("accumulation since logout", function()
+      local savedTime
+      before_each(function()
+        savedTime = _G.time
+        _G.time = function() return 1000 + 28800 * 4 end
+      end)
+      after_each(function() _G.time = savedTime end)
+
+      -- 32 hours offline: four bubbles (50 of a 1000 xpMax each) in an inn, one outside.
+      it("earns a bubble every 8 hours when it logged out resting", function()
+        local char = { level = 1, xpMax = 1000, restXP = 0, lastLogout = 1000, isResting = true }
+        assert.are.equal(200 / 1500 * 100, DS:GetRestXp(char))
+      end)
+      it("earns a quarter of that when it logged out outside a resting area", function()
+        local char = { level = 1, xpMax = 1000, restXP = 0, lastLogout = 1000, isResting = false }
+        assert.are.equal(50 / 1500 * 100, DS:GetRestXp(char))
+      end)
+      it("counts as resting when it was saved before the addon kept it", function()
+        local char = { level = 1, xpMax = 1000, restXP = 0, lastLogout = 1000 }
+        assert.are.equal(200 / 1500 * 100, DS:GetRestXp(char))
+      end)
+      it("gives the amounts and the time until full at the rate it rests", function()
+        local inn = DS:GetRestXpInfo({ level = 1, xpMax = 1000, restXP = 0, lastLogout = 1000, isResting = true })
+        assert.are.same({ max = 1500, current = 200, secondsToFull = 26 * 28800 }, inn)
+        local out = DS:GetRestXpInfo({ level = 1, xpMax = 1000, restXP = 0, lastLogout = 1000, isResting = false })
+        assert.are.same({ max = 1500, current = 50, secondsToFull = 29 * 28800 * 4 }, out)
+      end)
+      it("reads a logged-in character live: rest grows only while it rests", function()
+        local char = { level = 1, xpMax = 1, restXP = 0 }
+        local resting = DS:GetRestXpInfo(char, { restXP = 300, xpMax = 1000, resting = true })
+        assert.are.same({ max = 1500, current = 300, secondsToFull = 24 * 28800 }, resting)
+        local outside = DS:GetRestXpInfo(char, { restXP = 300, xpMax = 1000, resting = false })
+        assert.is_nil(outside.secondsToFull)
+      end)
+      it("is full when capped", function()
+        local char = { level = 1, xpMax = 1000, restXP = 1500, lastLogout = 1000 }
+        assert.are.equal(0, DS:GetRestXpInfo(char).secondsToFull)
+      end)
+    end)
   end)
 
   describe("Legacy Talent rest-XP multiplier (WoW Forever)", function()

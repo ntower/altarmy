@@ -502,12 +502,25 @@ local function canAccessSecretValue(value)
     return true
 end
 
+--- Saves whether the logged-in character is resting (an inn or city) now.
+local function trackResting()
+    if not IsResting then return end
+    local char = GetCurrentCharTable()
+    if not char then return end
+    char.isResting = IsResting() and true or false
+end
+
 SafeRegisterEvent("ADDON_LOADED")
 SafeRegisterEvent("VARIABLES_LOADED")
 SafeRegisterEvent("PLAYER_ALIVE")
 SafeRegisterEvent("PLAYER_ENTERING_WORLD")
 SafeRegisterEvent("PLAYER_GUILD_UPDATE")
 SafeRegisterEvent("PLAYER_LOGOUT")
+-- Resting (inn or city) is tracked as it changes, since the logout itself may not report it.
+SafeRegisterEvent("PLAYER_UPDATE_RESTING")
+SafeRegisterEvent("ZONE_CHANGED")
+SafeRegisterEvent("ZONE_CHANGED_INDOORS")
+SafeRegisterEvent("ZONE_CHANGED_NEW_AREA")
 SafeRegisterEvent("PLAYER_MONEY")
 SafeRegisterEvent("PLAYER_XP_UPDATE")
 SafeRegisterEvent("PLAYER_LEVEL_UP")
@@ -771,7 +784,13 @@ frame:SetScript("OnEvent", function(_, event, ...)
         end
         return
     end
+    if event == "PLAYER_UPDATE_RESTING" or event == "ZONE_CHANGED" or event == "ZONE_CHANGED_INDOORS"
+        or event == "ZONE_CHANGED_NEW_AREA" then
+        trackResting()
+        return
+    end
     if event == "PLAYER_ALIVE" or event == "PLAYER_ENTERING_WORLD" then
+        trackResting()
         if DS.MigrateRecipePrimaryIds then
             DS:MigrateRecipePrimaryIds()
         end
@@ -1073,6 +1092,10 @@ frame:SetScript("OnEvent", function(_, event, ...)
         if char then
             char.lastLogout = time()
             char.lastUpdate = time()
+            -- Whether it logged out in an inn or city (the Summary's Rest XP warns when it didn't): as
+            -- tracked while it played, since IsResting() can say false at logout in a city (seen on
+            -- Forever in Thunder Bluff); a logout that still says resting is believed too.
+            if IsResting and IsResting() then char.isResting = true end
         end
         return
     end
