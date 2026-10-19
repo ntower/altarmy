@@ -194,6 +194,7 @@ function GearTab.GetGearSettings()
     if s.scoreSortDescending == nil then s.scoreSortDescending = true end
     s.scoreProvider = GearTab.ValidateScoreProvider(s.scoreProvider or DEFAULT_SCORE_PROVIDER)
     s.characters = s.characters or {}
+    AltArmy.CharacterFilter.Ensure(s)
     return s
 end
 
@@ -812,8 +813,10 @@ function GearTab.GetDisplayList()
     local settings = GearTab.GetGearSettings()
     local currentRealm = DS and DS.GetCurrentPlayerRealm and DS:GetCurrentPlayerRealm() or ""
     local showSelfFirst = settings.showSelfFirst ~= false
+    local CF = AltArmy.CharacterFilter
+    local ctx = CF.Context(currentRealm)
 
-    -- Filter out hidden (pin-current-character overrides hide for the signed-in character)
+    -- Filter out hidden and filtered out (pin-current-character overrides both for the signed-in character)
     local visible = {}
     for i = 1, #rawList do
         local e = rawList[i]
@@ -821,10 +824,8 @@ function GearTab.GetDisplayList()
         local BA = AltArmy.BankAlt
         local isBankAlt = BA and BA.Is and BA.Is(e.name, e.realm)
         local isHidden = GearTab.GetCharSetting(e.name, e.realm, "hide") or isBankAlt
-        -- Opposite-faction alts can't receive gear by mail; never list them.
-        local otherFaction = not isSelf and DS and DS.IsSameFactionAsCurrent and DS.GetCharacter
-            and not DS:IsSameFactionAsCurrent(DS:GetCharacterFor(e.name, e.realm, e.linkId))
-        if not otherFaction and (not isHidden or (showSelfFirst and isSelf)) then
+            or not CF.Matches(e, settings.filter, ctx)
+        if not isHidden or (showSelfFirst and isSelf) then
             visible[#visible + 1] = e
             GearTab.DecorateDisplayEntry(e)
         end
@@ -857,11 +858,6 @@ function GearTab.GetDisplayList()
     local list = {}
     for i = 1, #pinned do list[#list + 1] = pinned[i] end
     for i = 1, #nonPinned do list[#list + 1] = nonPinned[i] end
-
-    local GRF = AltArmy.GlobalRealmFilter
-    if GRF and GRF.FilterList then
-        list = GRF.FilterList(list, currentRealm)
-    end
 
     -- When item focused, sort by focus category then upgrade magnitude.
     if not droppedItemLink then return list end
@@ -3765,12 +3761,7 @@ function GearTab.UpdateGridWithOffset()
             TruncateFontString(headerCol.header, displayName, dims.columnWidth - 4)
         end
         headerCol.truncated = (headerCol.header:GetText() ~= displayName)
-        local realmFilter = "all"
-        local GRF = AltArmy.GlobalRealmFilter
-        if GRF and GRF.Get then
-            realmFilter = GRF.Get()
-        end
-        local showRealmSuffix = (realmFilter == "all")
+        local showRealmSuffix = AltArmy.CharacterFilter.ShowsOtherRealms(GearTab.GetGearSettings().filter)
             and RF and RF.hasMultipleRealms and RF.hasMultipleRealms(list)
         local hasRealm = entry.realm and entry.realm ~= ""
         local formattedName = RF and RF.formatColoredCharacterNameRealm
@@ -4086,55 +4077,29 @@ gearSettingsTitle:SetPoint("TOPRIGHT", settingsContent, "TOPRIGHT", 0, 0)
 gearSettingsTitle:SetJustifyH("LEFT")
 gearSettingsTitle:SetText("Gear Settings")
 Theme.SetTitleColor(gearSettingsTitle)
-local gearCharListRefresh = function() end
 
 local sortingContent = CreateFrame("Frame", nil, settingsContent)
 sortingContent:SetPoint("TOPLEFT", gearSettingsTitle, "BOTTOMLEFT", 0, -8)
 sortingContent:SetPoint("BOTTOMRIGHT", settingsContent, "BOTTOMRIGHT", 0, 0)
 sortingContent:Show()
 
--- ---- Pin current character, Character list ----
-local showSelfFirstRow = Theme.CreateLabeledCheckbox(sortingContent, {
-    point = "TOPLEFT",
-    x = 0,
-    y = 0,
-    text = "Pin current character",
-    fullWidthHover = true,
-    onClick = function(checked)
-        GearTab.GetGearSettings().showSelfFirst = checked
+-- ---- Filters and pin / hide (on GearTab: no main-chunk locals to spare) ----
+GearTab.filterControls = AltArmy.CreateCharacterFilterControls(sortingContent, {
+    anchorTo = gearSettingsTitle,
+    dropdownParent = settingsPanel,
+    getSettings = GearTab.GetGearSettings,
+    getCharSetting = GearTab.GetCharSetting,
+    setCharSetting = GearTab.SetCharSetting,
+    skipBankAlts = true,
+    onChange = function()
         if frame.RefreshGrid then frame:RefreshGrid() end
     end,
 })
-Theme.AttachSettingsHelpIcon(showSelfFirstRow, {
-    title = "Pin current character",
-    lines = {
-        "When enabled, your current character is automatically pinned, "
-            .. "causing it to show ahead of non-pinned characters.",
-        'This will override the "Hide" setting.',
-    },
-})
-local showSelfFirstCheck = showSelfFirstRow.check
-showSelfFirstCheck:SetChecked(GearTab.GetGearSettings().showSelfFirst)
-
--- Character list: Pin/Hide (reusable component from UI/CharacterPinHideList.lua)
-if AltArmy.CreateCharacterPinHideList then
-    -- luacheck: push ignore 211
-    local _scroll, refresh = AltArmy.CreateCharacterPinHideList(sortingContent, showSelfFirstRow, {
-        gutterEdge = settingsPanel,
-        getSettings = GearTab.GetGearSettings,
-        getCharSetting = GearTab.GetCharSetting,
-        setCharSetting = GearTab.SetCharSetting,
-        onChange = function()
-            if frame.RefreshGrid then frame:RefreshGrid() end
-        end,
-    })
-    if refresh then gearCharListRefresh = refresh end
-    -- luacheck: pop
-end
 
 -- Close dropdowns when clicking outside
 settingsPanel:SetScript("OnHide", function()
     scoreProviderDropdown:Hide()
+    GearTab.filterControls.Close()
 end)
 
 function frame:IsGearSettingsShown()
@@ -4153,12 +4118,10 @@ function frame:ToggleGearSettings(_self)
     GearTab.LayoutGearPanels()
 
     if showSettings then
-        local s = GearTab.GetGearSettings()
-        showSelfFirstCheck:SetChecked(s.showSelfFirst)
         if AltArmy.Characters and AltArmy.Characters.InvalidateView then
             AltArmy.Characters:InvalidateView()
         end
-        if gearCharListRefresh then gearCharListRefresh() end
+        GearTab.filterControls.refresh()
     end
 
     if frame.RefreshGrid then frame:RefreshGrid() end

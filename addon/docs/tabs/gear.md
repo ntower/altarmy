@@ -13,12 +13,15 @@ Two sub-views, switched with spellbook-style tabs that hang above the panel in t
 - **Forever:** square icon tabs: a gold 2×2 grid for **Grid** and gold balance scales for **Upgrade Check**. These are bundled art (`Textures/Icons/GearView*.tga`), made by `scripts/generate-gear-view-icons.py`, because the game has no fitting grid or scales icon.
 - **TBC Anniversary:** classic text top tabs.
 
-**Grid** — rows = equipment slots; columns = characters. Side settings for sort, pin/hide, icon
-size, and spacing.
+**Grid** — rows = equipment slots; columns = characters. Side settings: the character filters
+(Realm, Level and Class filter, Pin and Hide individual characters, see
+[Realm filtering](../FEATURES.md#realm-filtering-and-character-visibility)); sort, icon size and spacing.
 
-Both views (and the compare panel) list only characters of the logged-in character's faction —
-opposite-faction alts can't receive gear by mail. Characters with no recorded faction (not
-logged in since faction was first captured) are still shown.
+The grid lists the characters the Gear settings' filters allow: opposite-faction alts only when
+"This realm, opposite faction" is ticked. The compare panel lists only characters of the
+logged-in character's faction (opposite-faction alts can't receive gear by mail), on the realms
+the Summary tab's realm filter shows. Characters with no recorded faction (not logged in since
+faction was first captured) are still shown.
 
 **Upgrade Check** — the item-check drop prompt, then the compare panel once an item is focused.
 Choosing the tab while holding an item on the cursor checks that item immediately. The same happens when you click the main window's **Gear** side tab while holding an item: it switches to Upgrade Check and loads that item, replacing any item already focused. Clicking the minimap button while holding an item (window closed) opens the window straight into this view with the item loaded. Focusing an item
@@ -30,7 +33,7 @@ still on the drop prompt returns to Grid; a focused item stays in Upgrade Check.
 
 - Hover tooltips on equipped items; shift-click inserts item links into chat.
 - An empty slot shows the game's own empty-slot art (the character pane's grey silhouette for that slot, `Data/Gear/EmptySlotArt.lua`), dimmed and without a quality glow; it has no tooltip.
-- Character ordering: primary/secondary sort, show self first, pin/hide.
+- Character ordering: primary/secondary sort, Pin individual characters (Current character first), Hide individual characters.
 - Appearance: icon size (small/medium/large), spacing (compact/normal/comfortable).
 - Score-sort row: sort columns by character level, average item level, time played, or gear score (TacoTip / GearScoreTBCClassic when loaded).
 

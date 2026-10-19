@@ -25,7 +25,7 @@ A grid of currencies (rows) × characters (columns), like the Reputation tab, wi
   - Clicking a currency sorts the characters by how much of it they have (click again to flip). Clicking the score selector returns to score sorting.
   - Character names in the header are not clickable.
 - **Filter currency** box in the toolbar row, beside the settings button (shown only on this view): shows only the currencies whose name contains the text (case-insensitive; Gold counts as a currency). Headers stay only while one of their currencies matches. Matching text is green, as in other searches. When nothing matches, the grid says so.
-- **Settings** (toolbar gear button, shown only on this view): Pin current character, and pin / hide per character, like Reputation. Saved in `AltArmyTBC_Options.economy.currency`. Bank alts are hidden, and the global realm filter applies.
+- **Settings** (toolbar gear button, shown only on this view): the character filters (Realm, Level and Class filter, Pin and Hide individual characters, see [Realm filtering](../FEATURES.md#realm-filtering-and-character-visibility)), like Reputation. Saved in `AltArmyTBC_Options.economy.currency`. Bank alts are hidden.
 - Characters with no currency data yet still show their gold; their currency cells show a dash.
 
 ### Waylaid Crates

@@ -240,6 +240,9 @@ function NW.Compute(scaleFactor, opts)
         return charKey(realm, name) .. (linkId and ("" .. linkId) or "")
     end
 
+    -- linked accounts' characters as the Summary's realm filter says
+    local GRF = AltArmy.GlobalRealmFilter
+    local linked = not (GRF and GRF.GetScope) or GRF.GetScope().linked ~= false
     local forEach = DS.ForEachCharacterInScope or DS.ForEachCharacter
     forEach(DS, function(realm, charName, charData, linkId)
         if not realmAllowed(realm, allRealms, currentRealm) then
@@ -257,13 +260,13 @@ function NW.Compute(scaleFactor, opts)
             name = name,
             copper = tonumber(gold) or 0,
         }
-    end)
+    end, { linked = linked })
 
     local slots = (SD and SD.GetAllContainerSlots and SD.GetAllContainerSlots()) or {}
     for _, entry in ipairs(slots) do
         local name = entry.characterName
         local realm = entry.realm
-        if realmAllowed(realm, allRealms, currentRealm) then
+        if realmAllowed(realm, allRealms, currentRealm) and (linked or entry.linkId == nil) then
             local key = rowKey(realm, name, entry.linkId)
             local row = byChar[key]
             if not row then

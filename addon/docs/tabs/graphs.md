@@ -9,7 +9,7 @@ See time per level and cumulative played time across alts; compare characters on
 ## Metrics and options
 
 - **Time per level** and **cumulative played** (dropdown).
-- Multi-character comparison list with select-all.
+- Multi-character comparison list with select-all, of every character (the Summary's filters don't apply), grouped by realm and faction as the Summary's sections are (by name within each, each group under a divider row naming it, "Realm — Faction", so the rows don't name the realm); characters with too little data to draw are listed greyed out under "Not enough data:" at the very end, ungrouped and without their realms.
 - Zoom by drag-selecting a level range.
 - Optional shrink-outliers for slow level bands; optional rolling average; logarithmic axis where relevant.
 
@@ -23,7 +23,9 @@ Drawing techniques (line pools, axes, hit targets): [GRAPH_RENDERING_TECHNIQUES.
 
 ## Settings
 
-`AltArmyTBC_GraphSettings`. Respects the global realm filter.
+`AltArmyTBC_GraphSettings`.
+
+The toolbar's settings button shows and hides the right column (the options and the Compare list). Unlike other tabs it starts shown; hidden, the graph takes the whole tab. Not saved across sessions.
 
 ## Window resize
 

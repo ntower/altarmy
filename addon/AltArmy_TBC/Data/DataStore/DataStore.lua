@@ -341,10 +341,10 @@ function DS:ForEachLinkedCharacter(fn)
     LS.ForEachCharacter(fn)
 end
 
---- Our characters, then linked accounts' when the character scope shows them (GlobalRealmFilter) or
---- `opts.linked` says so: fn(realm, key, charData, linkId) — linkId nil for ours; return true to stop.
---- For lists the player browses (Summary, Search, Cooldowns); everything that acts on characters keeps
---- ForEachCharacter, ours alone.
+--- Our characters, then linked accounts' unless `opts.linked` is false: fn(realm, key, charData, linkId) —
+--- linkId nil for ours; return true to stop. For lists the player browses (Summary, Search, Cooldowns), each
+--- of which drops linked characters by its own realm filter (CharacterFilter, GlobalRealmFilter); everything
+--- that acts on characters keeps ForEachCharacter, ours alone.
 function DS:ForEachCharacterInScope(fn, opts)
     if not fn then return end
     local stopped = false
@@ -355,13 +355,7 @@ function DS:ForEachCharacterInScope(fn, opts)
         end
     end)
     if stopped then return end
-    local linked = opts and opts.linked
-    if linked == nil then
-        local G = AltArmy.GlobalRealmFilter
-        local scope = G and G.GetScope and G.GetScope()
-        linked = scope == nil or scope.linked ~= false
-    end
-    if linked then
+    if not (opts and opts.linked == false) then
         self:ForEachLinkedCharacter(fn)
     end
 end

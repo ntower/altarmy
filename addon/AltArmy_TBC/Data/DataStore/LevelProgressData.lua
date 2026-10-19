@@ -355,6 +355,7 @@ local function BuildCharacterEntry(entry, char)
     return {
         name = entry.name,
         realm = entry.realm,
+        faction = entry.faction or (char and char.faction) or nil,
         linkId = entry.linkId,
         classFile = entry.classFile or (char and char.classFile) or "",
         level = entry.level or (char and char.level) or 0,

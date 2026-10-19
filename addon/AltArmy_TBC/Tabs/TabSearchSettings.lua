@@ -343,6 +343,7 @@ function AltArmy.TabSearchSettings.Install(frame, UI)
         local rowHeight = dropdownRowHeight
         popup:SetHeight(popupPad.top + #config.keys * rowHeight + popupPad.bottom)
         popup:SetFrameLevel(filterContent:GetFrameLevel() + 100)
+        Theme.RaiseDropdownPopup(popup)
         popup:Hide()
         Theme.SkinDropdownPopup(popup)
         craftFilterDropdowns[#craftFilterDropdowns + 1] = popup

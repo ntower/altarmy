@@ -132,12 +132,15 @@ local function GetDisplayList()
     local settings = Settings()
     local showSelfFirst = settings.showSelfFirst ~= false
     local BA = AltArmy.BankAlt
+    local CF = AltArmy.CharacterFilter
+    local ctx = CF.Context(DS.GetCurrentPlayerRealm and DS:GetCurrentPlayerRealm() or nil)
 
     local visible = {}
     for i = 1, #rawList do
         local e = rawList[i]
         local isSelf = DS.IsCurrentCharacter and DS:IsCurrentCharacter(e.name, e.realm)
         local isHidden = GetCharSetting(e.name, e.realm, "hide") or (BA and BA.Is and BA.Is(e.name, e.realm))
+            or not CF.Matches(e, settings.filter, ctx)
         if not isHidden or (showSelfFirst and isSelf) then
             visible[#visible + 1] = e
             SSR.DecorateEntry(e)
@@ -160,12 +163,6 @@ local function GetDisplayList()
         function(e) return GetCharSetting(e.name, e.realm, "pin") end,
         function(e) return DS.IsCurrentCharacter and DS:IsCurrentCharacter(e.name, e.realm) end,
         showSelfFirst, sortPair)
-
-    local GRF = AltArmy.GlobalRealmFilter
-    if GRF and GRF.FilterList then
-        local currentRealm = DS.GetCurrentPlayerRealm and DS:GetCurrentPlayerRealm() or ""
-        list = GRF.FilterList(list, currentRealm)
-    end
     return list
 end
 
@@ -700,11 +697,10 @@ W.headerLeftFade = Theme.CreatePinnedHorizontalScrollFade({
 
 local function BuildCtx(list)
     local RF = AltArmy.RealmFilter
-    local GRF = AltArmy.GlobalRealmFilter
-    local realmFilter = GRF and GRF.Get and GRF.Get() or "all"
+    local showsOtherRealms = AltArmy.CharacterFilter.ShowsOtherRealms(Settings().filter)
     return {
         scoreProviderId = Settings().scoreProvider or SSR.DEFAULT_PROVIDER,
-        showRealmSuffix = realmFilter == "all" and RF and RF.hasMultipleRealms and RF.hasMultipleRealms(list),
+        showRealmSuffix = showsOtherRealms and RF and RF.hasMultipleRealms and RF.hasMultipleRealms(list),
         RF = RF,
     }
 end
@@ -800,41 +796,20 @@ do
     sorting:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
     sorting:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, 0)
 
-    local selfRow = Theme.CreateLabeledCheckbox(sorting, {
-        point = "TOPLEFT",
-        x = 0,
-        y = 0,
-        text = "Pin current character",
-        fullWidthHover = true,
-        onClick = function(checked)
-            Settings().showSelfFirst = checked
-            Refresh()
-        end,
+    W.filterControls = AltArmy.CreateCharacterFilterControls(sorting, {
+        anchorTo = title,
+        dropdownParent = W.settingsPanel,
+        getSettings = Settings,
+        getCharSetting = GetCharSetting,
+        setCharSetting = SetCharSetting,
+        skipBankAlts = true,
+        onChange = Refresh,
     })
-    Theme.AttachSettingsHelpIcon(selfRow, {
-        title = "Pin current character",
-        lines = {
-            "When enabled, your current character is automatically pinned, "
-                .. "causing it to show ahead of non-pinned characters.",
-            'This will override the "Hide" setting.',
-        },
-    })
-    W.selfCheck = selfRow.check
-
-    if AltArmy.CreateCharacterPinHideList then
-        local _, refresh = AltArmy.CreateCharacterPinHideList(sorting, selfRow, {
-            gutterEdge = W.settingsPanel,
-            getSettings = Settings,
-            getCharSetting = GetCharSetting,
-            setCharSetting = SetCharSetting,
-            onChange = Refresh,
-        })
-        W.charListRefresh = refresh
-    end
 end
 
 W.settingsPanel:SetScript("OnHide", function()
     if W.scoreSortControls.dropdown then W.scoreSortControls.dropdown:Hide() end
+    W.filterControls.Close()
 end)
 
 function frame:IsEconomySettingsAvailable()
@@ -850,11 +825,10 @@ function frame:ToggleEconomySettings()
     W.settingsPanel:SetShown(show)
     LayoutPanels()
     if show then
-        W.selfCheck:SetChecked(Settings().showSelfFirst)
         if AltArmy.Characters and AltArmy.Characters.InvalidateView then
             AltArmy.Characters:InvalidateView()
         end
-        if W.charListRefresh then W.charListRefresh() end
+        W.filterControls.refresh()
     end
     Refresh()
 end

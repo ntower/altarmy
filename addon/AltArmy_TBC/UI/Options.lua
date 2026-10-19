@@ -159,12 +159,6 @@ panel.default = function()
     if panel.minimapCheckbox then
         panel.minimapCheckbox:SetChecked(true)
     end
-    if AltArmy.GlobalRealmFilter and AltArmy.GlobalRealmFilter.ResetScope then
-        AltArmy.GlobalRealmFilter.ResetScope()
-    end
-    if panel.RefreshRealmFilterDropdown then
-        panel.RefreshRealmFilterDropdown()
-    end
     if AltArmy.CooldownData and AltArmy.CooldownData.ResetCooldownOptionsToDefaults then
         AltArmy.CooldownData.ResetCooldownOptionsToDefaults()
     end
@@ -192,9 +186,6 @@ panel.refresh = function()
     ensureDefaults()
     if panel.minimapCheckbox then
         panel.minimapCheckbox:SetChecked(minimapShown())
-    end
-    if panel.RefreshRealmFilterDropdown then
-        panel.RefreshRealmFilterDropdown()
     end
     if panel.RefreshCooldownOptionsFromVars then
         panel.RefreshCooldownOptionsFromVars()
@@ -780,90 +771,6 @@ local minimapRow = Theme.CreateLabeledCheckbox(generalSection.content, {
     end,
 })
 panel.minimapCheckbox = minimapRow.check
-
--- Which characters every tab shows (GlobalRealmFilter's scope): this realm and your faction always, the
--- rest by a checkbox each. Linked accounts get theirs once there are any.
-local SCOPE_CAPTION_HEIGHT = 16
-panel.scopeCaption = Theme.CreateOptionsSectionLabel(generalSection.content, {
-    relativeTo = minimapRow,
-    relativePoint = "BOTTOMLEFT",
-    x = 0,
-    y = -14,
-    text = "Characters shown",
-    justifyH = "LEFT",
-})
-panel.scopeCaption:SetHeight(SCOPE_CAPTION_HEIGHT)
-
-panel.SCOPE_ROWS = {
-    { key = nil, text = "Characters on the same realm and same faction" },
-    { key = "otherFaction", text = "Characters on the same realm of the opposite faction" },
-    { key = "otherRealms", text = "Characters on other realms" },
-    {
-        key = "linked",
-        text = "Characters from linked accounts (if they match the filters above)",
-        onlyWithLinks = true,
-    },
-}
-panel.scopeRows = {}
-for i, def in ipairs(panel.SCOPE_ROWS) do
-    local row = Theme.CreateLabeledCheckbox(generalSection.content, {
-        point = "TOPLEFT",
-        relativeTo = i == 1 and panel.scopeCaption or panel.scopeRows[i - 1],
-        relativePoint = "BOTTOMLEFT",
-        x = 0,
-        y = i == 1 and -6 or -2,
-        text = def.text,
-        fullWidthHover = true,
-        onClick = def.key and function(checked)
-            local G = AltArmy.GlobalRealmFilter
-            if G and G.SetScope then
-                G.SetScope(def.key, checked)
-            end
-        end or nil,
-    })
-    if not def.key then
-        row.check:SetChecked(true)
-        row.check:Disable()
-        if row.label then
-            row.label:SetTextColor(0.6, 0.6, 0.6)
-        end
-    end
-    row.scopeKey = def.key
-    panel.scopeRows[i] = row
-end
-
---- How tall the General section's content is with `rows` scope checkboxes shown.
-function panel.GeneralContentHeight(rows)
-    return Theme.CHAR_LIST_ROW_HEIGHT + 14 + SCOPE_CAPTION_HEIGHT + 6 + rows * (Theme.CHAR_LIST_ROW_HEIGHT + 2)
-end
-
-local function RefreshRealmFilterDropdown()
-    local G = AltArmy.GlobalRealmFilter
-    local scope = G and G.GetScope and G.GetScope() or {}
-    local LS = AltArmy.LinkStore
-    local hasLinks = LS and LS.HasLinks and LS.HasLinks() or false
-    local shown = 0
-    for i, row in ipairs(panel.scopeRows) do
-        local visible = not panel.SCOPE_ROWS[i].onlyWithLinks or hasLinks
-        row:SetShown(visible)
-        if visible then
-            shown = shown + 1
-        end
-        if row.scopeKey then
-            row.check:SetChecked(scope[row.scopeKey] and true or false)
-        end
-    end
-    if panel.generalSectionRef and shown ~= panel.scopeRowsShown then
-        panel.scopeRowsShown = shown
-        panel.generalSectionRef.SetContentHeight(panel.GeneralContentHeight(shown))
-        if LayoutGeneralSections then
-            LayoutGeneralSections()
-        end
-    end
-end
-
-RefreshRealmFilterDropdown()
-panel.RefreshRealmFilterDropdown = RefreshRealmFilterDropdown
 
 -- Guild sharing settings (only shown when the guildShare feature flag is on).
 local GUILD_SHARING_ROW_GAP = 16
@@ -1697,9 +1604,7 @@ do
     panel.advancedSection.SetShown(R and R.HasApi and R.HasApi() or false)
 end
 
-panel.generalSectionRef = generalSection
-panel.scopeRowsShown = nil
-RefreshRealmFilterDropdown()
+generalSection.SetContentHeight(Theme.CHAR_LIST_ROW_HEIGHT) -- the minimap row
 guildSection.SetContentHeight(GUILD_CONTENT_HEIGHT)
 auctionSection.SetContentHeight(math.max(Theme.CHAR_LIST_ROW_HEIGHT, Theme.OPTIONS_DROPDOWN_ROW_HEIGHT or 24))
 panel.advancedSection.SetContentHeight(Theme.CHAR_LIST_ROW_HEIGHT)
@@ -2309,9 +2214,6 @@ pageGeneral:HookScript("OnShow", function()
     if panel.minimapCheckbox then
         panel.minimapCheckbox:SetChecked(minimapShown())
     end
-    if panel.RefreshRealmFilterDropdown then
-        panel.RefreshRealmFilterDropdown()
-    end
     if panel.RefreshGuildSharingControls then
         panel.RefreshGuildSharingControls()
     end
@@ -2389,9 +2291,6 @@ reg:SetScript("OnEvent", function(_, event)
         UpdateCharSettings()
         if panel.minimapCheckbox then
             panel.minimapCheckbox:SetChecked(minimapShown())
-        end
-        if panel.RefreshRealmFilterDropdown then
-            panel.RefreshRealmFilterDropdown()
         end
         if panel.RefreshDebugTabVisibility then
             panel.RefreshDebugTabVisibility()

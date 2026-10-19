@@ -57,6 +57,10 @@ describe("LinkStore", function()
     assert.are.same({ "Mine" }, names(function(fn) DS:ForEachCharacter(fn) end))
     assert.are.same({ "L:Theirs", "Mine" }, names(function(fn) DS:ForEachCharacterInScope(fn) end))
     assert.are.same({ "Mine" }, names(function(fn) DS:ForEachCharacterInScope(fn, { linked = false }) end))
+    -- every list drops them by its own realm filter, so the source always gives them
+    AltArmy.GlobalRealmFilter = { GetScope = function() return { linked = false } end }
+    assert.are.same({ "L:Theirs", "Mine" }, names(function(fn) DS:ForEachCharacterInScope(fn) end))
+    AltArmy.GlobalRealmFilter = nil
   end)
 
   it("knows which link a character came from, and finds it by name", function()

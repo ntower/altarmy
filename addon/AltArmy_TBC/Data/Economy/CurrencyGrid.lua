@@ -15,7 +15,8 @@ G.GOLD_ICON = "Interface\\Icons\\INV_Misc_Coin_01"
 G.OTHER_HEADER = "Other"
 local OTHER_HEADER_ORDER = math.huge
 
---- The Currency view's saved state (column pin/hide and score sort), repaired and created on first use.
+--- The Currency view's saved state (column pin/hide, score sort and character filter), repaired and created
+--- on first use.
 function G.EnsureSettings()
     if type(AltArmyTBC_Options) ~= "table" then
         AltArmyTBC_Options = {}
@@ -31,6 +32,7 @@ function G.EnsureSettings()
     if type(s.showSelfFirst) ~= "boolean" then s.showSelfFirst = true end
     if type(s.scoreSortDescending) ~= "boolean" then s.scoreSortDescending = true end
     if type(s.characters) ~= "table" then s.characters = {} end
+    if AltArmy.CharacterFilter then AltArmy.CharacterFilter.Ensure(s) end
     return s
 end
 

@@ -1,6 +1,6 @@
 # Summary tab
 
-Character overview list for the account (respecting the global realm filter).
+Character overview list for the account (narrowed by the Summary settings' character filters).
 
 ## Purpose
 
@@ -8,9 +8,10 @@ See levels, rest XP, money, played time, and last online at a glance; pin/hide c
 
 ## Layout
 
-- Scrollable character table with a totals row.
-- Settings panel for pin/hide and related display options.
-- Global realm filter (Options / General) limits which characters appear.
+- Scrollable character table with a totals row (one total for everything listed).
+- Settings panel: **Realm filter**, **Group characters**, **Level filter**, **Class filter**, **Pin individual characters** and **Hide individual characters** (see [Realm filtering](../FEATURES.md#realm-filtering-and-character-visibility)).
+- The Summary's realm filter is also the one Search, Inventory, Graphs, Cooldowns and the gear compare panel use.
+- **Group characters** (on by default): the list is split into a section per realm and faction, each under a header ("Realm — Faction (n)"): this realm and faction first, then this realm's other faction, then other realms A to Z. Clicking a header folds its section away (a plus icon) or back (a minus icon), remembered in `collapsedGroups`. Headers stick to the top of the list while their section scrolls under them, until the next one pushes them out (`Data/Characters/CharacterSections.lua`, as Search's section headers). Names then leave out the realm, which the header gives. Sorting by a column sorts within each section.
 
 ## Columns
 
@@ -28,7 +29,7 @@ Click headers to sort ascending/descending.
 
 ## Character visibility
 
-- Pin / hide via Summary settings.
+- Pin and hide via the Summary settings' Pin individual characters and Hide individual characters dropdowns.
 - Bank alts: icon on the name column; optional hide-from-Summary (Options → Characters).
 - Click bank-alt icon to jump to Options for that character.
 
@@ -38,4 +39,4 @@ One gold `!` per character with a de-duped action list (`GetMissingDataInfo`). C
 
 ## Data source
 
-`SummaryData` / `Characters` over DataStore character, money, mail gold, and related modules. Settings: `AltArmyTBC_SummarySettings`.
+`SummaryData` / `Characters` over DataStore character, money, mail gold, and related modules. Settings: `AltArmyTBC_SummarySettings` (`filter`, `groupByRealmFaction`, `collapsedGroups`, sort, pin / hide).

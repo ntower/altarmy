@@ -42,8 +42,8 @@ Horizontal scrollbar, vertical scroll viewport, and theme checkbox factories are
   Horizontal scrollbar chrome is already shared via `Theme.CreateHorizontalScrollBar`.
 - **Character sort settings panel:** `TabGear` (~3724–3833) and `TabReputation` (~1039–1153)
   still duplicate the panel shell, pin/self-first checkbox wiring, and toggle/`OnSizeChanged`.
-  The heavy list UI is already shared via `Theme.CreateSettingsPanelContent` and
-  `AltArmy.CreateCharacterPinHideList` — remaining work is a thin wrapper over saved-var key +
+  The controls are already shared via `Theme.CreateSettingsPanelContent` and
+  `AltArmy.CreateCharacterFilterControls` — remaining work is a thin wrapper over saved-var key +
   refresh callback.
 
 ---

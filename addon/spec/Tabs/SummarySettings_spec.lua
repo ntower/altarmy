@@ -16,9 +16,6 @@ describe("Summary sort settings persistence", function()
     local function GetSummarySettings()
         _G.AltArmyTBC_SummarySettings = _G.AltArmyTBC_SummarySettings or {}
         local s = _G.AltArmyTBC_SummarySettings
-        if s.realmFilter ~= "all" and s.realmFilter ~= "currentRealm" then
-            s.realmFilter = "all"
-        end
         if not VALID_SORT_KEYS[s.sortKey] then
             s.sortKey = "name"
         end
@@ -29,6 +26,9 @@ describe("Summary sort settings persistence", function()
             s.showSelfFirst = false
         end
         s.characters = s.characters or {}
+        if s.groupByRealmFaction == nil then
+            s.groupByRealmFaction = true
+        end
         return s
     end
 
@@ -98,6 +98,17 @@ describe("Summary sort settings persistence", function()
             _G.AltArmyTBC_SummarySettings = { showSelfFirst = false }
             local s = GetSummarySettings()
             assert.is_false(s.showSelfFirst)
+        end)
+    end)
+
+    describe("groupByRealmFaction default", function()
+        it("groups realms and factions at first", function()
+            assert.is_true(GetSummarySettings().groupByRealmFaction)
+        end)
+
+        it("keeps grouping turned off", function()
+            _G.AltArmyTBC_SummarySettings = { groupByRealmFaction = false }
+            assert.is_false(GetSummarySettings().groupByRealmFaction)
         end)
     end)
 

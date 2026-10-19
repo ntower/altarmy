@@ -111,6 +111,9 @@ describe("AltArmy.Theme", function()
         function f:SetValueStep() end
         function f:SetOrientation() end
         function f:ClearAllPoints() end
+        function f:SetAllPoints(other) self._allPoints = other or true end
+        function f:SetFrameStrata(strata) self._strata = strata end
+        function f:SetClampedToScreen(on) self._clamped = on end
         function f:GetEffectiveScale() return self._scale or 1 end
         function f:SetVerticalScroll(v) self._verticalScroll = v end
         function f:GetVerticalScroll() return self._verticalScroll or 0 end
@@ -207,6 +210,21 @@ describe("AltArmy.Theme", function()
         package.loaded["Theme"] = nil
         require("Theme")
         Theme = AltArmy.Theme
+    end)
+
+    describe("RangeSliderHandle", function()
+        it("takes the handle a press is outside of, else the nearer, the low one on a tie", function()
+            assert.are.equal("min", Theme.RangeSliderHandle(20, 40, 5))
+            assert.are.equal("max", Theme.RangeSliderHandle(20, 40, 55))
+            assert.are.equal("min", Theme.RangeSliderHandle(20, 40, 29))
+            assert.are.equal("min", Theme.RangeSliderHandle(20, 40, 30))
+            assert.are.equal("max", Theme.RangeSliderHandle(20, 40, 31))
+        end)
+
+        it("leaves it to the first move when both handles sit where the press is", function()
+            assert.is_nil(Theme.RangeSliderHandle(30, 30, 30))
+            assert.are.equal("max", Theme.RangeSliderHandle(30, 30, 31))
+        end)
     end)
 
     describe("COLORS", function()
@@ -2064,6 +2082,140 @@ describe("AltArmy.Theme", function()
             assert.is_not_nil(row.hoverRegion.altArmyHoverTint)
             row.hoverRegion._scripts.OnMouseUp(row.hoverRegion, "LeftButton")
             assert.is_true(clicked)
+        end)
+    end)
+
+    describe("CreateVirtualScrollBinding", function()
+        it("keeps its own offset within the range it is given, and shows the bar only with range", function()
+            local range, seen = 0, {}
+            local b = Theme.CreateVirtualScrollBinding({
+                parent = makeStubFrame(),
+                step = 20,
+                getRange = function() return range end,
+                getViewHeight = function() return 100 end,
+                onScroll = function(offset) seen[#seen + 1] = offset end,
+            })
+            assert.is_false(b.bar:IsShown())
+            range = 80
+            b.UpdateRange()
+            assert.is_true(b.bar:IsShown())
+            assert.are.equal(80, b.GetMaxScroll())
+            b.SetOffset(150)
+            assert.are.equal(80, b.GetOffset())
+            b.Wheel(1)
+            assert.are.equal(60, b.GetOffset())
+            range = 40
+            b.UpdateRange()
+            assert.are.equal(40, b.GetOffset())
+            assert.are.same({ 80, 60 }, seen)
+        end)
+    end)
+
+    describe("CreateMultiSelectCheckboxDropdown", function()
+        --- The popup row (a CreateLabeledCheckbox frame) whose label reads `text`.
+        local function rowLabeled(text)
+            for _, f in ipairs(framesCreated) do
+                if f.check and f.label and f.label._text == text then
+                    return f
+                end
+            end
+        end
+
+        it("keeps a locked key checked, disabled and grey whatever the filter says", function()
+            local parent = makeStubFrame()
+            local map = { own = false, other = false }
+            local toggled = {}
+            local api = Theme.CreateMultiSelectCheckboxDropdown({
+                parent = parent,
+                relativeTo = parent,
+                keys = { "own", "other" },
+                labels = { own = "Own", other = "Other" },
+                lockedKeys = { own = true },
+                getFilter = function() return map end,
+                setEnabled = function(key, on) toggled[#toggled + 1] = key; map[key] = on end,
+            })
+            local own, other = rowLabeled("Own"), rowLabeled("Other")
+            assert.is_true(own.check._checked)
+            assert.is_false(own.check:IsEnabled())
+            assert.are.same({ 0.6, 0.6, 0.6 }, { own.label._textColor[1], own.label._textColor[2],
+                own.label._textColor[3] })
+            assert.is_false(other.check._checked)
+            api.refresh()
+            assert.is_true(own.check._checked)
+            own.hoverRegion._scripts.OnMouseUp(own.hoverRegion, "LeftButton")
+            assert.are.same({}, toggled)
+        end)
+
+        it("opens its popup above the window it sits in, kept on screen", function()
+            local parent = makeStubFrame()
+            local api = Theme.CreateMultiSelectCheckboxDropdown({
+                parent = parent,
+                relativeTo = parent,
+                keys = { "a" },
+                getFilter = function() return {} end,
+            })
+            assert.are.equal("FULLSCREEN_DIALOG", api.popup._strata)
+            assert.is_true(api.popup._clamped)
+        end)
+
+        it("lays its rows out again when getKeys gives another list", function()
+            local parent = makeStubFrame()
+            local keys = { "a", "b" }
+            local api = Theme.CreateMultiSelectCheckboxDropdown({
+                parent = parent,
+                relativeTo = parent,
+                getKeys = function() return keys end,
+                getRowLabel = function(key) return "row " .. key end,
+                getFilter = function() return { a = true, b = false, c = true } end,
+            })
+            assert.is_true(rowLabeled("row a"):IsShown())
+            assert.is_false(rowLabeled("row b").check._checked)
+            keys = { "c" }
+            api.refresh()
+            local c = rowLabeled("row c")
+            assert.is_true(c:IsShown())
+            assert.is_true(c.check._checked)
+            local shownB = false
+            for _, f in ipairs(framesCreated) do
+                if f.label and f.label._text == "row b" and f:IsShown() then shownB = true end
+            end
+            assert.is_false(shownB)
+        end)
+
+        it("draws a divider line for a divider key, never a checkbox", function()
+            local parent = makeStubFrame()
+            local api = Theme.CreateMultiSelectCheckboxDropdown({
+                parent = parent,
+                relativeTo = parent,
+                keys = { "a", "--", "b" },
+                labels = { ["--"] = "Group --" },
+                isDivider = function(key) return key == "--" end,
+                getRowLabel = function(key) return "row " .. key end,
+                getFilter = function() return {} end,
+                formatSummary = function(keys) return table.concat(keys, ",") end,
+            })
+            assert.is_not_nil(rowLabeled("row a"))
+            assert.is_not_nil(rowLabeled("row b"))
+            assert.is_nil(rowLabeled("row --"))
+            local dividers = {}
+            for _, f in ipairs(framesCreated) do
+                if f.leftLine and f:IsShown() then dividers[#dividers + 1] = f end
+            end
+            assert.are.equal(1, #dividers)
+            assert.are.equal("Group --", dividers[1].label._text)
+            assert.is_not_nil(api.popup)
+        end)
+
+        it("shows each row's label from getRowLabel", function()
+            local parent = makeStubFrame()
+            Theme.CreateMultiSelectCheckboxDropdown({
+                parent = parent,
+                relativeTo = parent,
+                keys = { "MAGE" },
+                getRowLabel = function(key) return "|cff3fc7ebMage|r" .. key end,
+                getFilter = function() return {} end,
+            })
+            assert.is_not_nil(rowLabeled("|cff3fc7ebMage|rMAGE"))
         end)
     end)
 

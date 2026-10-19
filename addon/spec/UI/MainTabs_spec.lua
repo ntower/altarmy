@@ -202,9 +202,14 @@ describe("MainTabs", function()
       assert.are.equal("IsEconomySettingsAvailable", s.isAvailable)
     end)
 
-    it("has no settings for Inventory, Graph or Guild", function()
+    it("routes Graph settings to its right column", function()
+      local s = MainTabs.Get("Graph").settings
+      assert.are.equal("ToggleGraphSettings", s.toggle)
+      assert.are.equal("IsGraphSettingsShown", s.isShown)
+    end)
+
+    it("has no settings for Inventory or Guild", function()
       assert.is_nil(MainTabs.Get("Inventory").settings)
-      assert.is_nil(MainTabs.Get("Graph").settings)
       assert.is_nil(MainTabs.Get("Guild").settings)
     end)
   end)

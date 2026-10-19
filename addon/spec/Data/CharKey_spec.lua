@@ -38,6 +38,7 @@ describe("CharKey", function()
       _G.AltArmyTBC_Options = {
         bankAlts = { ["R\\Frell"] = true },
         bankAltPromptDismissed = { ["R\\Frell"] = true },
+        economy = { currency = { characters = { ["R\\Frell"] = { hide = true } } } },
       }
     end)
 
@@ -49,6 +50,7 @@ describe("CharKey", function()
       assert.are.same({ ["R\\Frell Blast"] = true, ["R\\Other"] = true }, AltArmyTBC_GraphSettings.selected)
       assert.are.same({ ["R\\Frell Blast"] = true }, AltArmyTBC_Options.bankAlts)
       assert.are.same({ ["R\\Frell Blast"] = true }, AltArmyTBC_Options.bankAltPromptDismissed)
+      assert.are.same({ ["R\\Frell Blast"] = { hide = true } }, AltArmyTBC_Options.economy.currency.characters)
     end)
 
     it("keeps a setting already saved under the new name", function()
@@ -67,6 +69,7 @@ describe("CharKey", function()
     it("tolerates settings tables that do not exist yet", function()
       _G.AltArmyTBC_SummarySettings = nil
       _G.AltArmyTBC_GraphSettings = {}
+      AltArmyTBC_Options.economy = nil
       assert.has_no.errors(function() Rekey("R", "Frell", "Frell Blast") end)
     end)
 

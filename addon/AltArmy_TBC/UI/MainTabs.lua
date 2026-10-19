@@ -72,6 +72,7 @@ local DEFS = {
         label = "Graphs",
         slash = "graphs",
         nativeIcon = "INV_SideTab_Stats_c60", -- Forever CharacterFrame Statistics tab
+        settings = { toggle = "ToggleGraphSettings", isShown = "IsGraphSettingsShown" }, -- starts shown
     },
     Guild = {
         label = "Guild",

@@ -11,15 +11,28 @@ function AltArmy.CharKey(name, realm)
     return (realm or "") .. "\\" .. (name or "")
 end
 
---- Per-character settings maps keyed by CharKey: { global SavedVariables name, field }.
+--- Per-character settings maps keyed by CharKey: { global SavedVariables name, field, field, ... }.
 local CHAR_SETTINGS_TABLES = {
     { "AltArmyTBC_SummarySettings", "characters" },
     { "AltArmyTBC_GearSettings", "characters" },
     { "AltArmyTBC_ReputationSettings", "characters" },
+    { "AltArmyTBC_Options", "economy", "currency", "characters" },
     { "AltArmyTBC_GraphSettings", "selected" },
     { "AltArmyTBC_Options", "bankAlts" },
     { "AltArmyTBC_Options", "bankAltPromptDismissed" },
 }
+
+--- The table at a CHAR_SETTINGS_TABLES path, or nil when any step is missing.
+local function settingsMap(spec)
+    local t = _G[spec[1]]
+    for i = 2, #spec do
+        if type(t) ~= "table" then
+            return nil
+        end
+        t = t[spec[i]]
+    end
+    return type(t) == "table" and t or nil
+end
 
 --- Move every per-character setting saved for `oldName` on `realm` to `newName`. A setting already
 --- saved under the new name is kept.
@@ -32,9 +45,8 @@ function AltArmy.RekeyCharSettings(realm, oldName, newName)
     local oldKey = AltArmy.CharKey(oldName, realm)
     local newKey = AltArmy.CharKey(newName, realm)
     for _, spec in ipairs(CHAR_SETTINGS_TABLES) do
-        local root = _G[spec[1]]
-        local map = type(root) == "table" and root[spec[2]] or nil
-        if type(map) == "table" and map[oldKey] ~= nil then
+        local map = settingsMap(spec)
+        if map and map[oldKey] ~= nil then
             if map[newKey] == nil then
                 map[newKey] = map[oldKey]
             end

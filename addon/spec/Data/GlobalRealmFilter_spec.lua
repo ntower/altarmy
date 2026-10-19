@@ -1,90 +1,67 @@
---[[ Unit tests for GlobalRealmFilter.lua — run: npm test ]]
+--[[ Unit tests for GlobalRealmFilter.lua: the Summary tab's realm filter, for the other tabs. Run: npm test ]]
 
 describe("GlobalRealmFilter", function()
     local G
 
     setup(function()
         _G.AltArmy = _G.AltArmy or {}
-        package.path = package.path .. ";AltArmy_TBC/Data/?.lua"
+        package.path = package.path .. ";AltArmy_TBC/Data/?.lua;AltArmy_TBC/Data/Characters/?.lua"
+        require("RealmFilter")
+        require("CharacterFilter")
         require("GlobalRealmFilter")
         G = AltArmy.GlobalRealmFilter
         assert.truthy(G)
     end)
 
-    it("ResolveFromLegacyValues returns all only when all four are explicitly all", function()
-        assert.are.equal("all", G.ResolveFromLegacyValues("all", "all", "all", "all"))
+    before_each(function()
+        _G.AltArmyTBC_Options = {}
+        _G.AltArmyTBC_SummarySettings = nil
+        _G.UnitFactionGroup = function() return "Horde" end
     end)
 
-    it("ResolveFromLegacyValues returns currentRealm when any legacy value is nil", function()
-        assert.are.equal("currentRealm", G.ResolveFromLegacyValues(nil, "all", "all", "all"))
-        assert.are.equal("currentRealm", G.ResolveFromLegacyValues("all", nil, "all", "all"))
+    after_each(function()
+        _G.UnitFactionGroup = nil
+        AltArmy.DataStore = nil
     end)
 
-    it("ResolveFromLegacyValues returns currentRealm when any tab is currentRealm", function()
-        assert.are.equal("currentRealm", G.ResolveFromLegacyValues("all", "all", "all", "currentRealm"))
+    it("is the Summary tab's realm filter", function()
+        local scope = G.GetScope()
+        assert.are.equal(AltArmyTBC_SummarySettings.filter.scope, scope)
+        assert.are.same({ otherFaction = false, otherRealms = false, linked = true }, scope)
     end)
 
-    describe("scope", function()
-        before_each(function()
-            _G.AltArmyTBC_Options = {}
-            _G.UnitFactionGroup = function() return "Horde" end
-        end)
+    it("starts from the old global scope", function()
+        AltArmyTBC_Options.characterScope = { version = 1, otherFaction = true, otherRealms = true, linked = false }
+        assert.are.same({ otherFaction = true, otherRealms = true, linked = false }, G.GetScope())
+    end)
 
-        after_each(function()
-            _G.UnitFactionGroup = nil
-        end)
+    it("answers all or currentRealm by other realms", function()
+        assert.are.equal("currentRealm", G.Get())
+        G.GetScope().otherRealms = true
+        assert.are.equal("all", G.Get())
+    end)
 
-        it("comes from the old realm filter: all realms turns on both, current realm neither", function()
-            AltArmyTBC_Options.realmFilter = "currentRealm"
-            assert.are.same({ version = 1, otherFaction = false, otherRealms = false, linked = true }, G.GetScope())
-            _G.AltArmyTBC_Options = { realmFilter = "all" }
-            assert.are.same({ version = 1, otherFaction = true, otherRealms = true, linked = true }, G.GetScope())
-        end)
+    it("filters a list by the scope, looking factions up by name", function()
+        AltArmy.DataStore = {
+            GetCharacter = function(_, name)
+                return name == "Ally" and { faction = "Alliance" } or { faction = "Horde" }
+            end,
+        }
+        local list = { { realm = "R", name = "Me", level = 5, classFile = "MAGE" }, { realm = "R", name = "Ally" },
+            { realm = "X", characterName = "Far" } }
+        AltArmyTBC_SummarySettings = {}
+        G.Ensure().levelMin = 10 -- the Summary's level filter is its own
+        local out = G.FilterList(list, "R")
+        assert.are.equal(1, #out)
+        assert.are.equal("Me", out[1].name)
+        G.GetScope().otherFaction = true
+        G.GetScope().otherRealms = true
+        assert.are.equal(3, #G.FilterList(list, "R"))
+        assert.is_true(G.Includes({ realm = "X", faction = "Alliance" }, "R"))
+    end)
 
-        it("keeps realmFilter in step, so Get still answers all or currentRealm", function()
-            G.SetScope("otherRealms", true)
-            assert.are.equal("all", G.Get())
-            G.Set("currentRealm")
-            assert.is_false(G.GetScope().otherRealms)
-            G.SetScope("otherFaction", true)
-            assert.are.equal("currentRealm", G.Get())
-            assert.is_true(G.GetScope().otherFaction)
-        end)
-
-        it("follows an older addon that changed realmFilter since", function()
-            G.GetScope()
-            AltArmyTBC_Options.realmFilter = "all"
-            assert.is_true(G.GetScope().otherRealms)
-        end)
-
-        it("ignores unknown toggles and resets to the defaults", function()
-            G.SetScope("everything", true)
-            assert.is_nil(G.GetScope().everything)
-            G.SetScope("otherFaction", true)
-            G.SetScope("otherRealms", true)
-            G.ResetScope()
-            assert.are.same({ version = 1, otherFaction = false, otherRealms = false, linked = true }, G.GetScope())
-            assert.are.equal("currentRealm", G.Get())
-        end)
-
-        it("filters a list by the scope, looking factions up by name", function()
-            package.path = package.path .. ";AltArmy_TBC/Data/Characters/?.lua"
-            require("RealmFilter")
-            AltArmy.DataStore = {
-                GetCharacter = function(_, name)
-                    return name == "Ally" and { faction = "Alliance" } or { faction = "Horde" }
-                end,
-            }
-            G.SetScope("otherFaction", false)
-            local list = { { realm = "R", name = "Me" }, { realm = "R", name = "Ally" },
-                { realm = "X", characterName = "Far" } }
-            local out = G.FilterList(list, "R")
-            assert.are.equal(1, #out)
-            assert.are.equal("Me", out[1].name)
-            G.SetScope("otherFaction", true)
-            G.SetScope("otherRealms", true)
-            assert.are.equal(3, #G.FilterList(list, "R"))
-            AltArmy.DataStore = nil
-        end)
+    it("drops linked accounts' characters when the Summary leaves them out", function()
+        G.GetScope().linked = false
+        assert.are.same({}, G.FilterList({ { realm = "R", faction = "Horde", linkId = "a" } }, "R"))
     end)
 end)

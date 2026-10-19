@@ -8,7 +8,7 @@ local Core = AltArmy.GraphCore
 local Logic = AltArmy.GraphLogic
 local Theme = AltArmy.Theme
 
-local SELECTOR_WIDTH = 150
+local SELECTOR_WIDTH = 195
 local SCROLL_GUTTER = Theme.VerticalScrollBarGutter()
 local SECTION_GAP = Theme.SECTION_GAP
 local ROW_HEIGHT = 20
@@ -179,30 +179,15 @@ local function SetSelected(realm, name, on, linkId)
     end
 end
 
-local function GetRealmFilterValue()
-    local GRF = AltArmy.GlobalRealmFilter
-    if GRF and GRF.Get then
-        return GRF.Get()
-    end
-    return "currentRealm"
-end
-
-local function ApplyRealmFilter(list)
-    if not list then return {} end
-    if not RF or not RF.filterListByRealm then return list end
-    local currentRealm = (GetRealmName and GetRealmName()) or ""
-    return AltArmy.GlobalRealmFilter.FilterList(list, currentRealm)
-end
-
 local function GetCompareList()
     if not LPD or not LPD.GetCharactersWithHistory then return {} end
-    return ApplyRealmFilter(LPD.GetCharactersWithHistory())
+    return LPD.GetCharactersWithHistory()
 end
 
 local function GetSelectedCharacters()
     local out = {}
     if not LPD or not LPD.GetCharactersWithHistory then return out end
-    for _, entry in ipairs(ApplyRealmFilter(LPD.GetCharactersWithHistory())) do
+    for _, entry in ipairs(LPD.GetCharactersWithHistory()) do
         if IsSelected(entry.realm, entry.name, entry.linkId) then
             out[#out + 1] = entry
         end
@@ -336,7 +321,6 @@ end
 local graphFrame = CreateFrame("Frame", nil, frame, "BackdropTemplate")
 graphFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
 graphFrame:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
-graphFrame:SetPoint("RIGHT", frame, "RIGHT", -SELECTOR_WIDTH - SECTION_GAP, 0)
 Theme.ApplyBackdrop(graphFrame, "content")
 graphFrame:EnableMouse(true)
 
@@ -559,10 +543,10 @@ graphHint:SetJustifyH("CENTER")
 local function UpdateEmptyGraphHint()
     if not LPD or not LPD.GetCharactersWithHistory then return end
 
-    local list = ApplyRealmFilter(LPD.GetCharactersWithHistory())
+    local list = LPD.GetCharactersWithHistory()
     local insufficientList = {}
     if LPD.GetCharactersWithInsufficientHistory then
-        insufficientList = ApplyRealmFilter(LPD.GetCharactersWithInsufficientHistory())
+        insufficientList = LPD.GetCharactersWithInsufficientHistory()
     end
 
     if #list == 0 and #insufficientList == 0 then
@@ -740,6 +724,15 @@ local function UpdateCompareSwatchColors()
             row.swatch:SetVertexColor(r, g, b, 1)
         end
     end
+end
+
+-- Divider rows naming each realm and faction group of the compare list (CharacterFilter.GroupByRealmFaction).
+local groupDividers = {}
+local function GetGroupDivider(i)
+    if not groupDividers[i] then
+        groupDividers[i] = Theme.CreateLabeledDividerRow(selectorChild)
+    end
+    return groupDividers[i]
 end
 
 local insufficientHeader = selectorChild:CreateFontString(nil, "OVERLAY", Theme.FONTS.muted)
@@ -1513,10 +1506,10 @@ end
 
 local function RefreshSelector()
     if not LPD or not LPD.GetCharactersWithHistory then return end
-    local list = ApplyRealmFilter(LPD.GetCharactersWithHistory())
+    local list = LPD.GetCharactersWithHistory()
     local insufficientList = {}
     if LPD.GetCharactersWithInsufficientHistory then
-        insufficientList = ApplyRealmFilter(LPD.GetCharactersWithInsufficientHistory())
+        insufficientList = LPD.GetCharactersWithInsufficientHistory()
     end
 
     for _, row in ipairs(selectorRows) do
@@ -1525,18 +1518,14 @@ local function RefreshSelector()
     for _, row in ipairs(insufficientRows) do
         row:Hide()
     end
+    for _, line in ipairs(groupDividers) do
+        line:Hide()
+    end
     insufficientHeader:Hide()
     UpdateSelectorLayout(#list > 0)
 
     local scrollW = selectorScroll:GetWidth() or SELECTOR_WIDTH - 12
     selectorChild:SetWidth(scrollW)
-
-    local realmFilter = GetRealmFilterValue()
-    local combinedForRealmCheck = {}
-    for _, entry in ipairs(list) do combinedForRealmCheck[#combinedForRealmCheck + 1] = entry end
-    for _, entry in ipairs(insufficientList) do combinedForRealmCheck[#combinedForRealmCheck + 1] = entry end
-    local showRealmSuffix = (realmFilter == "all")
-        and RF and RF.hasMultipleRealms and RF.hasMultipleRealms(combinedForRealmCheck)
 
     local yOffset = 0
     if Logic.ShouldShowCompareSelectAll(#list) then
@@ -1550,7 +1539,35 @@ local function RefreshSelector()
         selectAllRow:Hide()
     end
 
-    for i, entry in ipairs(list) do
+    -- Every character, whatever the Summary's filters, grouped by realm and faction as the Summary's
+    -- sections are, each group under a divider naming it (so the rows don't name the realm).
+    local CF = AltArmy.CharacterFilter
+    local ctx = CF.Context()
+    local dividers = 0
+    local function Grouped(entries)
+        local ordered, groupStarts = {}, {}
+        for _, group in ipairs(CF.GroupByRealmFaction(entries, ctx)) do
+            groupStarts[#ordered + 1] = CF.GroupLabel(group)
+            for _, e in ipairs(group) do ordered[#ordered + 1] = e end
+        end
+        return ordered, groupStarts
+    end
+    local function PlaceDivider(label)
+        dividers = dividers + 1
+        local divider = GetGroupDivider(dividers)
+        divider:ClearAllPoints()
+        divider:SetPoint("TOPLEFT", selectorChild, "TOPLEFT", 0, -yOffset)
+        divider:SetPoint("RIGHT", selectorChild, "RIGHT", 0, 0)
+        divider:SetHeight(ROW_HEIGHT)
+        divider:SetText(label)
+        divider:Show()
+        yOffset = yOffset + ROW_HEIGHT
+    end
+    local ordered, groupStarts = Grouped(list)
+    for i, entry in ipairs(ordered) do
+        if groupStarts[i] then
+            PlaceDivider(groupStarts[i])
+        end
         local row = GetSelectorRow(i)
         PositionListRow(row, yOffset)
         row:Show()
@@ -1558,7 +1575,7 @@ local function RefreshSelector()
 
         local r, g, b = LPD.GetClassColor(entry.classFile)
         row.swatch:SetVertexColor(r, g, b, 1)
-        row.label:SetText(FormatCharacterLabel(entry, showRealmSuffix))
+        row.label:SetText(FormatCharacterLabel(entry, false))
         -- White so class/gray realm escape codes from FormatCharacterLabel render correctly
         row.label:SetTextColor(1, 1, 1, 1)
 
@@ -1598,7 +1615,7 @@ local function RefreshSelector()
 
             local r, g, b = LPD.GetClassColor(entry.classFile)
             row.swatch:SetVertexColor(r, g, b, 0.45)
-            row.label:SetText(FormatCharacterLabel(entry, showRealmSuffix))
+            row.label:SetText(FormatCharacterLabel(entry, false))
             row.label:SetTextColor(1, 1, 1, 0.55)
 
             yOffset = yOffset + ROW_HEIGHT
@@ -1618,6 +1635,24 @@ end
 
 function frame:Redraw()
     RebuildGraph()
+end
+
+-- The toolbar's settings button shows and hides the right column (options and Compare); unlike other
+-- tabs it starts shown. Hidden, the graph takes the whole tab.
+local function ApplyRightColumnLayout()
+    local shown = optionsPanel:IsShown()
+    selectorPanel:SetShown(shown)
+    graphFrame:SetPoint("RIGHT", frame, "RIGHT", shown and (-SELECTOR_WIDTH - SECTION_GAP) or 0, 0)
+end
+ApplyRightColumnLayout()
+
+function frame:IsGraphSettingsShown()
+    return optionsPanel:IsShown()
+end
+
+function frame:ToggleGraphSettings(_self)
+    optionsPanel:SetShown(not optionsPanel:IsShown())
+    ApplyRightColumnLayout()
 end
 
 -- The plot is drawn at the graph frame's size, so it is drawn again at every size change: live while

@@ -21,6 +21,7 @@ UI\GuildCrest.lua
 UI\TopTabs.lua
 Core.lua
 Data\CharKey.lua
+Data\Characters\CharacterFilter.lua
 Data\Characters\BankAlt.lua
 Data\Characters\BankAltDetect.lua
 Data\Debug.lua
@@ -77,6 +78,7 @@ Data\MailAlerts.lua
 Data\DataStore\DataStoreAuctions.lua
 Data\Characters\SummaryData.lua
 Data\Characters\RealmFilter.lua
+Data\Characters\CharacterSections.lua
 Data\Characters\GlobalRealmFilter.lua
 Data\Characters\Characters.lua
 Data\Recipes\RecipeData_TBC.lua
@@ -107,12 +109,13 @@ ReputationFactionFilter.lua
 Data\Characters\CharacterSort.lua
 ReputationFactionSort.lua
 ReputationGridWindow.lua
-UI\CharacterPinHideList.lua
+UI\CharacterFilterControls.lua
 UI\ScoreSortRow.lua
 UI\ItemActions.lua
 UI\ItemSlotButton.lua
 UI\PendingItemIcons.lua
 UI\GraphCore.lua
+Tabs\SearchStickyHeaders.lua
 Tabs\TabSummary.lua
 Tabs\TabGear.lua
 Tabs\TabEconomy.lua
@@ -125,7 +128,6 @@ Tabs\TabInventoryMail.lua
 Tabs\TabReputation.lua
 Tabs\TabCooldowns.lua
 Tabs\TabCooldownsRaids.lua
-Tabs\SearchStickyHeaders.lua
 Tabs\SearchListModel.lua
 Tabs\TabSearchSettings.lua
 Tabs\TabSearch.lua

@@ -132,6 +132,13 @@ local function GetSummarySettings()
         s.showSelfFirst = false
     end
     s.characters = s.characters or {}
+    if s.groupByRealmFaction == nil then
+        s.groupByRealmFaction = true
+    end
+    if type(s.collapsedGroups) ~= "table" then
+        s.collapsedGroups = {} -- CharacterSections.SectionKey -> true while folded
+    end
+    AltArmy.CharacterFilter.Ensure(s)
     return s
 end
 
@@ -150,7 +157,6 @@ local function SetSummaryCharSetting(name, realm, pin, hide)
     s.characters[key] = { pin = pin == true, hide = hide == true }
 end
 
-local summaryCharListRefresh = function() end  -- set below if CreateCharacterPinHideList is available
 
 local function isCurrentCharacter(entry)
     local DS = AltArmy.DataStore
@@ -244,16 +250,26 @@ scrollFrame:SetScrollChild(scrollChild)
 -- scrolling): the scroll offset only picks the first list index, so every scroll re-runs Update().
 local SCROLL_GUTTER = Theme.VerticalScrollBarGutter()
 local summaryNeedsHorizontalScroll = false
-local scrollBinding = Theme.CreateVerticalScrollBinding(scrollFrame, {
+-- The bar keeps its own offset and range (Theme.CreateVirtualScrollBinding): the client gives this ScrollFrame,
+-- nested in the horizontal one, no scroll range, which left the bar hidden and the last rows out of reach.
+local summaryScroll = { maxScroll = 0, viewH = 1 } -- set by Update()
+local scrollBinding = Theme.CreateVirtualScrollBinding({
     parent = frame,
     name = "AltArmyTBC_SummaryScrollBar",
     step = ROW_HEIGHT * 2,
+    getRange = function() return summaryScroll.maxScroll end,
+    getViewHeight = function() return summaryScroll.viewH end,
     onScroll = function()
         Update()
     end,
 })
 local scrollBar = scrollBinding.bar
 scrollChild:SetScript("OnMouseWheel", function(_, delta)
+    scrollBinding.Wheel(delta)
+end)
+-- over the rows too (ScrollUtil no longer wires the scroll frame's wheel)
+scrollFrame:EnableMouseWheel(true)
+scrollFrame:SetScript("OnMouseWheel", function(_, delta)
     scrollBinding.Wheel(delta)
 end)
 
@@ -395,6 +411,7 @@ local summaryHeaderFade = Theme.CreatePinnedHeaderScrollFade({
     headerFrame = headerRow,
     scrollFrame = scrollFrame,
     scrollBar = scrollBar,
+    getOffset = function() return scrollBinding.GetOffset() end,
     headerBottomInset = 0,
 })
 
@@ -449,45 +466,29 @@ local sortingContent = CreateFrame("Frame", nil, summarySettingsContent)
 sortingContent:SetPoint("TOPLEFT", summarySettingsTitle, "BOTTOMLEFT", 0, -8)
 sortingContent:SetPoint("BOTTOMRIGHT", summarySettingsContent, "BOTTOMRIGHT", 0, 0)
 
-local showSelfFirstRow = Theme.CreateLabeledCheckbox(sortingContent, {
-    point = "TOPLEFT",
-    x = 0,
-    y = 0,
-    text = "Pin current character",
-    fullWidthHover = true,
-    onClick = function(checked)
-        GetSummarySettings().showSelfFirst = checked
-        Update()
+-- Filters, grouping and pin / hide. The Summary's realm filter is also every tab's without one of its own
+-- (GlobalRealmFilter), so a change to it refreshes them all.
+local summaryFilterControls = AltArmy.CreateCharacterFilterControls(sortingContent, {
+    anchorTo = summarySettingsTitle,
+    dropdownParent = summarySettingsPanel,
+    getSettings = GetSummarySettings,
+    getCharSetting = GetSummaryCharSetting,
+    setCharSetting = SetSummaryCharSetting,
+    groupCheckbox = {
+        get = function() return GetSummarySettings().groupByRealmFaction ~= false end,
+        set = function(on) GetSummarySettings().groupByRealmFaction = on end,
+    },
+    onChange = function(kind)
+        if kind == "scope" and AltArmy.RefreshCharacterViews then
+            AltArmy.RefreshCharacterViews()
+        else
+            Update()
+        end
     end,
 })
-Theme.AttachSettingsHelpIcon(showSelfFirstRow, {
-    title = "Pin current character",
-    lines = {
-        "When enabled, your current character is automatically pinned, "
-            .. "causing it to show ahead of non-pinned characters.",
-        'This will override the "Hide" setting.',
-    },
-})
-local showSelfFirstCheck = showSelfFirstRow.check
-showSelfFirstCheck:SetChecked(GetSummarySettings().showSelfFirst)
-
--- Character list: Pin/Hide (reusable component, same as Gear tab)
-if AltArmy.CreateCharacterPinHideList then
-    -- luacheck: push ignore 211
-    local _scroll, refresh = AltArmy.CreateCharacterPinHideList(sortingContent,
-        showSelfFirstRow, {
-            gutterEdge = summarySettingsPanel,
-            splitBankAlts = false,
-            getSettings = GetSummarySettings,
-            getCharSetting = GetSummaryCharSetting,
-            setCharSetting = SetSummaryCharSetting,
-            onChange = function()
-                Update()
-            end,
-        })
-    if refresh then summaryCharListRefresh = refresh end
-    -- luacheck: pop
-end
+summarySettingsPanel:SetScript("OnHide", function()
+    summaryFilterControls.Close()
+end)
 
 function frame:IsSummarySettingsShown()
     return summarySettingsPanel and summarySettingsPanel:IsShown()
@@ -567,8 +568,13 @@ function frame:ToggleSummarySettings(_self)
     summarySettingsPanel:SetShown(showSettings)
     if showSettings then
         ApplySummarySettingsPanelLayout()
-        showSelfFirstCheck:SetChecked(GetSummarySettings().showSelfFirst)
-        if summaryCharListRefresh then summaryCharListRefresh() end
+        if AltArmy.Characters and AltArmy.Characters.InvalidateView then
+            AltArmy.Characters:InvalidateView()
+            if AltArmy.Characters.Sort then
+                AltArmy.Characters:Sort(sortAscending, currentSortKey)
+            end
+        end
+        summaryFilterControls.refresh()
     end
     ApplySummaryListLayout()
     UpdateHeaderSortIndicators()
@@ -587,6 +593,64 @@ frame:SetScript("OnSizeChanged", function()
 end)
 
 -- Row pool: parented to scrollFrame so they're clipped and don't show under settings panel
+-- Realm and faction section headers (grouped): drawn over the rows they stand in, sticking to the top while
+-- their section scrolls under them (CharacterSections.StickyHeaderLayout). Parented to scrollFrame like the
+-- rows, so they are clipped and follow the horizontal scroll. Clicking one folds its section away or back.
+local sectionHeaders = { pool = {} }
+function sectionHeaders.Get(i)
+    local h = sectionHeaders.pool[i]
+    if h then return h end
+    h = CreateFrame("Button", nil, scrollFrame)
+    h:SetSize(totalColWidth, ROW_HEIGHT)
+    h:SetFrameLevel((scrollFrame:GetFrameLevel() or 0) + 20)
+    h:EnableMouse(true)
+    h:RegisterForClicks("LeftButtonUp")
+    h:SetScript("OnMouseWheel", function(_, delta)
+        scrollBinding.Wheel(delta)
+    end)
+    h:SetScript("OnClick", function(self)
+        if not self.sectionKey then return end
+        local folded = GetSummarySettings().collapsedGroups
+        folded[self.sectionKey] = not folded[self.sectionKey] or nil
+        Update()
+    end)
+    local bg = h:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints(h)
+    local c = Theme.COLORS.gridHeaderBg
+    bg:SetColorTexture(c[1], c[2], c[3], c[4])
+    Theme.BindInteractableHover(h)
+    local icon = h:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(14, 14)
+    icon:SetPoint("LEFT", h, "LEFT", PAD, 0)
+    h.icon = icon
+    local label = h:CreateFontString(nil, "OVERLAY", Theme.FONTS.heading)
+    label:SetPoint("LEFT", icon, "RIGHT", 4, 0)
+    label:SetPoint("RIGHT", h, "RIGHT", -PAD, 0)
+    label:SetJustifyH("LEFT")
+    label:SetWordWrap(false)
+    h.label = label
+    sectionHeaders.pool[i] = h
+    return h
+end
+
+--- Show a header for each entry of `layout` ({ top, label }), hide the rest.
+function sectionHeaders.Place(layout)
+    for i, item in ipairs(layout) do
+        local h = sectionHeaders.Get(i)
+        h:ClearAllPoints()
+        h:SetPoint("TOPLEFT", scrollFrame, "TOPLEFT", 0, -item.top)
+        h:SetWidth(totalColWidth)
+        h.label:SetText(item.label)
+        h.sectionKey = item.key
+        h.icon:SetTexture(item.collapsed and "Interface\\Buttons\\UI-PlusButton-Up"
+            or "Interface\\Buttons\\UI-MinusButton-Up")
+        h:Show()
+    end
+    for i = #layout + 1, #sectionHeaders.pool do
+        sectionHeaders.pool[i]:Hide()
+    end
+end
+
 local rowPool = {}
 local prevRow = nil
 for i = 1, ROW_POOL_SIZE do
@@ -819,19 +883,16 @@ Update = function()
     local rawList = AltArmy.Characters and AltArmy.Characters.GetList and AltArmy.Characters:GetList() or {}
     local currentRealm = (GetRealmName and GetRealmName()) or ""
     local RF = AltArmy.RealmFilter
-    local realmFilter = "all"
-    local GRF = AltArmy.GlobalRealmFilter
-    if GRF and GRF.Get then
-        realmFilter = GRF.Get()
-    end
-    local filtered
-    if RF and RF.filterListByRealm then
-        filtered = AltArmy.GlobalRealmFilter.FilterList(rawList, currentRealm)
-    else
-        filtered = rawList
-    end
+    local CF = AltArmy.CharacterFilter
+    local settings = GetSummarySettings()
+    local ctx = CF.Context(currentRealm)
+    local showSelfFirst = settings.showSelfFirst == true
+    local grouped = settings.groupByRealmFaction ~= false
+    -- the tab's filters (pin current character overrides them, as it does Hide)
+    local filtered = CF.FilterList(rawList, settings.filter, ctx, {
+        keep = function(e) return showSelfFirst and isCurrentCharacter(e) end,
+    })
     -- Filter hidden; order: pinned first (keep sort), then non-pinned
-    local showSelfFirst = GetSummarySettings().showSelfFirst == true
     local list = {}
     local pinned, rest = {}, {}
     for i = 1, #filtered do
@@ -848,7 +909,12 @@ Update = function()
     end
     for i = 1, #pinned do list[#list + 1] = pinned[i] end
     for i = 1, #rest do list[#list + 1] = rest[i] end
-    local numItems = #list
+    -- one row per character, and when grouped a header row before each realm and faction's
+    local elements = AltArmy.CharacterSections.BuildElements(list, {
+        grouped = grouped, currentRealm = currentRealm, currentFaction = ctx.currentFaction,
+        collapsed = settings.collapsedGroups,
+    })
+    local numItems = #elements
     local restInset = AnyRestXpIcon(list) and REST_TEXT_INSET or 0
 
     -- Horizontal scroll need drives list viewport height (totals row sits lower when bar hidden).
@@ -866,6 +932,7 @@ Update = function()
     scrollChild:SetHeight(viewportH + maxScroll)
     scrollChild:Show()
 
+    summaryScroll.maxScroll, summaryScroll.viewH = maxScroll, viewportH
     scrollBinding.UpdateRange()
 
     local maxOffset = math.max(0, numItems - visibleRows)
@@ -900,8 +967,9 @@ Update = function()
             rowFrame:Hide()
         else
             local j = offset + i
-            if j <= numItems then
-                local entry = list[j]
+            local element = elements[j]
+            if element and element.kind == "char" then
+                local entry = element.entry
                 for _, colName in ipairs(columnOrder) do
                 local col = columns[colName]
                 local cell = rowFrame.cells[colName]
@@ -927,7 +995,8 @@ Update = function()
                     end
                 elseif cell and col and col.GetText then
                     if colName == "Name" then
-                        local showRealmSuffix = (realmFilter == "all")
+                        -- grouped, the section headers name the realm
+                        local showRealmSuffix = not grouped and CF.ShowsOtherRealms(settings.filter)
                             and RF and RF.hasMultipleRealms and RF.hasMultipleRealms(list)
                         local isBankAlt = not entry.linkId and BA and BA.Is and BA.Is(entry.name, entry.realm)
                         local nameDisplayStr
@@ -1031,6 +1100,8 @@ Update = function()
             end
         end
     end
+
+    sectionHeaders.Place(AltArmy.CharacterSections.StickyHeaderLayout(elements, offset, visibleRows, ROW_HEIGHT))
 
     -- Totals row: Level, Money, Played only; ours alone (a linked account's gold isn't ours)
     local totalLevel, totalMoney, totalPlayed = 0, 0, 0

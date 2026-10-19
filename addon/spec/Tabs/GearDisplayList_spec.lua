@@ -10,9 +10,11 @@ describe("Gear display list showSelfFirst", function()
 
     setup(function()
         _G.AltArmy = _G.AltArmy or {}
-        package.path = package.path .. ";AltArmy_TBC/Data/?.lua"
+        package.path = package.path .. ";AltArmy_TBC/Data/?.lua;AltArmy_TBC/Data/Characters/?.lua"
         require("CharKey")
         require("CharacterSort")
+        require("RealmFilter")
+        require("CharacterFilter")
         GetSortValue = AltArmy.CharacterSort.GetSortValue
         CharKey = AltArmy.CharKey
     end)
@@ -55,6 +57,7 @@ describe("Gear display list showSelfFirst", function()
                 local isSelf = (e.name == currentName and e.realm == currentRealm)
                 local isHidden = GetCharSetting(e.name, e.realm, "hide")
                     or IsBankAlt(e.name, e.realm)
+                    or (opts.filter and not AltArmy.CharacterFilter.Matches(e, opts.filter, opts.ctx))
                 if not isHidden or (showSelfFirst and isSelf) then
                     filtered[#filtered + 1] = e
                 end
@@ -251,6 +254,43 @@ describe("Gear display list showSelfFirst", function()
         })
         assert.are.equal(1, #list)
         assert.are.equal("Alice", list[1].name)
+    end)
+
+    describe("with the Gear tab's character filter", function()
+        local CF = function() return AltArmy.CharacterFilter end
+        local ctx = { currentRealm = "RealmA", currentFaction = "Horde", maxLevel = 70 }
+        local chars = {
+            { name = "Me", realm = "RealmA", faction = "Horde", level = 70, classFile = "MAGE", played = 50 },
+            { name = "Ally", realm = "RealmA", faction = "Alliance", level = 70, classFile = "MAGE", played = 90 },
+            { name = "Low", realm = "RealmA", faction = "Horde", level = 12, classFile = "PRIEST", played = 10 },
+        }
+
+        local function names(list)
+            local out = {}
+            for i, e in ipairs(list) do out[i] = e.name end
+            return out
+        end
+
+        it("lists an opposite-faction alt only when its realm filter says so", function()
+            local filter = CF().Ensure({}, { maxLevel = 70 })
+            local list = buildDisplayList(chars, { showSelfFirst = false, inputList = chars, filter = filter,
+                ctx = ctx })
+            assert.are.same({ "Me", "Low" }, names(list))
+            filter.scope.otherFaction = true
+            list = buildDisplayList(chars, { showSelfFirst = false, inputList = chars, filter = filter, ctx = ctx })
+            assert.are.same({ "Ally", "Me", "Low" }, names(list))
+        end)
+
+        it("drops a level or class the filter leaves out, but pin current character overrides it", function()
+            local filter = CF().Ensure({}, { maxLevel = 70 })
+            CF().SetLevelRange(filter, 20, 70, 70)
+            filter.classes.MAGE = false
+            local list = buildDisplayList(chars, { showSelfFirst = false, inputList = chars, filter = filter,
+                ctx = ctx })
+            assert.are.same({}, names(list))
+            list = buildDisplayList(chars, { showSelfFirst = true, inputList = chars, filter = filter, ctx = ctx })
+            assert.are.same({ "Me" }, names(list))
+        end)
     end)
 end)
 

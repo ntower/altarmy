@@ -1325,6 +1325,9 @@ function Theme.CreatePinnedHeaderScrollFade(opts)
     local scrollBar = opts.scrollBar
 
     local function getScrollOffset()
+        if opts.getOffset then
+            return opts.getOffset() or 0
+        end
         if scrollBar and scrollBar.GetValue then
             return scrollBar:GetValue() or 0
         end
@@ -1951,6 +1954,128 @@ end
 ---   minScrollToShow, getRange() (Slider path only: override max offset)
 --- @return table binding: bar, native, GetOffset(), GetMaxScroll(), SetOffset(v), UpdateRange(),
 ---   Wheel(delta), SetStep(px), AddOnScroll(fn)
+--- A vertical scroll bar over a list that draws its own rows (a fixed row pool whose first row the offset
+--- picks), keeping its own offset and range instead of a ScrollFrame's: the client gives a ScrollFrame nested
+--- in another one no range at times, which left such a list's bar hidden and its last rows out of reach.
+--- opts: parent, name, step (px per wheel notch), getRange() -> max offset px, getViewHeight() -> visible px
+--- (the thumb's size), onScroll(offset).
+--- @return table the CreateVerticalScrollBinding API: bar, native, GetOffset(), SetOffset(v), GetMaxScroll(),
+---   UpdateRange(), Wheel(delta), SetStep(px), AddOnScroll(fn), SetAllowShow(on)
+function Theme.CreateVirtualScrollBinding(opts)
+    opts = opts or {}
+    local step = opts.step or (Theme.CHAR_LIST_ROW_HEIGHT * 2)
+    local getRange = opts.getRange or function() return 0 end
+    local getViewHeight = opts.getViewHeight or function() return 1 end
+    local listeners = {}
+    if opts.onScroll then listeners[1] = opts.onScroll end
+    local offset, lastNotified = 0, nil
+    local allowShow = true
+    local binding = { native = false }
+
+    local function range()
+        return math.max(0, getRange() or 0)
+    end
+    binding.GetMaxScroll = range
+
+    local function notify()
+        if lastNotified and math.abs(offset - lastNotified) < 0.01 then return end
+        lastNotified = offset
+        for i = 1, #listeners do
+            listeners[i](offset)
+        end
+    end
+
+    function binding.AddOnScroll(fn)
+        listeners[#listeners + 1] = fn
+    end
+
+    function binding.GetOffset()
+        return offset
+    end
+
+    local bar
+    local syncing = false -- the bar told of a new offset by us, not dragged
+    local function syncBar()
+        local r = range()
+        syncing = true
+        if binding.native then
+            local view = math.max(1, getViewHeight() or 1)
+            bar:SetVisibleExtentPercentage(r > 0 and view / (view + r) or 1)
+            bar:SetPanExtentPercentage(r > 0 and math.min(1, step / r) or 0)
+            bar:SetScrollPercentage(r > 0 and offset / r or 0, true)
+            if not allowShow then bar:Hide() end
+        else
+            bar:SetMinMaxValues(0, r)
+            bar:SetValueStep(step)
+            bar:SetValue(offset)
+            bar:SetShown(allowShow and r > 0)
+        end
+        syncing = false
+    end
+
+    local function setOffset(value, fromBar)
+        offset = Theme.ClampScroll(value, range())
+        if not fromBar then syncBar() end
+        notify()
+    end
+
+    local ScrollBoxEvents = _G.BaseScrollBoxEvents
+    if nativeScrollBarsAvailable() and ScrollBoxEvents then
+        bar = CreateFrame("EventFrame", opts.name, opts.parent, "MinimalScrollBar")
+        bar.altArmyNativeScrollBar = true
+        binding.native = true
+        if bar.SetHideIfUnscrollable then
+            bar:SetHideIfUnscrollable(true)
+        end
+        bar:RegisterCallback(ScrollBoxEvents.OnScroll, function(_, pct)
+            if syncing then return end
+            setOffset((pct or 0) * range(), true)
+        end, binding)
+    else
+        bar = CreateFrame("Slider", opts.name, opts.parent)
+        bar:SetOrientation("VERTICAL")
+        bar:SetMinMaxValues(0, 0)
+        bar:SetValueStep(step)
+        bar:SetValue(0)
+        bar:EnableMouse(true)
+        bar:SetScript("OnValueChanged", function(_, value)
+            if syncing then return end
+            setOffset(value, true)
+        end)
+    end
+    binding.bar = bar
+
+    function binding.SetOffset(value)
+        setOffset(value, false)
+    end
+
+    --- After the list's length or the view's height changed: the range is read again.
+    function binding.UpdateRange()
+        offset = Theme.ClampScroll(offset, range())
+        syncBar()
+    end
+
+    function binding.Wheel(delta)
+        setOffset(offset - delta * step, false)
+    end
+
+    function binding.SetStep(px)
+        step = px
+        syncBar()
+    end
+
+    function binding.SetAllowShow(allowed)
+        allowShow = allowed and true or false
+        if allowShow and binding.native and bar.SetHideIfUnscrollable then
+            bar:SetHideIfUnscrollable(true) -- shows the bar again when there is range
+        end
+        syncBar()
+    end
+
+    syncBar()
+    return binding
+end
+
 function Theme.CreateVerticalScrollBinding(scrollFrame, opts)
     opts = opts or {}
     local parent = opts.parent or scrollFrame:GetParent()
@@ -2214,6 +2339,21 @@ Theme.CHAR_LIST_ROW_HEIGHT = 20
 Theme.OPTIONS_DROPDOWN_ROW_HEIGHT = Theme.CHAR_LIST_ROW_HEIGHT + 4
 Theme.DROPDOWN_MAX_VISIBLE_ROWS = 8
 
+-- The main window is DIALOG strata, and its border (the template's NineSlice) draws over anything of a lower
+-- frame level inside it; a dropdown's popup goes one strata up, so neither the border nor the panels it
+-- overhangs cover it, and is kept on screen.
+Theme.DROPDOWN_POPUP_STRATA = "FULLSCREEN_DIALOG"
+
+--- Put a dropdown's popup above the window it opens from.
+function Theme.RaiseDropdownPopup(popup)
+    if popup.SetFrameStrata then
+        popup:SetFrameStrata(Theme.DROPDOWN_POPUP_STRATA)
+    end
+    if popup.SetClampedToScreen then
+        popup:SetClampedToScreen(true)
+    end
+end
+
 --- Themed checkbox chrome (background + border + check texture); callers own layout and labels.
 --- 1px border is drawn inside the control bounds so the outer footprint matches `size`.
 -- UICheckButtonTemplate art has transparent padding; grow the frame so the visible box matches.
@@ -2262,7 +2402,7 @@ function Theme.CreateOptionsSectionLabel(parent, opts)
     return label
 end
 
---- Settings-row checkbox matching CharacterPinHideList (18px, hover band, label toggles).
+--- Settings-row checkbox (18px, hover band, label toggles).
 function Theme.CreateLabeledCheckbox(parent, opts)
     opts = opts or {}
     local rowHeight = opts.rowHeight or Theme.CHAR_LIST_ROW_HEIGHT
@@ -2441,6 +2581,186 @@ function Theme.CreateOptionsSlider(parent, opts)
     row.SetValue(current)
 
     row.slider = slider
+    row.label = label
+    row.valueText = valueText
+    return row
+end
+
+Theme.RANGE_SLIDER_THUMB_INSET = 8 -- a thumb's centre stops this far in from each end of the bar
+
+--- Which handle of a range slider a press at `v` takes: the one it is outside of, else the nearer
+--- ("min" on a tie between them); nil when both handles sit at `v` (the first move decides).
+function Theme.RangeSliderHandle(lo, hi, v)
+    if v < lo then return "min" end
+    if v > hi then return "max" end
+    if lo == hi then return nil end
+    return (v - lo <= hi - v) and "min" or "max"
+end
+
+--- Settings-row slider with two handles, a low and a high value: laid out as CreateOptionsSlider (a
+--- label with the values beside it, the bar under them in the stock UI-SliderBar art, its ends
+--- labelled), the stretch between the handles filled. A press on the bar takes the nearer handle
+--- there and drags it; a handle never passes the other. Values snap to `step`.
+--- opts: point/relativeTo/relativePoint/x/y, right, width (as CreateOptionsSlider), text, labelFont
+---   (Theme.FONTS key's value; else body), min, max, step (1), low, high, format(lo, hi) -> the
+---   values' text, formatEnd(v) -> an end's label, onChange(lo, hi): called when a drag moved either
+---   value, never by SetValues.
+--- Returns the row: { bar, label, valueText, SetValues(lo, hi) (sets without onChange), GetValues() }.
+function Theme.CreateRangeSlider(parent, opts)
+    opts = opts or {}
+    local minV, maxV = opts.min or 0, opts.max or 1
+    local step = opts.step or 1
+    local format = opts.format or function(lo, hi) return lo .. " - " .. hi end
+    local formatEnd = opts.formatEnd or function(v) return tostring(v) end
+    local PAD = Theme.RANGE_SLIDER_THUMB_INSET
+
+    local row = CreateFrame("Frame", nil, parent)
+    if opts.relativeTo then
+        row:SetPoint(opts.point or "TOPLEFT", opts.relativeTo, opts.relativePoint or "TOPLEFT",
+            opts.x or 0, opts.y or 0)
+    else
+        row:SetPoint(opts.point or "TOPLEFT", parent, opts.relativePoint or "TOPLEFT", opts.x or 0, opts.y or 0)
+    end
+    row:SetHeight(Theme.OPTIONS_SLIDER_ROW_HEIGHT)
+    if opts.right then
+        row:SetPoint("TOPRIGHT", opts.right.relativeTo or parent, opts.right.relativePoint or "TOPRIGHT",
+            opts.right.x or 0, opts.right.y or 0)
+    else
+        row:SetPoint("RIGHT", parent, "RIGHT", 0, 0)
+    end
+
+    local label = row:CreateFontString(nil, "OVERLAY", opts.labelFont or Theme.FONTS.body)
+    label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+    label:SetText(opts.text or "")
+
+    local valueText = row:CreateFontString(nil, "OVERLAY", Theme.FONTS.heading)
+    valueText:SetPoint("LEFT", label, "RIGHT", 8, 0)
+
+    local BAR_INSET = 4
+    local bar = CreateFrame("Frame", nil, row, "BackdropTemplate")
+    bar:SetPoint("TOPLEFT", label, "BOTTOMLEFT", BAR_INSET, -6)
+    bar:SetSize(opts.width or Theme.OPTIONS_SLIDER_WIDTH, 17)
+    if not opts.width then
+        row:HookScript("OnSizeChanged", function(_, w)
+            if w and w > 0 then
+                bar:SetWidth(math.max(40, w - 2 * BAR_INSET))
+            end
+        end)
+    end
+    if bar.SetBackdrop then
+        bar:SetBackdrop({
+            bgFile = "Interface\\Buttons\\UI-SliderBar-Background",
+            edgeFile = "Interface\\Buttons\\UI-SliderBar-Border",
+            tile = true, tileSize = 8, edgeSize = 8,
+            insets = { left = 3, right = 3, top = 6, bottom = 6 },
+        })
+    end
+    bar:EnableMouse(true)
+
+    local fill = bar:CreateTexture(nil, "ARTWORK")
+    fill:SetHeight(3)
+    local accent = C.rowAccent
+    fill:SetColorTexture(accent[1], accent[2], accent[3], 0.9)
+
+    local function thumb()
+        local tex = bar:CreateTexture(nil, "OVERLAY")
+        tex:SetSize(32, 32)
+        tex:SetTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
+        return tex
+    end
+    local lowThumb, highThumb = thumb(), thumb()
+
+    local lowText = bar:CreateFontString(nil, "OVERLAY", Theme.FONTS.body)
+    lowText:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", -2, 2)
+    lowText:SetText(formatEnd(minV))
+    local highText = bar:CreateFontString(nil, "OVERLAY", Theme.FONTS.body)
+    highText:SetPoint("TOPRIGHT", bar, "BOTTOMRIGHT", 2, 2)
+    highText:SetText(formatEnd(maxV))
+
+    local function snapped(v)
+        local n = math.floor((v - minV) / step + 0.5)
+        return math.max(minV, math.min(maxV, minV + n * step))
+    end
+
+    local lo, hi = snapped(opts.low or minV), snapped(opts.high or maxV)
+
+    local function xOf(v)
+        local usable = math.max(1, (bar:GetWidth() or 0) - 2 * PAD)
+        if maxV <= minV then return PAD end
+        return PAD + (v - minV) / (maxV - minV) * usable
+    end
+    local function place()
+        local xl, xh = xOf(lo), xOf(hi)
+        lowThumb:ClearAllPoints()
+        lowThumb:SetPoint("CENTER", bar, "LEFT", xl, 0)
+        highThumb:ClearAllPoints()
+        highThumb:SetPoint("CENTER", bar, "LEFT", xh, 0)
+        fill:ClearAllPoints()
+        fill:SetPoint("LEFT", bar, "LEFT", xl, 0)
+        fill:SetWidth(math.max(1, xh - xl))
+        valueText:SetText(format(lo, hi))
+    end
+    bar:HookScript("OnSizeChanged", place)
+
+    local function cursorValue()
+        local scale = bar:GetEffectiveScale() or 1
+        local cx = select(1, GetCursorPosition()) / scale
+        local usable = math.max(1, (bar:GetWidth() or 0) - 2 * PAD)
+        local frac = (cx - (bar:GetLeft() or 0) - PAD) / usable
+        frac = math.max(0, math.min(1, frac))
+        return snapped(minV + frac * (maxV - minV))
+    end
+
+    local dragging -- "min", "max", or "either" while both handles sit where the press began
+    local function moveTo(v)
+        if dragging == "either" then
+            if v < lo then
+                dragging = "min"
+            elseif v > hi then
+                dragging = "max"
+            else
+                return
+            end
+        end
+        local newLo, newHi = lo, hi
+        if dragging == "min" then
+            newLo = math.min(v, hi)
+        else
+            newHi = math.max(v, lo)
+        end
+        if newLo == lo and newHi == hi then return end
+        lo, hi = newLo, newHi
+        place()
+        if opts.onChange then
+            opts.onChange(lo, hi)
+        end
+    end
+    local function stopDrag()
+        dragging = nil
+        bar:SetScript("OnUpdate", nil)
+    end
+    bar:SetScript("OnMouseDown", function(_, button)
+        if button and button ~= "LeftButton" then return end
+        local v = cursorValue()
+        dragging = Theme.RangeSliderHandle(lo, hi, v) or "either"
+        moveTo(v)
+        bar:SetScript("OnUpdate", function() moveTo(cursorValue()) end)
+    end)
+    bar:SetScript("OnMouseUp", stopDrag)
+    bar:SetScript("OnHide", stopDrag)
+
+    --- Shows `newLo`..`newHi` without calling onChange (the saved values when the page opens).
+    function row.SetValues(newLo, newHi)
+        lo = snapped(newLo)
+        hi = math.max(lo, snapped(newHi))
+        place()
+    end
+    function row.GetValues()
+        return lo, hi
+    end
+    place()
+
+    row.bar = bar
     row.label = label
     row.valueText = valueText
     return row
@@ -2807,6 +3127,43 @@ function Theme.CloseSingleSelectDropdowns(exceptPopup)
 end
 
 --- A single-select dropdown's section header: a divider line over a muted label, not clickable.
+--- A divider row naming the group under it: a line, the text centered, a line (one line without text).
+--- Lay it out with SetPoint / SetHeight; `row:SetText(text)` names it again.
+function Theme.CreateLabeledDividerRow(parent)
+    local row = CreateFrame("Frame", nil, parent)
+    local leftLine = row:CreateTexture(nil, "ARTWORK")
+    leftLine:SetColorTexture(1, 1, 1, 0.15)
+    leftLine:SetHeight(1)
+    local rightLine = row:CreateTexture(nil, "ARTWORK")
+    rightLine:SetColorTexture(1, 1, 1, 0.15)
+    rightLine:SetHeight(1)
+    local label = row:CreateFontString(nil, "OVERLAY", Theme.FONTS.body)
+    label:SetPoint("CENTER", row, "CENTER", 0, 0)
+    label:SetJustifyH("CENTER")
+    label:SetWordWrap(false)
+    label:SetTextColor(0.6, 0.6, 0.6)
+    row.leftLine, row.rightLine, row.label = leftLine, rightLine, label
+    function row:SetText(text)
+        text = text or ""
+        label:SetText(text)
+        leftLine:ClearAllPoints()
+        rightLine:ClearAllPoints()
+        if text == "" then
+            leftLine:SetPoint("LEFT", row, "LEFT", 4, 0)
+            leftLine:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+            rightLine:Hide()
+        else
+            leftLine:SetPoint("LEFT", row, "LEFT", 4, 0)
+            leftLine:SetPoint("RIGHT", label, "LEFT", -6, 0)
+            rightLine:SetPoint("LEFT", label, "RIGHT", 6, 0)
+            rightLine:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+            rightLine:Show()
+        end
+    end
+    row:SetText("")
+    return row
+end
+
 local function CreateDropdownHeaderRow(parent, idx, rowHeight, text)
     local row = CreateFrame("Frame", nil, parent)
     row:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -(idx - 1) * rowHeight)
@@ -2825,6 +3182,16 @@ local function CreateDropdownHeaderRow(parent, idx, rowHeight, text)
     label:SetTextColor(0.6, 0.6, 0.6)
     label:SetText(text or "")
     row.label = label
+    return row
+end
+
+--- A single-select dropdown's divider row: a labeled divider (Theme.CreateLabeledDividerRow) at row `idx`.
+function Theme.CreateDropdownDividerRow(parent, idx, rowHeight, text)
+    local row = Theme.CreateLabeledDividerRow(parent)
+    row:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -(idx - 1) * rowHeight)
+    row:SetPoint("RIGHT", parent, "RIGHT", 0, 0)
+    row:SetHeight(rowHeight)
+    row:SetText(text)
     return row
 end
 
@@ -2882,6 +3249,7 @@ function Theme.CreateSingleSelectDropdown(opts)
     end
     popup:SetWidth(width)
     popup:SetFrameLevel((dropdownParent.GetFrameLevel and dropdownParent:GetFrameLevel() or 0) + 100)
+    Theme.RaiseDropdownPopup(popup)
     popup:Hide()
     Theme.SkinDropdownPopup(popup)
 
@@ -2976,7 +3344,8 @@ function Theme.CreateSingleSelectDropdown(opts)
         end
 
         for idx, entry in ipairs(entries) do
-            local b = entry.header and CreateDropdownHeaderRow(host, idx, rowHeight, entry.label)
+            local b = entry.divider and Theme.CreateDropdownDividerRow(host, idx, rowHeight, entry.label)
+                or entry.header and CreateDropdownHeaderRow(host, idx, rowHeight, entry.label)
                 or Theme.CreateDropdownMenuItem(host, {
                 index = idx,
                 rowHeight = rowHeight,
@@ -3097,6 +3466,8 @@ function Theme.CreateMultiSelectCheckboxDropdown(config)
     local dropdownParent = config.dropdownParent or parent
     local keys = config.keys or {}
     local labels = config.labels or {}
+    -- Keys always on: their row is checked, disabled and grey, and never toggles.
+    local lockedKeys = config.lockedKeys or {}
 
     local header
     if config.title and config.title ~= "" then
@@ -3140,22 +3511,156 @@ function Theme.CreateMultiSelectCheckboxDropdown(config)
     -- Native menu insets are already roomier than the old 4px; legacy keeps 4 / 4 / 4 / 8.
     local popupInsets = nativeDropdownsAvailable() and Theme.GetDropdownPopupInsets()
         or { left = 4, top = 4, right = 8, bottom = 4 }
-    popup:SetHeight(popupInsets.top + #keys * rowHeight + popupInsets.bottom)
     popup:SetFrameLevel((dropdownParent:GetFrameLevel() or 0) + 100)
+    Theme.RaiseDropdownPopup(popup)
     popup:Hide()
     Theme.SkinDropdownPopup(popup)
     Theme._openMultiSelectCheckboxDropdowns[popup] = true
 
+    -- config.getKeys() / config.getLabels(): a list that changes (laid out again on refresh and when opened);
+    -- config.maxVisibleRows: past that many rows the popup scrolls; config.isDivider(key): that key is a
+    -- divider row naming the group under it (its label), not a checkbox.
+    local maxVisibleRows = config.maxVisibleRows
+    local isDivider = config.isDivider or function() return false end
+    local viewport -- made when the rows first outgrow maxVisibleRows
+    local pools = {} -- host frame -> rows by index
+    local dividerPools = {} -- host frame -> divider lines by index
     local checks = {}
     local rows = {}
-    local prevRow
+    local layoutSignature
     local enabled = true
+    local refreshDropdown
 
     local function rowLabelText(key)
         if config.getRowLabel then
             return config.getRowLabel(key)
         end
         return labels[key] or key
+    end
+
+    local function onRowClick(key, checked)
+        if not key or lockedKeys[key] then return end
+        if config.setEnabled then
+            config.setEnabled(key, checked)
+        end
+        refreshDropdown()
+        if config.onChange then
+            config.onChange(key, checked)
+        end
+    end
+
+    --- The pooled row at `index` of `host` (the popup itself, or the scrolling viewport's child).
+    local function rowAt(host, index, inset)
+        pools[host] = pools[host] or {}
+        local pool = pools[host]
+        if pool[index] then return pool[index] end
+        local row
+        row = Theme.CreateLabeledCheckbox(host, {
+            point = "TOPLEFT",
+            relativeTo = host,
+            relativePoint = "TOPLEFT",
+            x = inset.left,
+            y = -inset.top - (index - 1) * rowHeight,
+            rowHeight = rowHeight,
+            text = "",
+            fullWidthHover = true,
+            rightInset = inset.right,
+            onClick = function(checked)
+                onRowClick(row.altArmyKey, checked)
+            end,
+        })
+        pool[index] = row
+        return row
+    end
+
+    --- The pooled divider line at `index` of `host`.
+    local function dividerAt(host, index, inset)
+        dividerPools[host] = dividerPools[host] or {}
+        local pool = dividerPools[host]
+        if pool[index] then return pool[index] end
+        local d = Theme.CreateLabeledDividerRow(host)
+        d:SetPoint("TOPLEFT", host, "TOPLEFT", inset.left, -inset.top - (index - 1) * rowHeight)
+        d:SetPoint("RIGHT", host, "RIGHT", -inset.right, 0)
+        d:SetHeight(rowHeight)
+        pool[index] = d
+        return d
+    end
+
+    local function layoutRows()
+        if config.getKeys then
+            keys = config.getKeys() or {}
+        end
+        if config.getLabels then
+            labels = config.getLabels() or {}
+        end
+        local signature = table.concat(keys, "\001")
+        if signature == layoutSignature then return end
+        layoutSignature = signature
+        local n = #keys
+        local scrolling = maxVisibleRows ~= nil and n > maxVisibleRows
+        local shownRows = scrolling and maxVisibleRows or n
+        popup:SetHeight(popupInsets.top + shownRows * rowHeight + popupInsets.bottom)
+        local host, inset = popup, popupInsets
+        if scrolling then
+            if not viewport then
+                viewport = Theme.CreateVerticalScrollViewport({
+                    parent = popup,
+                    gutterEdge = popup,
+                    anchorTop = { "TOPLEFT", popup, "TOPLEFT", popupInsets.left, -popupInsets.top },
+                    anchorBottom = { "BOTTOMRIGHT", popup, "BOTTOMRIGHT",
+                        -(popupInsets.right + Theme.VerticalScrollBarGutter()), popupInsets.bottom },
+                    valueStep = rowHeight,
+                    wheelStep = rowHeight,
+                    enableMouseWheel = true,
+                    enableMouse = true,
+                    minScrollToShow = 0,
+                })
+            end
+            viewport.scroll:Show()
+            viewport.child:SetHeight(n * rowHeight)
+            host, inset = viewport.child, { left = 0, top = 0, right = 0 }
+        elseif viewport then
+            viewport.scroll:Hide()
+        end
+        for _, pool in pairs(pools) do
+            for _, row in ipairs(pool) do
+                row:Hide()
+                row.altArmyKey = nil
+            end
+        end
+        for _, pool in pairs(dividerPools) do
+            for _, d in ipairs(pool) do
+                d:Hide()
+            end
+        end
+        checks, rows = {}, {}
+        for i, key in ipairs(keys) do
+            if isDivider(key) then
+                local d = dividerAt(host, i, inset)
+                d:SetText(labels[key] or "") -- the group under it
+                d:Show()
+            else
+                local row = rowAt(host, i, inset)
+                row.altArmyKey = key
+                row:Show()
+                if lockedKeys[key] then
+                    row.check:SetChecked(true)
+                    row.check:Disable()
+                    if row.label then row.label:SetTextColor(0.6, 0.6, 0.6) end
+                    row.altArmyGreyed = true
+                else
+                    row.check:Enable()
+                    if row.altArmyGreyed and row.label then row.label:SetTextColor(1, 1, 1) end
+                    row.altArmyGreyed = nil
+                end
+                checks[key] = row.check
+                rows[key] = row
+            end
+        end
+        if viewport and scrolling then
+            viewport.SetOffset(0)
+            viewport.UpdateRange()
+        end
     end
 
     local function setButtonSummary(summary)
@@ -3183,7 +3688,8 @@ function Theme.CreateMultiSelectCheckboxDropdown(config)
         end
     end
 
-    local function refreshDropdown()
+    refreshDropdown = function()
+        layoutRows()
         local filterMap = config.getFilter and config.getFilter() or {}
         local summary
         if not enabled and config.formatSummaryDisabled then
@@ -3197,48 +3703,13 @@ function Theme.CreateMultiSelectCheckboxDropdown(config)
         setButtonMuted(not enabled)
         for key, check in pairs(checks) do
             if check and check.SetChecked then
-                check:SetChecked(filterMap[key] ~= false)
+                check:SetChecked(lockedKeys[key] or filterMap[key] ~= false)
             end
             local row = rows[key]
             if row and row.label and row.label.SetText then
                 row.label:SetText(rowLabelText(key))
             end
         end
-    end
-
-    for idx, key in ipairs(keys) do
-        local rowOpts = {
-            rowHeight = rowHeight,
-            text = rowLabelText(key),
-            fullWidthHover = true,
-            rightInset = popupInsets.right,
-            onClick = function(checked)
-                if config.setEnabled then
-                    config.setEnabled(key, checked)
-                end
-                refreshDropdown()
-                if config.onChange then
-                    config.onChange(key, checked)
-                end
-            end,
-        }
-        if idx == 1 then
-            rowOpts.point = "TOPLEFT"
-            rowOpts.relativeTo = popup
-            rowOpts.relativePoint = "TOPLEFT"
-            rowOpts.x = popupInsets.left
-            rowOpts.y = -popupInsets.top
-        else
-            rowOpts.relativeTo = prevRow
-            rowOpts.relativePoint = "BOTTOMLEFT"
-            rowOpts.point = "TOPLEFT"
-            rowOpts.x = 0
-            rowOpts.y = 0
-        end
-        local row = Theme.CreateLabeledCheckbox(popup, rowOpts)
-        checks[key] = row.check
-        rows[key] = row
-        prevRow = row
     end
 
     if btn.HookScript then
@@ -3260,6 +3731,9 @@ function Theme.CreateMultiSelectCheckboxDropdown(config)
         local show = not popup:IsShown()
         Theme.CloseMultiSelectCheckboxDropdowns(show and popup or nil)
         Theme.CloseSingleSelectDropdowns(nil)
+        if show and config.getKeys then
+            refreshDropdown()
+        end
         popup:SetShown(show)
     end)
 
@@ -3379,6 +3853,7 @@ function Theme.CreateFilterDropdown(opts)
     popup:SetPoint("TOPLEFT", btn, "BOTTOMLEFT", 0, -2)
     popup:SetWidth(150)
     popup:SetFrameLevel((parent:GetFrameLevel() or 0) + 100)
+    Theme.RaiseDropdownPopup(popup)
     popup:Hide()
     Theme.SkinDropdownPopup(popup)
     Theme._openMultiSelectCheckboxDropdowns[popup] = true

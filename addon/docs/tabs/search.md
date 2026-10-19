@@ -22,7 +22,7 @@ Locate items in bags, bank, and mail snapshots; find known recipes; filter recip
 
 ## Settings
 
-- Realm filter guidance (respects global realm filter).
+- Realm filter guidance (respects the Summary tab's realm filter).
 - Recipe filters (built-in recipe data): required skill range, difficulty bands, and sources (trainer, vendor, quest, drop, reputation, starter). A recipe with several sources stays while any of them is enabled.
 - Guildmates' recipes merged into recipe results, whether shared through the addon or (on WoW Forever) read from the server while they are online (`GuildLinkRead`), and whatever the player's own sharing setting; presence / whisper helpers.
 - Specialist yield-bonus markers (alchemy / cloth).

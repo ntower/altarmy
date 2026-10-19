@@ -80,18 +80,32 @@ local function CharacterEntries()
             name = e.name,
             coloredName = RF.formatColoredCharacterNameRealm(e.name, e.realm, false, e.classFile, false),
             realm = e.realm,
+            faction = e.faction,
             linkId = e.linkId,
         }
     end
     return out
 end
 
---- The picker's rows. On the Mail view the characters with mail come first, each led by a letter icon
---- (before the bank alt icon), then a "Characters with no mail:" header over the rest; elsewhere the
---- characters as listed.
+--- `entries` grouped by realm and faction as the Summary's sections are (by name within each), each group
+--- under a divider row naming it ("Realm — Faction").
+local function GroupedEntries(entries)
+    local CF = AltArmy.CharacterFilter
+    local ctx = CF.Context()
+    local out = {}
+    for _, group in ipairs(CF.GroupByRealmFaction(entries, ctx)) do
+        out[#out + 1] = { header = true, divider = true, label = CF.GroupLabel(group) }
+        for _, e in ipairs(group) do out[#out + 1] = e end
+    end
+    return out
+end
+
+--- The picker's rows, grouped by realm and faction. On the Mail view the characters with mail come first,
+--- each led by a letter icon (before the bank alt icon), then a "Characters with no mail:" header over the
+--- rest, each part grouped; elsewhere the characters as listed.
 local function PickerEntries()
     local entries = CharacterEntries()
-    if state.activeView ~= "mail" then return entries end
+    if state.activeView ~= "mail" then return GroupedEntries(entries) end
     local withMail, without = {}, {}
     for _, e in ipairs(entries) do
         if HasMail(e.name, e.realm, e.linkId) then
@@ -102,11 +116,12 @@ local function PickerEntries()
         end
     end
     if #withMail == 0 or #without == 0 then
-        return #withMail > 0 and withMail or without
+        return GroupedEntries(#withMail > 0 and withMail or without)
     end
-    withMail[#withMail + 1] = { header = true, label = "Characters with no mail:" }
-    for _, e in ipairs(without) do withMail[#withMail + 1] = e end
-    return withMail
+    local out = GroupedEntries(withMail)
+    out[#out + 1] = { header = true, label = "Characters with no mail:" }
+    for _, e in ipairs(GroupedEntries(without)) do out[#out + 1] = e end
+    return out
 end
 
 --- The chosen character's entry: this opening's pick when it still names a listed character, else the

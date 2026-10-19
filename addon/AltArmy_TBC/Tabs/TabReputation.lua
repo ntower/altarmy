@@ -52,6 +52,7 @@ local function GetReputationSettings()
     if s.scoreSortDescending == nil then s.scoreSortDescending = true end
     s.scoreProvider = SSR.ValidateProvider(s.scoreProvider or SSR.DEFAULT_PROVIDER)
     s.characters = s.characters or {}
+    AltArmy.CharacterFilter.Ensure(s)
     return s
 end
 
@@ -106,6 +107,8 @@ local function GetDisplayList()
     local settings = GetReputationSettings()
     local currentRealm = DS and DS.GetCurrentPlayerRealm and DS:GetCurrentPlayerRealm() or ""
     local showSelfFirst = settings.showSelfFirst ~= false
+    local CF = AltArmy.CharacterFilter
+    local ctx = CF.Context(currentRealm)
 
     local visible = {}
     for i = 1, #rawList do
@@ -114,6 +117,7 @@ local function GetDisplayList()
         local BA = AltArmy.BankAlt
         local isBankAlt = BA and BA.Is and BA.Is(e.name, e.realm)
         local isHidden = GetCharSetting(e.name, e.realm, "hide") or isBankAlt
+            or not CF.Matches(e, settings.filter, ctx)
         if not isHidden or (showSelfFirst and isSelf) then
             visible[#visible + 1] = e
             SSR.DecorateEntry(e)
@@ -142,13 +146,7 @@ local function GetDisplayList()
     local function isSelfEntry(e)
         return DS and DS.IsCurrentCharacter and DS:IsCurrentCharacter(e.name, e.realm)
     end
-    local list = RepSort.BuildSortedDisplayList(visible, isPinnedEntry, isSelfEntry, showSelfFirst, sortPair)
-
-    local GRF = AltArmy.GlobalRealmFilter
-    if GRF and GRF.FilterList then
-        list = GRF.FilterList(list, currentRealm)
-    end
-    return list
+    return RepSort.BuildSortedDisplayList(visible, isPinnedEntry, isSelfEntry, showSelfFirst, sortPair)
 end
 
 local function OnReputationHeaderColumnClick(self, button)
@@ -981,16 +979,10 @@ end
 
 local function BuildPopulateCtx(list)
     local RF = AltArmy.RealmFilter
-    local realmFilter = "all"
-    local GRF = AltArmy.GlobalRealmFilter
-    if GRF and GRF.Get then
-        realmFilter = GRF.Get()
-    end
-    local showRealmSuffix = (realmFilter == "all")
+    local showRealmSuffix = AltArmy.CharacterFilter.ShowsOtherRealms(GetReputationSettings().filter)
         and RF and RF.hasMultipleRealms and RF.hasMultipleRealms(list)
     return {
         scoreProviderId = GetReputationSettings().scoreProvider or SSR.DEFAULT_PROVIDER,
-        realmFilter = realmFilter,
         showRealmSuffix = showRealmSuffix,
         RF = RF,
     }
@@ -1136,54 +1128,27 @@ repSettingsTitle:SetJustifyH("LEFT")
 repSettingsTitle:SetText("Reputation Settings")
 Theme.SetTitleColor(repSettingsTitle)
 
-local repCharListRefresh = function() end
-
 local sortingContent = CreateFrame("Frame", nil, settingsContent)
 sortingContent:SetPoint("TOPLEFT", repSettingsTitle, "BOTTOMLEFT", 0, -8)
 sortingContent:SetPoint("BOTTOMRIGHT", settingsContent, "BOTTOMRIGHT", 0, 0)
 
-local PIN_CURRENT_CHAR_HELP = {
-    title = "Pin current character",
-    lines = {
-        "When enabled, your current character is automatically pinned, "
-            .. "causing it to show ahead of non-pinned characters.",
-        'This will override the "Hide" setting.',
-    },
-}
-
-local showSelfFirstRow = Theme.CreateLabeledCheckbox(sortingContent, {
-    point = "TOPLEFT",
-    x = 0,
-    y = 0,
-    text = "Pin current character",
-    fullWidthHover = true,
-    onClick = function(checked)
-        GetReputationSettings().showSelfFirst = checked
+local repFilterControls = AltArmy.CreateCharacterFilterControls(sortingContent, {
+    anchorTo = repSettingsTitle,
+    dropdownParent = settingsPanel,
+    getSettings = GetReputationSettings,
+    getCharSetting = GetCharSetting,
+    setCharSetting = SetCharSetting,
+    skipBankAlts = true,
+    onChange = function()
         frame:RefreshGrid()
     end,
 })
-Theme.AttachSettingsHelpIcon(showSelfFirstRow, PIN_CURRENT_CHAR_HELP)
-local showSelfFirstCheck = showSelfFirstRow.check
-
-if AltArmy.CreateCharacterPinHideList then
-    -- luacheck: push ignore 211
-    local _scroll, refresh = AltArmy.CreateCharacterPinHideList(sortingContent, showSelfFirstRow, {
-        gutterEdge = settingsPanel,
-        getSettings = GetReputationSettings,
-        getCharSetting = GetCharSetting,
-        setCharSetting = SetCharSetting,
-        onChange = function()
-            frame:RefreshGrid()
-        end,
-    })
-    if refresh then repCharListRefresh = refresh end
-    -- luacheck: pop
-end
 
 settingsPanel:SetScript("OnHide", function()
     if scoreSortControls and scoreSortControls.dropdown then
         scoreSortControls.dropdown:Hide()
     end
+    repFilterControls.Close()
 end)
 
 function frame:IsReputationSettingsShown()
@@ -1207,12 +1172,10 @@ function frame:ToggleReputationSettings(_self)
     rightPanel:SetPoint("TOPLEFT", tabContentInner, "TOPLEFT", 0, 0)
     rightPanel:SetPoint("BOTTOMRIGHT", tabContentInner, "BOTTOMRIGHT", 0, 0)
     if showSettings then
-        local s = GetReputationSettings()
-        showSelfFirstCheck:SetChecked(s.showSelfFirst)
         if AltArmy.Characters and AltArmy.Characters.InvalidateView then
             AltArmy.Characters:InvalidateView()
         end
-        if repCharListRefresh then repCharListRefresh() end
+        repFilterControls.refresh()
     end
     frame:RefreshGrid()
 end

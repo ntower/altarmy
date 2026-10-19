@@ -9,8 +9,10 @@ describe("Summary display list showSelfFirst", function()
 
     setup(function()
         _G.AltArmy = _G.AltArmy or {}
-        package.path = package.path .. ";AltArmy_TBC/Data/?.lua"
+        package.path = package.path .. ";AltArmy_TBC/Data/?.lua;AltArmy_TBC/Data/Characters/?.lua"
         require("CharKey")
+        require("RealmFilter")
+        require("CharacterFilter")
         CharKey = AltArmy.CharKey
     end)
 
@@ -30,6 +32,12 @@ describe("Summary display list showSelfFirst", function()
 
         local function isSelf(entry)
             return entry.name == currentName and entry.realm == currentRealm
+        end
+
+        if opts.filter then
+            inputList = AltArmy.CharacterFilter.FilterList(inputList, opts.filter, opts.ctx, {
+                keep = function(e) return showSelfFirst and isSelf(e) end,
+            })
         end
 
         local pinned, rest = {}, {}
@@ -136,5 +144,21 @@ describe("Summary display list showSelfFirst", function()
         })
         assert.are.equal(3, #list)
         assert.are.equal("Banker", list[2].name)
+    end)
+
+    it("keeps the current character outside the filters when pinned, and drops the rest", function()
+        local ctx = { currentRealm = "RealmA", currentFaction = "Horde", maxLevel = 60 }
+        local filter = AltArmy.CharacterFilter.Ensure({}, { maxLevel = 60 })
+        AltArmy.CharacterFilter.SetLevelRange(filter, 10, 60, 60)
+        local chars = {
+            { name = "Alice", realm = "RealmA", faction = "Horde", level = 5 },
+            { name = "Me", realm = "RealmA", faction = "Horde", level = 5 },
+            { name = "Far", realm = "RealmB", faction = "Horde", level = 40 },
+            { name = "Bob", realm = "RealmA", faction = "Horde", level = 40 },
+        }
+        local list = buildDisplayList(chars, { showSelfFirst = true, filter = filter, ctx = ctx })
+        assert.are.equal(2, #list)
+        assert.are.equal("Me", list[1].name)
+        assert.are.equal("Bob", list[2].name)
     end)
 end)

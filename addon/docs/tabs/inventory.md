@@ -9,7 +9,7 @@ See what a character is carrying, has banked or has waiting in the mailbox, slot
 ## Access
 
 - The **Inventory** side tab (after Gear). Both clients.
-- The toolbar row holds the **character picker** (a dropdown of the characters under the global realm filter, class-coloured, with the realm when more than one is shown) and, left of it, the **layout dropdown** for the active view. Each time the window opens the picker starts on the character playing and the tab on Bags; both last while the window stays open (switching tabs keeps them). Each view's layout and the mail sort are remembered (`AltArmyTBC_Options.inventory`).
+- The toolbar row holds the **character picker** (a dropdown of the characters under the Summary tab's realm filter, class-coloured, with the realm when more than one is shown, grouped by realm and faction as the Summary's sections are each group under a divider row naming it ("Realm — Faction"); on the Mail view the characters with mail and those without are each grouped) and, left of it, the **layout dropdown** for the active view. Each time the window opens the picker starts on the character playing and the tab on Bags; both last while the window stays open (switching tabs keeps them). Each view's layout and the mail sort are remembered (`AltArmyTBC_Options.inventory`).
 - The character's gold is at the bottom right of every view.
 - Sub-view tabs above the panel: **Bags**, **Bank**, **Mail**.
 

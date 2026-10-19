@@ -78,10 +78,10 @@ Declared in `AltArmy_TBC.toc`:
 | Variable | Role |
 |----------|------|
 | `AltArmyTBC_Data` | Account-wide character / domain data |
-| `AltArmyTBC_Options` | Global options (realm filter, bank alts, cooldowns, automatic auction house scan, Economy view and sort, Inventory layouts and mail sort (`inventory`), window size (`window`, used only with the Debug options' Window resize), debug, etc.) |
-| `AltArmyTBC_GearSettings` | Gear tab settings |
-| `AltArmyTBC_ReputationSettings` | Reputation tab settings |
-| `AltArmyTBC_SummarySettings` | Summary tab settings |
+| `AltArmyTBC_Options` | Global options (bank alts, the Currency view's character filter (`economy.currency.filter`); the old global realm filter `characterScope` / `realmFilter`, read only to seed each tab's first filter, cooldowns, automatic auction house scan, Economy view and sort, Inventory layouts and mail sort (`inventory`), window size (`window`, used only with the Debug options' Window resize), debug, etc.) |
+| `AltArmyTBC_GearSettings` | Gear tab settings (with its character filter, `filter`) |
+| `AltArmyTBC_ReputationSettings` | Reputation tab settings (with its character filter, `filter`) |
+| `AltArmyTBC_SummarySettings` | Summary tab settings (its character filter `filter`, whose realm filter the tabs without one use; `groupByRealmFaction`) |
 | `AltArmyTBC_SearchSettings` | Search settings |
 | `AltArmyTBC_GraphSettings` | Graphs tab settings |
 | `AltArmyTBC_GuildData` | Received guild-share payloads |
