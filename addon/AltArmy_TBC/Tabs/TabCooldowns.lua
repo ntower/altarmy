@@ -378,7 +378,25 @@ selectAllHit:SetPoint("TOPLEFT", selectAllLabel, "TOPLEFT", -4, 2)
 selectAllHit:SetPoint("BOTTOMRIGHT", selectAllCheck, "BOTTOMRIGHT", 2, -2)
 selectAllHit:SetFrameLevel(selectAllBar:GetFrameLevel() + 2)
 selectAllHit:RegisterForClicks("LeftButtonUp")
-Theme.BindInteractableHover(selectAllHit)
+Theme.InstallHoverTint(selectAllHit)
+-- Disabled when no row can be sent to; the hover still says why.
+selectAllHit:SetMotionScriptsWhileDisabled(true)
+selectAllHit:SetScript("OnEnter", function(self)
+    if self:IsEnabled() then
+        Theme.SetHoverTint(self, true)
+        return
+    end
+    if not selectAllBar.noEligible then return end
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:ClearLines()
+    GameTooltip:AddLine("Can't send mail", 1, 1, 1, true)
+    GameTooltip:AddLine("No eligible characters to send materials to", 1, 0.82, 0, true)
+    GameTooltip:Show()
+end)
+selectAllHit:SetScript("OnLeave", function(self)
+    Theme.SetHoverTint(self, false)
+    GameTooltip:Hide()
+end)
 
 -- Bottom tip / send bar (list viewport sits above this so rows never overlap it).
 local tipRow = CreateFrame("Frame", nil, tabContentInner)
@@ -1113,8 +1131,16 @@ local function SyncSelectAllCheck()
         if selectAllHit then selectAllHit:Enable() end
     else
         selectAllCheck:Disable()
-        if selectAllHit then selectAllHit:Disable() end
+        if selectAllHit then
+            selectAllHit:Disable()
+            Theme.SetHoverTint(selectAllHit, false)
+        end
     end
+    -- Nobody to send to: dim it like the other realms' and factions' checkboxes.
+    selectAllBar.noEligible = sendBar.mode == "compose" and not anyEligible
+    local dim = selectAllBar.noEligible and 0.4 or 1
+    selectAllCheck:SetAlpha(dim)
+    selectAllLabel:SetAlpha(dim)
 end
 
 local function SetAllEligibleChecked(checked)
@@ -1484,6 +1510,10 @@ local function PoolRow()
         local check = Theme.CreateThemeCheckbox(sendSlot, 16)
         check:SetPoint("RIGHT", sendSlot, "RIGHT", 0, 0)
         row.sendCheck = check
+        -- A disabled button gets no OnEnter/OnLeave without this: the other realm/faction tooltip needs them.
+        if check.SetMotionScriptsWhileDisabled then
+            check:SetMotionScriptsWhileDisabled(true)
+        end
         sendSlot:Hide()
 
         Theme.BindInteractableHover(row, {
@@ -1640,8 +1670,21 @@ local function PoolRow()
         row.sendCheck:SetScript("OnEnter", function(self)
             local parent = RowFromChild(self)
             if parent and parent.sendBlocked and sendBar.mode == "compose" then
+                local currentChar = DS.GetCurrentCharacter and DS:GetCurrentCharacter() or nil
+                local curName = (DS.GetCharacterName and currentChar and DS:GetCharacterName(currentChar))
+                    or (select(1, GetCurrentIdentity()))
+                local srcClass = currentChar and select(2, DS:GetCharacterClass(currentChar)) or nil
+                local tgtClass = parent.charTableRef and select(2, DS:GetCharacterClass(parent.charTableRef)) or nil
+                local rd = parent.rowData
+                local srcName = ColorNameByClass(curName or "?", srcClass)
+                local tgtName = ColorNameByClass((rd and (rd.name or rd.charKeyName)) or "?", tgtClass)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText(parent.sendBlocked, 1, 1, 1, 1, true)
+                GameTooltip:ClearLines()
+                GameTooltip:AddLine("Can't send mail", 1, 1, 1, true)
+                GameTooltip:AddLine(
+                    srcName .. " and " .. tgtName .. " are on different " .. parent.sendBlocked,
+                    1, 0.82, 0, true
+                )
                 GameTooltip:Show()
                 return
             end
@@ -2936,8 +2979,7 @@ local function FillCooldownListRow(row, rd, now, compose, curName, curRealm, opt
     -- Mail can't reach another realm or faction: a disabled checkbox saying so (its tooltip).
     row.sendBlocked = nil
     if not isSelf and not rd.noReagents and not (sameRealm and sameFaction) then
-        local factionText = (rd.faction and rd.faction ~= "") and rd.faction or "Unknown"
-        row.sendBlocked = "Can't send mail to " .. tostring(rd.realm or "") .. " - " .. factionText
+        row.sendBlocked = sameRealm and "factions" or "servers"
     end
     if row.sendCheck then
         row.sendCheck:SetAlpha(row.sendBlocked and 0.4 or 1)
