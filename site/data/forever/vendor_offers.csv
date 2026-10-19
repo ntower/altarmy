@@ -12178,8 +12178,8 @@ item_id,vendor,name,side,max_count,restock_s,zone,area,map_x,map_y
 19217,10856,Argent Quartermaster Hasana,,0,0,Western Plaguelands,28,26.6,55.2
 19217,10857,Argent Quartermaster Lightspark,,0,0,Western Plaguelands,28,42.8,83.7
 19217,11536,Quartermaster Miranda Breechlock,,0,0,Eastern Plaguelands,139,71.8,50.2
-19218,11557,Meilosh,,0,0,Winterspring,618,25.6,31.9
 19218,11557,Meilosh,,1,7200,Winterspring,618,25.6,31.9
+19218,11557,Meilosh,,0,0,Winterspring,618,25.6,31.9
 19221,14844,Sylannia,,0,0,Mulgore,215,37.6,45.1
 19222,14844,Sylannia,,0,0,Mulgore,215,37.6,45.1
 19223,14845,Stamp Thunderhorn,,0,0,Mulgore,215,37.6,45.1
@@ -12194,8 +12194,8 @@ item_id,vendor,name,side,max_count,restock_s,zone,area,map_x,map_y
 19306,14845,Stamp Thunderhorn,,0,0,Mulgore,215,37.6,45.1
 19326,11557,Meilosh,,1,7200,Winterspring,618,25.6,31.9
 19326,11557,Meilosh,,0,0,Winterspring,618,25.6,31.9
-19327,11557,Meilosh,,1,7200,Winterspring,618,25.6,31.9
 19327,11557,Meilosh,,0,0,Winterspring,618,25.6,31.9
+19327,11557,Meilosh,,1,7200,Winterspring,618,25.6,31.9
 19328,10856,Argent Quartermaster Hasana,,0,0,Western Plaguelands,28,26.6,55.2
 19328,10857,Argent Quartermaster Lightspark,,0,0,Western Plaguelands,28,42.8,83.7
 19328,11536,Quartermaster Miranda Breechlock,,0,0,Eastern Plaguelands,139,71.8,50.2
