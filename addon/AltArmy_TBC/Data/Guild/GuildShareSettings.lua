@@ -631,6 +631,23 @@ local function makeEntry(key, realm, char)
     return { name = (char and char.name) or key, realm = realm, char = char }
 end
 
+--- The characters on a realm as a list, and a check for the stale first-name copies among them
+--- (AltArmy.IsFirstNameStub), which are never shared or listed.
+local function stubCheck(chars)
+    local list = {}
+    for key, char in pairs(chars) do
+        if type(char) == "table" then
+            list[#list + 1] = { name = char.name or key, guid = char.guid, classFile = char.classFile,
+                level = char.level }
+        end
+    end
+    return function(key, char)
+        if not AltArmy.IsFirstNameStub or type(char) ~= "table" then return false end
+        return AltArmy.IsFirstNameStub({ name = char.name or key, guid = char.guid,
+            classFile = char.classFile, level = char.level }, list)
+    end
+end
+
 --- Default set (used when the feature flag is OFF): every one of my characters in `guild`
 --- on `realm`, ignoring the user's sharing settings entirely.
 function GSS.GetAllGuildedCharacters(guild, realm)
@@ -638,8 +655,10 @@ function GSS.GetAllGuildedCharacters(guild, realm)
     realm = realm or currentRealm()
     local out = {}
     if not guild then return out end
-    for name, char in pairs(charactersOnRealm(realm)) do
-        if char and char.guildName == guild then
+    local chars = charactersOnRealm(realm)
+    local isStub = stubCheck(chars)
+    for name, char in pairs(chars) do
+        if char and char.guildName == guild and not isStub(name, char) then
             out[#out + 1] = makeEntry(name, realm, char)
         end
     end
@@ -653,8 +672,10 @@ function GSS.GetShareableCharacters(guild, realm)
     realm = realm or currentRealm()
     local out = {}
     if not guild or not GSS.IsSharingEnabled() then return out end
-    for key, char in pairs(charactersOnRealm(realm)) do
-        if char then
+    local chars = charactersOnRealm(realm)
+    local isStub = stubCheck(chars)
+    for key, char in pairs(chars) do
+        if char and not isStub(key, char) then
             local name = char.name or key
             if char.guildName == guild then
                 if not GSS.IsCharacterOptedOut(name, realm) then

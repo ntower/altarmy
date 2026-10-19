@@ -3622,14 +3622,15 @@ function Theme.CreateMultiSelectCheckboxDropdown(config)
         elseif viewport then
             viewport.scroll:Hide()
         end
+        -- pairs, not ipairs: rows and dividers share the positions, so each pool has holes where the other was
         for _, pool in pairs(pools) do
-            for _, row in ipairs(pool) do
+            for _, row in pairs(pool) do
                 row:Hide()
                 row.altArmyKey = nil
             end
         end
         for _, pool in pairs(dividerPools) do
-            for _, d in ipairs(pool) do
+            for _, d in pairs(pool) do
                 d:Hide()
             end
         end

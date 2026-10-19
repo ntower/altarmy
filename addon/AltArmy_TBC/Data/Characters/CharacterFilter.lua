@@ -267,6 +267,22 @@ function CF.FormatMultiSelectSummary(keys, labels, map)
     return table.concat(chosen, ", ")
 end
 
+--- The class filter's summary: "All", "None", "All but X" or "All but X and Y" when one or two are off,
+--- else the chosen classes; each class in its class colour.
+function CF.FormatClassSummary(map)
+    local labels, off = {}, {}
+    for _, classFile in ipairs(CF.CLASS_ORDER) do
+        labels[classFile] = CF.ClassRowLabel(classFile)
+        if map[classFile] == false then
+            off[#off + 1] = labels[classFile]
+        end
+    end
+    if #off == 1 or (#off == 2 and #CF.CLASS_ORDER > 2) then
+        return "All but " .. table.concat(off, " and ")
+    end
+    return CF.FormatMultiSelectSummary(CF.CLASS_ORDER, labels, map)
+end
+
 --- "None" when nothing is chosen, else the chosen ones' labels (the pin and hide dropdowns).
 function CF.FormatChosenSummary(keys, labels, map)
     local chosen = {}

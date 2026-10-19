@@ -278,5 +278,50 @@ describe("CharacterFilter", function()
             assert.are.equal("|cff40c7ebMage|r", CF.ClassRowLabel("MAGE"))
             _G.RAID_CLASS_COLORS = nil
         end)
+
+        it("sums the class filter up in class colours, All and None plain", function()
+            _G.RAID_CLASS_COLORS = {
+                MAGE = { r = 0.25, g = 0.78, b = 0.92 },
+                ROGUE = { r = 1, g = 0.96, b = 0.41 },
+            }
+            local map = {}
+            for _, classFile in ipairs(CF.CLASS_ORDER) do map[classFile] = true end
+            assert.are.equal("All", CF.FormatClassSummary(map))
+            for _, classFile in ipairs(CF.CLASS_ORDER) do map[classFile] = false end
+            assert.are.equal("None", CF.FormatClassSummary(map))
+            map.MAGE, map.ROGUE = true, true
+            local summary = CF.FormatClassSummary(map)
+            assert.is_truthy(summary:find("|cff40c7ebMage|r", 1, true))
+            assert.is_truthy(summary:find(CF.ClassRowLabel("ROGUE"), 1, true))
+            assert.is_truthy(summary:find("|r, |c", 1, true))
+            _G.RAID_CLASS_COLORS = nil
+        end)
+
+        it("says All but the one or two classes left out, else lists the chosen", function()
+            _G.RAID_CLASS_COLORS = {
+                MAGE = { r = 0.25, g = 0.78, b = 0.92 },
+                ROGUE = { r = 1, g = 0.96, b = 0.41 },
+            }
+            local map = {}
+            for _, classFile in ipairs(CF.CLASS_ORDER) do map[classFile] = true end
+            map.MAGE = false
+            assert.are.equal("All but " .. CF.ClassRowLabel("MAGE"), CF.FormatClassSummary(map))
+            map.ROGUE = false
+            local mage, rogue = CF.ClassRowLabel("MAGE"), CF.ClassRowLabel("ROGUE")
+            local i, j = 0, 0
+            for n, classFile in ipairs(CF.CLASS_ORDER) do
+                if classFile == "MAGE" then i = n elseif classFile == "ROGUE" then j = n end
+            end
+            local first, second = mage, rogue
+            if j < i then first, second = rogue, mage end
+            assert.are.equal("All but " .. first .. " and " .. second, CF.FormatClassSummary(map))
+            map.WARRIOR = false
+            local summary = CF.FormatClassSummary(map)
+            assert.is_nil(summary:find("All but", 1, true))
+            assert.is_nil(summary:find(mage, 1, true))
+            assert.is_nil(summary:find("Warrior", 1, true))
+            assert.is_truthy(summary:find("Priest", 1, true))
+            _G.RAID_CLASS_COLORS = nil
+        end)
     end)
 end)

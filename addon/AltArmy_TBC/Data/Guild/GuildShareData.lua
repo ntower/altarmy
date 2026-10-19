@@ -89,6 +89,12 @@ local function sameSource(entry, sender, fromGuid)
     return sender ~= nil and entry.source == sender
 end
 
+--- Whether a received character is a stale first-name copy of another one in `others`
+--- (AltArmy.IsFirstNameStub): older senders still share them, and they are never stored or shown.
+local function isFirstNameStub(c, others)
+    return AltArmy.IsFirstNameStub ~= nil and AltArmy.IsFirstNameStub(c, others)
+end
+
 --- Effective main name for a presence: the character with the main's ID when present (so a stale
 --- main name cannot split a group), else the declared name.
 local function declaredMainName(presence)
@@ -313,16 +319,20 @@ function GSD.PresenceMatchesStored(sender, presence, realm)
     local displayName = presence.displayName
     local inPresence = {}
     for _, c in ipairs(presence.chars) do
-        local key, stored = findPayloadEntry(rt, c)
-        if not stored then return false end
-        -- A legacy name-keyed entry that now has an ID still needs re-keying.
-        if key ~= payloadKey(c) then return false end
-        inPresence[key] = true
-        if stored.name ~= c.name then return false end
-        if stored.main ~= effectiveMain then return false end
-        if (stored.mainDeclared == true) ~= mainDeclared then return false end
-        if stored.displayName ~= displayName then return false end
-        if not charPresenceMatches(stored, c) then return false end
+        -- A stale first-name copy is never stored: one stored before makes this a change (below), so
+        -- SaveReceived drops it.
+        if not isFirstNameStub(c, presence.chars) then
+            local key, stored = findPayloadEntry(rt, c)
+            if not stored then return false end
+            -- A legacy name-keyed entry that now has an ID still needs re-keying.
+            if key ~= payloadKey(c) then return false end
+            inPresence[key] = true
+            if stored.name ~= c.name then return false end
+            if stored.main ~= effectiveMain then return false end
+            if (stored.mainDeclared == true) ~= mainDeclared then return false end
+            if stored.displayName ~= displayName then return false end
+            if not charPresenceMatches(stored, c) then return false end
+        end
     end
     -- A char previously shared by this sender but omitted from the new presence is a change.
     if rt and sender then
@@ -375,7 +385,9 @@ function GSD.SaveReceived(sender, presence, guild, realm)
     local keep, keptNames = {}, {}
     local chars = {}
     for _, c in ipairs(presence.chars) do
-        if not GSD.IsOwnCharacter(c, realm) then chars[#chars + 1] = c end
+        if not GSD.IsOwnCharacter(c, realm) and not isFirstNameStub(c, presence.chars) then
+            chars[#chars + 1] = c
+        end
     end
     for _, c in ipairs(chars) do
         local key = payloadKey(c)
@@ -984,9 +996,46 @@ function GSD.GetGuildMembersForDisplay(guild, realm, allLocalRealms, rosterInfoM
         end
     end
 
+    -- Received characters per sender, to hide the stale first-name copies stored before SaveReceived
+    -- dropped them (gone with the sender's next presence).
+    local bySender = {}
+    local function senderKey(entry)
+        local sender = entry.sourceGuid or entry.source
+        if entry.source == "local" or entry.source == "manual" or sender == nil then return nil end
+        return (entry.realm or "") .. "\0" .. tostring(sender)
+    end
+    for _, entry in pairs(byKey) do
+        local sk = senderKey(entry)
+        if sk then
+            bySender[sk] = bySender[sk] or {}
+            table.insert(bySender[sk], entry)
+        end
+    end
+    local GTD = AltArmy.GuildTabData
+    local normalize = GTD and GTD.NormalizeRosterName
+
     local out = {}
     for key, entry in pairs(byKey) do
-        if entry.linkOnly and not mapped[key] then
+        local sk = senderKey(entry)
+        if sk and isFirstNameStub(entry, bySender[sk]) then
+            entry = nil
+        elseif sk and rosterInfoMap then
+            -- A received character's level is the one it was shared at; the live roster's is now.
+            local info = rosterInfoMap[normalize and normalize(entry.name) or (entry.name or ""):lower()]
+            local rosterLevel = info and tonumber(info.level)
+            local rosterClass = info and info.classFile
+            local newLevel = rosterLevel and rosterLevel > 0 and rosterLevel ~= entry.level
+            local newClass = (entry.classFile == nil or entry.classFile == "")
+                and type(rosterClass) == "string" and rosterClass ~= ""
+            if newLevel or newClass then
+                local shown = {}
+                for k, v in pairs(entry) do shown[k] = v end
+                if newLevel then shown.level = rosterLevel end
+                if newClass then shown.classFile = rosterClass end
+                entry = shown
+            end
+        end
+        if entry and entry.linkOnly and not mapped[key] then
             -- Read by link and grouped by nothing (no presence, note or mapping): shown as a group of its
             -- own that the group editor treats as free to place elsewhere (autoGroup).
             local shown = {}
@@ -994,7 +1043,7 @@ function GSD.GetGuildMembersForDisplay(guild, realm, allLocalRealms, rosterInfoM
             shown.autoGroup = true
             entry = shown
         end
-        out[#out + 1] = entry
+        if entry then out[#out + 1] = entry end
     end
     return out
 end

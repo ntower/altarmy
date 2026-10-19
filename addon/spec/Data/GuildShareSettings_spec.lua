@@ -19,6 +19,7 @@ describe("GuildShareSettings", function()
     _G.time = _G.time or function() return 1700000000 end
     package.path = package.path .. ";AltArmy_TBC/Data/?.lua"
     _G.AltArmyTBC_Data = { Characters = {} }
+    require("CharKey")
     require("DataStore")
     require("DataStoreCharacter")
     require("GuildShareSettings")
@@ -452,6 +453,21 @@ describe("GuildShareSettings", function()
       assert.are.same({ ["Frell Ofelements"] = true, ["Frell Blast"] = true }, names)
       local all = GSS.GetAllGuildedCharacters("G", "R")
       assert.are.equal("Frell Ofelements", all[1].name)
+    end)
+
+    it("neither lists nor shares a pre-v3 first-name copy of a character", function()
+      setChars("R", {
+        ["Player-1-B"] = { name = "Not Kaiborn", guid = "Player-1-B", realm = "R", guildName = "G",
+          classFile = "SHAMAN", level = 14 },
+        Not = { name = "Not", realm = "R", guildName = "G", classFile = "SHAMAN", level = 9 },
+        Nason = { name = "Nason", realm = "R", guildName = "G", classFile = "MAGE", level = 6 },
+      })
+      GSS.SetSharingEnabled(true)
+      for _, list in ipairs({ GSS.GetShareableCharacters("G", "R"), GSS.GetAllGuildedCharacters("G", "R") }) do
+        local names = {}
+        for _, e in ipairs(list) do names[e.name] = true end
+        assert.are.same({ ["Not Kaiborn"] = true, Nason = true }, names)
+      end
     end)
 
     it("syncs the display name against stored names", function()

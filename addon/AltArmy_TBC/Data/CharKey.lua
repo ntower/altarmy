@@ -58,3 +58,25 @@ function AltArmy.RekeyCharSettings(realm, oldName, newName)
         GSS.RenameCharacter(realm, oldName, newName)
     end
 end
+
+--- Whether `char` is a stale copy a pre-v3 addon saved of a WoW Forever character under its first name
+--- alone ("Not" for "Not Kaiborn"): it has no GUID, its name is one word, and `others` (a list of character
+--- tables) holds a character of that first name and a surname, of the same class, at its level or higher.
+--- DataStore's FoldLegacyEntries adopts only a legacy entry saved under the full name, so such a copy
+--- stays in the account's data, and older guildmates' addons share it.
+function AltArmy.IsFirstNameStub(char, others)
+    if type(char) ~= "table" or char.guid ~= nil then return false end
+    local name = char.name
+    if type(name) ~= "string" or name == "" or name:find(" ", 1, true) then return false end
+    local prefix = name .. " "
+    for _, other in ipairs(others or {}) do
+        if type(other) == "table" and other ~= char and type(other.name) == "string"
+            and other.name:sub(1, #prefix) == prefix and #other.name > #prefix
+            and (other.classFile or "") == (char.classFile or "")
+            and (tonumber(other.level) or 0) >= (tonumber(char.level) or 0)
+        then
+            return true
+        end
+    end
+    return false
+end

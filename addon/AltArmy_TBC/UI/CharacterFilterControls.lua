@@ -39,10 +39,6 @@ function AltArmy.CreateCharacterFilterControls(parent, opts)
         dropdowns[#dropdowns + 1] = api
         return api
     end
-    local function summary(keys, labels, map)
-        return CF.FormatMultiSelectSummary(keys, labels, map)
-    end
-
     local function hasLinks()
         local LS = AltArmy.LinkStore
         return LS and LS.HasLinks and LS.HasLinks() or false
@@ -120,7 +116,7 @@ function AltArmy.CreateCharacterFilterControls(parent, opts)
         getRowLabel = CF.ClassRowLabel,
         getFilter = function() return filter().classes end,
         setEnabled = function(key, on) CF.SetClass(filter(), key, on) end,
-        formatSummary = summary,
+        formatSummary = function(_, _, map) return CF.FormatClassSummary(map) end,
         onChange = function(key, on) onChange("classes", key, on) end,
     })
 
@@ -175,6 +171,14 @@ function AltArmy.CreateCharacterFilterControls(parent, opts)
             opts.setCharSetting(e.name, e.realm, pin, hide)
         end
     end
+    -- the pin and hide summaries name the chosen characters as their rows do, in class colour
+    local function chosenSummary(keys, map)
+        local labels = {}
+        for _, key in ipairs(keys) do
+            labels[key] = key == SELF_KEY and SELF_LABEL or characterRowLabel(key)
+        end
+        return CF.FormatChosenSummary(keys, labels, map)
+    end
 
     local hide
     local pin = dropdown({
@@ -207,7 +211,7 @@ function AltArmy.CreateCharacterFilterControls(parent, opts)
                 setCharacter(key, on, false) -- pinning one unhides it
             end
         end,
-        formatSummary = function(keys, labels, map) return CF.FormatChosenSummary(keys, labels, map) end,
+        formatSummary = function(keys, _, map) return chosenSummary(keys, map) end,
         onChange = function(key, on)
             if hide then hide.refresh() end
             onChange("pin", key, on)
@@ -226,7 +230,7 @@ function AltArmy.CreateCharacterFilterControls(parent, opts)
         getRowLabel = characterRowLabel,
         getFilter = function() return chosenMap("hide", false) end,
         setEnabled = function(key, on) setCharacter(key, false, on) end, -- hiding one unpins it
-        formatSummary = function(keys, labels, map) return CF.FormatChosenSummary(keys, labels, map) end,
+        formatSummary = function(keys, _, map) return chosenSummary(keys, map) end,
         onChange = function(key, on)
             pin.refresh()
             onChange("hide", key, on)

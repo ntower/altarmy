@@ -19,6 +19,7 @@ describe("GuildShareData", function()
     _G.AltArmy = _G.AltArmy or {}
     _G.time = function() return NOW end
     package.path = package.path .. ";AltArmy_TBC/Data/?.lua"
+    require("CharKey")
     require("GuildShareProtocol")
     require("GuildShareData")
     require("GuildManualGroups")
@@ -1371,6 +1372,80 @@ describe("GuildShareData", function()
       assert.are.equal("Mainchar", GSD.SaveLinkRead("R", {
         guid = "Player-1-M", name = "Mia", guildName = "G", profKey = "cooking", skillLine = 185, ids = {},
       }).main)
+    end)
+  end)
+
+  describe("first-name copies and live levels", function()
+    -- WoW Forever: a pre-v3 addon saved "Not Kaiborn" as "Not" (no GUID); the sender's addon still shares it.
+    local function char(name, guid, classFile, level)
+      return { name = name, guid = guid, classFile = classFile, faction = "Horde", level = level, profs = {} }
+    end
+    local function notKai(chars)
+      return { v = 1, from = "Player-1-K", main = "Not Kai", chars = chars }
+    end
+    local function shownByName(rosterInfo)
+      local byName = {}
+      for _, m in ipairs(GSD.GetGuildMembersForDisplay("G", "R", false, rosterInfo)) do byName[m.name] = m end
+      return byName
+    end
+
+    it("never stores a GUID-less first name of a same-class character of the same player", function()
+      GSD.SaveReceived("Not Kai", notKai({
+        char("Not Kai", "Player-1-K", "PALADIN", 22),
+        char("Not Kaiborn", "Player-1-B", "SHAMAN", 14),
+        char("Not", nil, "SHAMAN", 9),
+      }), "G", "R")
+      assert.is_nil(GSD.GetCharacter("Not", "R"))
+      assert.truthy(GSD.GetCharacter("Not Kaiborn", "R"))
+    end)
+
+    it("keeps a GUID-less one-word character nothing else explains", function()
+      GSD.SaveReceived("Saxa Lamoose", { v = 1, from = "Player-1-S", main = "Saxa Lamoose", chars = {
+        char("Saxa Lamoose", "Player-1-S", "HUNTER", 20),
+        char("Nason", nil, "MAGE", 6),
+        -- Another class, or higher than every sibling: not a copy of them.
+        char("Saxa", nil, "HUNTER", 21),
+      } }, "G", "R")
+      assert.truthy(GSD.GetCharacter("Nason", "R"))
+      assert.truthy(GSD.GetCharacter("Saxa", "R"))
+    end)
+
+    it("drops a copy stored before with the sender's next presence", function()
+      local presence = notKai({
+        char("Not Kaiborn", "Player-1-B", "SHAMAN", 14),
+        char("Not", nil, "SHAMAN", 9),
+      })
+      local rt = GSD._Ensure().chars
+      rt.R = { Not = { name = "Not", realm = "R", classFile = "SHAMAN", level = 9, guildName = "G",
+        source = "Not Kai", sourceGuid = "Player-1-K", main = "Not Kai", Professions = {} } }
+      GSD.SaveReceived("Not Kai", presence, "G", "R")
+      assert.is_nil(GSD.GetCharacter("Not", "R"))
+      assert.is_true(GSD.PresenceMatchesStored("Not Kai", presence, "R"))
+    end)
+
+    it("does not show a copy stored before", function()
+      local rt = GSD._Ensure().chars
+      rt.R = {
+        ["Player-1-B"] = { name = "Not Kaiborn", guid = "Player-1-B", realm = "R", classFile = "SHAMAN",
+          level = 14, guildName = "G", source = "Not Kai", sourceGuid = "Player-1-K", main = "Not Kai",
+          Professions = {} },
+        Not = { name = "Not", realm = "R", classFile = "SHAMAN", level = 9, guildName = "G",
+          source = "Not Kai", sourceGuid = "Player-1-K", main = "Not Kai", Professions = {} },
+      }
+      local byName = shownByName()
+      assert.truthy(byName["Not Kaiborn"])
+      assert.is_nil(byName.Not)
+    end)
+
+    it("shows a received character at its live roster level, without changing what is stored", function()
+      GSD.SaveReceived("Deadicated Suryal", { v = 1, from = "Player-1-D", main = "Deadicated Suryal", chars = {
+        char("Cropdust Deathwind", "Player-1-C", "ROGUE", 20),
+      } }, "G", "R")
+      local byName = shownByName({ ["cropdust deathwind"] = { classFile = "ROGUE", level = 23 } })
+      assert.are.equal(23, byName["Cropdust Deathwind"].level)
+      assert.are.equal(20, GSD.GetCharacter("Cropdust Deathwind", "R").level)
+      -- Not in the roster (left the guild, or roster not loaded): the shared level.
+      assert.are.equal(20, shownByName({})["Cropdust Deathwind"].level)
     end)
   end)
 end)

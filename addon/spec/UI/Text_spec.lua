@@ -28,6 +28,26 @@ describe("Text", function()
     Text = AltArmy.Text
   end)
 
+  it("counts and cuts shown characters past colour codes", function()
+    local s = "|cff40c7ebMage|r, |cfffff468Rogue|r"
+    assert.are.equal(11, Text.VisibleLength(s))
+    assert.are.equal("|cff40c7ebMa|r", Text.CutVisible(s, 2))
+    assert.are.equal("|cff40c7ebMage|r, ", Text.CutVisible(s, 6))
+    assert.are.equal("|cff40c7ebMage|r, |cfffff468R|r", Text.CutVisible(s, 7))
+    assert.are.equal(s, Text.CutVisible(s, 20))
+  end)
+
+  it("never truncates inside a colour code of several", function()
+    local fs = mockFontString()
+    local s = "|cff40c7ebMage|r, |cfffff468Rogue|r, |cfffff468Rogue|r"
+    assert.is_true(Text.TruncateFontString(fs, s, 250, { returnBoolean = true }))
+    local text = fs:GetText()
+    assert.is_truthy(text:find("...", 1, true))
+    local bare, opens = text:gsub("|c%x%x%x%x%x%x%x%x", "")
+    assert.is_nil(bare:find("|c", 1, true), text) -- every |c starts a whole code
+    assert.are.equal(opens, select(2, text:gsub("|r", "")))
+  end)
+
   it("returns full text when it fits", function()
     local fs = mockFontString()
     local out = Text.TruncateFontString(fs, "Bob", 100)

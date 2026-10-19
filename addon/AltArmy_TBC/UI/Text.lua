@@ -24,6 +24,48 @@ local function splitColoredText(fullName)
     return "", fullName
 end
 
+-- Steps through text a character at a time (UTF-8), passing over |cAARRGGBB and |r codes.
+-- @return the byte index after the next character, else nil; whether a colour is open before it
+local function nextVisible(s, i, open)
+    while true do
+        if s:find("^|c%x%x%x%x%x%x%x%x", i) then
+            i, open = i + 10, true
+        elseif s:sub(i, i + 1) == "|r" then
+            i, open = i + 2, false
+        else
+            break
+        end
+    end
+    if i > #s then
+        return nil, open
+    end
+    local b = s:byte(i)
+    local width = b >= 0xF0 and 4 or b >= 0xE0 and 3 or b >= 0xC0 and 2 or 1
+    return i + width, open
+end
+
+--- How many characters of `s` show, colour codes left out.
+function Text.VisibleLength(s)
+    local n, i, open = 0, 1, false
+    while true do
+        i, open = nextVisible(s, i, open)
+        if not i then return n end
+        n = n + 1
+    end
+end
+
+--- The first `count` shown characters of `s` with their colour codes, any colour still open closed.
+function Text.CutVisible(s, count)
+    local i, open = 1, false
+    for _ = 1, count do
+        local after
+        after, open = nextVisible(s, i, open)
+        if not after then return s end
+        i = after
+    end
+    return s:sub(1, i - 1) .. (open and "|r" or "")
+end
+
 --- Truncate text to fit maxWidth on a FontString.
 --- opts.returnBoolean — return whether truncated (TabSummary).
 --- opts.preserveColorCodes — keep |cff…|r wrapper while truncating visible portion (TabSearch).
@@ -106,8 +148,10 @@ function Text.TruncateFontString(fontString, fullName, maxWidth, opts)
         if returnBoolean then return false end
         return finalText
     end
-    for len = #fullName - 1, 1, -1 do
-        local truncated = fullName:sub(1, len) .. "..."
+    local coloured = fullName:find("|c", 1, true) ~= nil -- several colours: never cut inside a code
+    local count = coloured and Text.VisibleLength(fullName) or #fullName
+    for len = count - 1, 1, -1 do
+        local truncated = (coloured and Text.CutVisible(fullName, len) or fullName:sub(1, len)) .. "..."
         fontString:SetText(truncated)
         if fontString:GetStringWidth() <= maxTextW then
             local finalText = affixPrefix .. truncated .. suffix

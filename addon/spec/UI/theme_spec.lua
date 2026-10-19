@@ -2206,6 +2206,31 @@ describe("AltArmy.Theme", function()
             assert.is_not_nil(api.popup)
         end)
 
+        it("hides every old row and divider when relaid out, though each pool has gaps", function()
+            local before = #framesCreated
+            local parent = makeStubFrame()
+            local keys = { "-1", "a", "b", "-2", "c" }
+            local api = Theme.CreateMultiSelectCheckboxDropdown({
+                parent = parent,
+                relativeTo = parent,
+                getKeys = function() return keys end,
+                getLabels = function() return { ["-1"] = "G1", ["-2"] = "G2", ["-3"] = "G3" } end,
+                isDivider = function(key) return key:sub(1, 1) == "-" end,
+                getRowLabel = function(key) return "row " .. key end,
+                getFilter = function() return {} end,
+            })
+            keys = { "-3", "d" }
+            api.refresh()
+            local shownRows, shownDividers = {}, {}
+            for i = before + 1, #framesCreated do
+                local f = framesCreated[i]
+                if f:IsShown() and f.leftLine then shownDividers[#shownDividers + 1] = f.label._text end
+                if f:IsShown() and f.check and f.label then shownRows[#shownRows + 1] = f.label._text end
+            end
+            assert.are.same({ "G3" }, shownDividers)
+            assert.are.same({ "row d" }, shownRows)
+        end)
+
         it("shows each row's label from getRowLabel", function()
             local parent = makeStubFrame()
             Theme.CreateMultiSelectCheckboxDropdown({
