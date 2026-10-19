@@ -1,9 +1,9 @@
 -- AltArmy TBC — Which characters the tabs without a realm filter of their own show (Search, Inventory, Graphs,
--- Cooldowns, cooldown alerts, the gear compare panel): the Summary tab's realm filter
+-- the gear compare panel): the Summary tab's realm filter
 -- (AltArmyTBC_SummarySettings.filter.scope, CharacterFilter.lua), which the Summary's settings panel edits.
 -- This realm's characters of your faction always show; the other faction on this realm, other realms and
--- linked accounts' characters each by its toggle (RealmFilter.inScope). Summary, Gear, Reputation and Currency
--- filter by their own CharacterFilter.
+-- linked accounts' characters each by its toggle (RealmFilter.inScope). Summary, Gear, Reputation, Currency and
+-- Cooldowns (with its alerts) filter by their own CharacterFilter.
 -- The old global scope (AltArmyTBC_Options.characterScope, and realmFilter before it) only seeds each tab's
 -- first filter (CharacterFilter.Ensure); nothing writes it any more.
 

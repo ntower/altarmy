@@ -3519,7 +3519,9 @@ function Theme.CreateMultiSelectCheckboxDropdown(config)
 
     -- config.getKeys() / config.getLabels(): a list that changes (laid out again on refresh and when opened);
     -- config.maxVisibleRows: past that many rows the popup scrolls; config.isDivider(key): that key is a
-    -- divider row naming the group under it (its label), not a checkbox.
+    -- divider row naming the group under it (its label), not a checkbox; config.fitRows: a popup too narrow
+    -- for its widest row grows to fit it, leftward from the button's right edge (a settings panel sits at the
+    -- window's right edge).
     local maxVisibleRows = config.maxVisibleRows
     local isDivider = config.isDivider or function() return false end
     local viewport -- made when the rows first outgrow maxVisibleRows
@@ -3689,6 +3691,26 @@ function Theme.CreateMultiSelectCheckboxDropdown(config)
         end
     end
 
+    local function fitPopupWidth()
+        if not config.fitRows then return end
+        local widest = 0
+        for _, row in pairs(rows) do
+            local w = row.label and row.label.GetStringWidth and row.label:GetStringWidth() or 0
+            if w > widest then widest = w end
+        end
+        local checkSize = Theme.CHAR_LIST_CHECKBOX_SIZE or 18
+        local gutter = (viewport and viewport.scroll:IsShown()) and Theme.VerticalScrollBarGutter() or 0
+        local need = math.ceil(popupInsets.left + checkSize + 2 + widest + 8 + popupInsets.right + gutter)
+        popup:ClearAllPoints()
+        if need > (btn:GetWidth() or 0) then
+            popup:SetPoint("TOPRIGHT", btn, "BOTTOMRIGHT", 0, -2)
+            popup:SetWidth(need)
+        else
+            popup:SetPoint("TOPLEFT", btn, "BOTTOMLEFT", 0, -2)
+            popup:SetPoint("TOPRIGHT", btn, "BOTTOMRIGHT", 0, 0)
+        end
+    end
+
     refreshDropdown = function()
         layoutRows()
         local filterMap = config.getFilter and config.getFilter() or {}
@@ -3711,6 +3733,7 @@ function Theme.CreateMultiSelectCheckboxDropdown(config)
                 row.label:SetText(rowLabelText(key))
             end
         end
+        fitPopupWidth()
     end
 
     if btn.HookScript then

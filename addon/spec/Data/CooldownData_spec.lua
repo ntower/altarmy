@@ -7,13 +7,19 @@ describe("CooldownData", function()
         _G.AltArmy = _G.AltArmy or {}
         _G.AltArmyTBC_Options = {}
         _G.AltArmyTBC_Data = _G.AltArmyTBC_Data or {}
-        package.path = package.path .. ";AltArmy_TBC/Data/?.lua"
+        package.path = package.path .. ";AltArmy_TBC/Data/?.lua;AltArmy_TBC/Data/Characters/?.lua"
+        require("ClassColor")
+        require("CharKey")
+        require("RealmFilter")
+        require("CharacterSections")
+        require("CharacterFilter")
         require("CooldownData")
         CD = AltArmy.CooldownData
         assert.truthy(CD)
     end)
 
     before_each(function()
+        _G.AltArmyTBC_SummarySettings = nil
         CD.ResetCooldownOptionsToDefaults()
         -- Same structure as in-game: filled when tradeskill/craft APIs run (see DataStoreProfessions).
         _G.AltArmyTBC_Data.RecipeReagents = {
@@ -1036,12 +1042,23 @@ describe("CooldownData", function()
     end)
 
     describe("GetOptionsCategoryOrder", function()
-        it("returns every category on TBC", function()
-            assert.are.same(CD.CATEGORY_ORDER, CD.GetOptionsCategoryOrder(false))
+        it("returns TBC's crafts A to Z on TBC, without WoW Forever's Research and Dedicated Study", function()
+            assert.are.same({
+                "brilliant_glass", "primal_mooncloth", "shadowcloth", "spellcloth", "transmute", "void_sphere",
+            }, CD.GetOptionsCategoryOrder(false))
         end)
 
-        it("returns Dedicated Study, transmute and research on WoW Forever", function()
-            assert.are.same({ "dedicated_study", "transmute", "research" }, CD.GetOptionsCategoryOrder(true))
+        it("lists each client's cooldowns by title A to Z", function()
+            for _, isForever in ipairs({ false, true }) do
+                local order = CD.GetOptionsCategoryOrder(isForever)
+                for i = 2, #order do
+                    assert.is_true(CD.CATEGORIES[order[i - 1]].title < CD.CATEGORIES[order[i]].title)
+                end
+            end
+        end)
+
+        it("returns Dedicated Study, Research and Transmute (A to Z) on WoW Forever", function()
+            assert.are.same({ "dedicated_study", "research", "transmute" }, CD.GetOptionsCategoryOrder(true))
         end)
     end)
 
@@ -1164,6 +1181,221 @@ describe("CooldownData", function()
             local alerts = CD.EvaluateAlerts(ds, AltArmyTBC_Options.cooldowns, 1000 + 23 * 3600, state)
             assert.are.equal(1, #alerts)
             assert.are.equal("dedicated_study", alerts[1].categoryKey)
+        end)
+    end)
+
+    describe("settings panel", function()
+        local CF = AltArmy.CharacterFilter
+
+        it("EnsureCooldownOptions seeds the realm filter, grouping and folded sections", function()
+            local cd = CD.EnsureCooldownOptions()
+            assert.are.equal(CF.VERSION, cd.filter.version)
+            assert.is_table(cd.filter.scope)
+            assert.is_true(cd.groupByRealmFaction)
+            assert.are.same({}, cd.collapsedGroups)
+            cd.groupByRealmFaction = false
+            cd.collapsedGroups["TestRealm|Horde"] = true
+            cd.filter.scope.otherRealms = true
+            CD.EnsureCooldownOptions()
+            assert.is_false(cd.groupByRealmFaction)
+            assert.is_true(cd.collapsedGroups["TestRealm|Horde"])
+            assert.is_true(cd.filter.scope.otherRealms)
+        end)
+
+        it("the first realm filter starts from the Summary's, which the tab followed until now", function()
+            _G.AltArmyTBC_SummarySettings = {
+                filter = { version = CF.VERSION, scope = { otherFaction = true, otherRealms = true, linked = false } },
+            }
+            AltArmyTBC_Options.cooldowns = nil
+            local cd = CD.EnsureCooldownOptions()
+            assert.are.same({ otherFaction = true, otherRealms = true, linked = false }, cd.filter.scope)
+            -- and only the first time
+            AltArmyTBC_SummarySettings.filter.scope.otherRealms = false
+            CD.EnsureCooldownOptions()
+            assert.is_true(cd.filter.scope.otherRealms)
+        end)
+
+        local function tailor(withSpec)
+            return {
+                name = "Tailor",
+                cooldownSpecs = withSpec and { spellfireTailor = true } or nil,
+                Professions = { Tailoring = { Recipes = { [31373] = { color = 1 } } } },
+                ProfCooldownExpiry = { [31373] = { expiresAtUnix = 500 } },
+            }
+        end
+        local function hasRow(rows, key)
+            for _, r in ipairs(rows) do
+                if r.categoryKey == key then return true end
+            end
+            return false
+        end
+
+        it("BuildRows with all lists hidden categories and characters without the specialization", function()
+            local cat = AltArmyTBC_Options.cooldowns.categories.spellcloth
+            local ds = mockDS({ TestRealm = { T = tailor(false) } })
+            cat.showInUI = false
+            assert.is_false(hasRow(CD.BuildRows(ds, AltArmyTBC_Options.cooldowns, 1000), "spellcloth"))
+            assert.is_true(hasRow(CD.BuildRows(ds, AltArmyTBC_Options.cooldowns, 1000, { all = true }), "spellcloth"))
+            cat.showInUI = true
+            cat.showOnlyIfSpecialization = true
+            assert.is_false(hasRow(CD.BuildRows(ds, AltArmyTBC_Options.cooldowns, 1000), "spellcloth"))
+            assert.is_true(hasRow(CD.BuildRows(ds, AltArmyTBC_Options.cooldowns, 1000, { all = true }), "spellcloth"))
+        end)
+
+        it("EvaluateAlerts fires for a category hidden from the list", function()
+            local cat = AltArmyTBC_Options.cooldowns.categories.spellcloth
+            cat.showInUI = false
+            local ds = mockDS({ TestRealm = { T = tailor(false) } })
+            local alerts = CD.EvaluateAlerts(ds, AltArmyTBC_Options.cooldowns, 600, {})
+            assert.are.equal(1, #alerts)
+            assert.are.equal("spellcloth", alerts[1].categoryKey)
+        end)
+
+        it("EvaluateAlerts applies only its own specialization gate", function()
+            local cat = AltArmyTBC_Options.cooldowns.categories.spellcloth
+            local ds = mockDS({ TestRealm = { T = tailor(false) } })
+            cat.showOnlyIfSpecialization = true
+            assert.are.equal(1, #CD.EvaluateAlerts(ds, AltArmyTBC_Options.cooldowns, 600, {}))
+            cat.showOnlyIfSpecialization = false
+            cat.alertOnlyIfSpecialization = true
+            assert.are.equal(0, #CD.EvaluateAlerts(ds, AltArmyTBC_Options.cooldowns, 600, {}))
+            local specced = tailor(true)
+            ds = mockDS({ TestRealm = { T = specced } })
+            ds.GetCharacter = function() return specced end -- the alert's own gate reads the character
+            assert.are.equal(1, #CD.EvaluateAlerts(ds, AltArmyTBC_Options.cooldowns, 600, {}))
+        end)
+
+        describe("dropdown entries", function()
+            local savedDS
+            before_each(function()
+                savedDS = AltArmy.DataStore
+                AltArmy.DataStore = { IsWowForever = false }
+            end)
+            after_each(function()
+                AltArmy.DataStore = savedDS
+            end)
+
+            it("lists every category, a specialization-only entry after each that has one", function()
+                local keys, labels = CD.SettingsEntries(false)
+                assert.are.same({
+                    "brilliant_glass",
+                    "primal_mooncloth", "primal_mooncloth:spec",
+                    "shadowcloth", "shadowcloth:spec",
+                    "spellcloth", "spellcloth:spec",
+                    "transmute", "transmute:spec",
+                    "void_sphere",
+                }, keys)
+                assert.are.equal("Transmute (all specs)", labels.transmute)
+                assert.are.equal("Transmute (Master of Transmutation only)", labels["transmute:spec"])
+                assert.are.equal("Spellcloth (Spellfire Tailor only)", labels["spellcloth:spec"])
+                assert.are.equal("Shadowcloth (Shadoweave Tailor only)", labels["shadowcloth:spec"])
+                assert.are.equal("Primal Mooncloth (Mooncloth Tailor only)", labels["primal_mooncloth:spec"])
+                assert.are.equal("Brilliant Glass", labels.brilliant_glass)
+                assert.is_nil(labels.research) -- WoW Forever's alone
+                assert.is_nil(labels.dedicated_study)
+            end)
+
+            it("has no specialization entries on WoW Forever", function()
+                AltArmy.DataStore.IsWowForever = true
+                local keys, labels = CD.SettingsEntries(true)
+                assert.are.same({ "dedicated_study", "research", "transmute" }, keys)
+                assert.are.equal("Transmute", labels.transmute)
+                assert.are.equal("Research (mage)", labels.research)
+                assert.are.equal("Dedicated Study (legacy talent)", labels.dedicated_study)
+                assert.is_nil(labels["transmute:spec"])
+                -- a gate saved on TBC is ignored there, so the plain entry reads ticked
+                AltArmyTBC_Options.cooldowns.categories.transmute.showOnlyIfSpecialization = true
+                assert.is_true(CD.SettingsMap(AltArmyTBC_Options.cooldowns, "show").transmute)
+            end)
+
+            it("SettingsMap says which entry is ticked, every key explicit", function()
+                local cd = AltArmyTBC_Options.cooldowns
+                local map = CD.SettingsMap(cd, "show")
+                assert.is_true(map.transmute)
+                assert.is_false(map["transmute:spec"])
+                assert.is_true(map.brilliant_glass)
+                cd.categories.transmute.showOnlyIfSpecialization = true
+                map = CD.SettingsMap(cd, "show")
+                assert.is_false(map.transmute)
+                assert.is_true(map["transmute:spec"])
+                cd.categories.transmute.showInUI = false
+                map = CD.SettingsMap(cd, "show")
+                assert.is_false(map.transmute)
+                assert.is_false(map["transmute:spec"])
+                -- alerts read their own pair
+                assert.is_true(CD.SettingsMap(cd, "alert").transmute)
+                cd.categories.transmute.alertWhenAvailable = false
+                assert.is_false(CD.SettingsMap(cd, "alert").transmute)
+                cd.categories.transmute.alertWhenAvailable = true
+                cd.categories.transmute.alertOnlyIfSpecialization = true
+                assert.is_false(CD.SettingsMap(cd, "alert").transmute)
+                assert.is_true(CD.SettingsMap(cd, "alert")["transmute:spec"])
+            end)
+
+            it("SetSettingsEntry: ticking one entry unticks the other, unticking hides the category", function()
+                local cd = AltArmyTBC_Options.cooldowns
+                local cat = cd.categories.transmute
+                CD.SetSettingsEntry(cd, "show", "transmute:spec", true)
+                assert.is_true(cat.showInUI)
+                assert.is_true(cat.showOnlyIfSpecialization)
+                CD.SetSettingsEntry(cd, "show", "transmute", true)
+                assert.is_true(cat.showInUI)
+                assert.is_false(cat.showOnlyIfSpecialization)
+                CD.SetSettingsEntry(cd, "show", "transmute", false)
+                assert.is_false(cat.showInUI)
+                CD.SetSettingsEntry(cd, "show", "transmute:spec", true)
+                CD.SetSettingsEntry(cd, "show", "transmute:spec", false)
+                assert.is_false(cat.showInUI)
+                CD.SetSettingsEntry(cd, "alert", "transmute:spec", true)
+                assert.is_true(cat.alertWhenAvailable)
+                assert.is_true(cat.alertOnlyIfSpecialization)
+                CD.SetSettingsEntry(cd, "alert", "transmute", false)
+                assert.is_false(cat.alertWhenAvailable)
+                CD.SetSettingsEntry(cd, "show", "nonsense", true) -- a no-op
+                assert.is_nil(cd.categories.nonsense)
+            end)
+
+            it("FormatSettingsSummary names what is ticked by the cooldowns' plain names", function()
+                local keys, labels = CD.SettingsEntries(false)
+                local cd = AltArmyTBC_Options.cooldowns
+                local function summary()
+                    return CD.FormatSettingsSummary(keys, labels, CD.SettingsMap(cd, "show"))
+                end
+                assert.are.equal("All", summary())
+                cd.categories.transmute.showOnlyIfSpecialization = true
+                assert.are.equal("All", summary())
+                -- WoW Forever's cooldowns aren't listed here, so their settings change nothing
+                cd.categories.dedicated_study.showInUI = false
+                assert.are.equal("All", summary())
+                cd.categories.spellcloth.showInUI = false
+                assert.are.equal("All but Spellcloth", summary())
+                cd.categories.transmute.showInUI = false
+                assert.are.equal("Brilliant Glass, Primal Mooncloth, Shadowcloth, Void Sphere / Prismatic Sphere",
+                    summary())
+                for _, key in ipairs(CD.CATEGORY_ORDER) do
+                    cd.categories[key].showInUI = false
+                end
+                assert.are.equal("None", summary())
+                cd.categories.transmute.showInUI = true
+                cd.categories.brilliant_glass.showInUI = true
+                -- neither "(all specs)" nor "(<spec> only)"
+                assert.are.equal("Brilliant Glass, Transmute", summary())
+                cd.categories.transmute.showOnlyIfSpecialization = false
+                assert.are.equal("Brilliant Glass, Transmute", summary())
+            end)
+
+            it("FormatSettingsSummary on WoW Forever's three", function()
+                AltArmy.DataStore.IsWowForever = true
+                local keys, labels = CD.SettingsEntries(true)
+                local cd = AltArmyTBC_Options.cooldowns
+                cd.categories.research.showInUI = false
+                -- the note "(mage)" is the row's alone
+                assert.are.equal("All but Research",
+                    CD.FormatSettingsSummary(keys, labels, CD.SettingsMap(cd, "show")))
+                cd.categories.transmute.showInUI = false
+                assert.are.equal("Dedicated Study",
+                    CD.FormatSettingsSummary(keys, labels, CD.SettingsMap(cd, "show")))
+            end)
         end)
     end)
 end)

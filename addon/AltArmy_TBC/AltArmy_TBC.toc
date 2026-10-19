@@ -110,6 +110,7 @@ Data\Characters\CharacterSort.lua
 ReputationFactionSort.lua
 ReputationGridWindow.lua
 UI\CharacterFilterControls.lua
+UI\HorizontalListScroll.lua
 UI\ScoreSortRow.lua
 UI\ItemActions.lua
 UI\ItemSlotButton.lua
@@ -160,7 +161,6 @@ UI\OnboardingDialogQueue.lua
 UI\GuildShareOnboarding.lua
 UI\RestedXpQuestRewardConflictDialog.lua
 UI\Options.lua
-UI\CooldownOptions.lua
 UI\LinkAccountDialog.lua
 UI\LinkedAccountsOptions.lua
 UI\QuestRewardIndicators.lua

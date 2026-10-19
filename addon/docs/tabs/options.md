@@ -4,7 +4,7 @@ The game's Options → AddOns entry and user-facing slash commands.
 
 ## Options pages
 
-**AltArmy** in the AddOns list expands into its pages (`UI/Options.lua`): General, Sharing, Characters, Gear, Cooldowns and, while debug options are on, Debug. They are sub-pages of the AltArmy entry, as Auctionator's, Consumable Connoisseur's and RareScanner's are: `Settings.RegisterCanvasLayoutSubcategory` under the `Settings.RegisterCanvasLayoutCategory` entry, or `parent = "AltArmy"` with `InterfaceOptions_AddCategory` on clients without the Settings API. The AltArmy entry itself shows the version and points at its pages.
+**AltArmy** in the AddOns list expands into its pages (`UI/Options.lua`): General, Sharing, Characters, Gear and, while debug options are on, Debug. The Cooldowns tab's settings are its own settings panel ([Cooldowns](cooldowns.md#settings-panel)). They are sub-pages of the AltArmy entry, as Auctionator's, Consumable Connoisseur's and RareScanner's are: `Settings.RegisterCanvasLayoutSubcategory` under the `Settings.RegisterCanvasLayoutCategory` entry, or `parent = "AltArmy"` with `InterfaceOptions_AddCategory` on clients without the Settings API. The AltArmy entry itself shows the version and points at its pages.
 
 | Page | Contents |
 |-----|----------|
@@ -12,7 +12,6 @@ The game's Options → AddOns entry and user-facing slash commands.
 | **Sharing** | **Guild** (guild data sharing: main, display name, data retention, chat; shown while guild sharing is available), then **Linked accounts** (WoW: Forever only, for now: `UI/LinkedAccountsOptions.lua`; each link with its characters, when it last synced, Sync now and Unlink (click twice); each other account of yours online with Alt Army that isn't linked, with Link, then the code to compare while the other account accepts), in its own scroll area. Guild prompts that open Options (`flash = "main"`, `"guildShare"`, `"autoDelete"`) open this page whatever page they name (`panel.FlashTargetPage`). |
 | **Characters** | Per-character bank-alt flags; delete character data (self-delete protected + confirmation) |
 | **Gear** | Gear upgrade notification toggles (current character / alts; loot, quest rewards, etc.) |
-| **Cooldowns** | One collapsible section per category (all start closed), drawn like the General page's: UI visibility, alerts, reminder intervals; specialization-related options. On WoW Forever, shows a "work in progress" banner and only the Dedicated Study (Legacy talent, first), Transmute and Research (Comprehension) categories (the others are TBC-specific crafts), and hides the "Only if Master of Transmutation" toggles; a saved value for them is ignored there |
 | **Debug** | Listed after `/altarmy debug on` (a page can't be taken out of the list, so after `debug off` it stays until reload and says debug options are off); search timing, cooldown scan logging, item stats, guild share verbose, **Clear auction data** (deletes stored auction house scans; keeps the scan cooldown), **Window resize** (the main window's resize grip, not ready for every tab yet), etc. |
 
 Shared theme with the main UI ([UI_DESIGN.md](../UI_DESIGN.md)).

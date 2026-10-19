@@ -14,7 +14,6 @@ MainTabs.ORDER = { "Summary", "Economy", "Gear", "Inventory", "Reputation", "Coo
 
 -- settings.toggle / settings.isShown: method names on AltArmy.TabFrames[name].
 -- settings.isAvailable: optional method name; when it returns false the tab shows no settings button.
--- settings.optionsKey: opens Interface Options on that AltArmy section instead.
 -- headerSearch: show the toolbar item/recipe search on this tab (always shown in search mode).
 -- slash: the tab's word in `/alta <slash> [view]` (UI/Options.lua); views: its sub-view tabs' names -> their
 -- words, setView: the tab frame's function that switches to one (called with the view name).
@@ -66,7 +65,7 @@ local DEFS = {
         views = { crafting = "crafting", raids = "dungeons" },
         setView = "SetCooldownsView",
         icon = "INV_Misc_PocketWatch_01",
-        settings = { optionsKey = "cooldowns" },
+        settings = { toggle = "ToggleCooldownSettings", isShown = "IsCooldownSettingsShown" },
     },
     Graph = {
         label = "Graphs",

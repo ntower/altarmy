@@ -13,7 +13,9 @@ local HEADER_ROW_GAP = 3
 local LD = AltArmy.LockoutData
 local DS = AltArmy.DataStore
 local RF = AltArmy.RealmFilter
-if not LD or not DS then return end
+local CD = AltArmy.CooldownData
+local CF = AltArmy.CharacterFilter
+if not LD or not DS or not CD or not CF then return end
 
 local parent = frame.RaidsView
 local inner = Theme.CreatePanelInnerContent(parent)
@@ -126,11 +128,17 @@ local function CompareLockoutRows(a, b)
     return false
 end
 
-local headerRow = CreateFrame("Frame", nil, inner)
+-- The column headers scroll sideways with the rows: in a frame the list's width that clips them.
+UI.headerClip = CreateFrame("Frame", nil, inner)
+UI.headerClip:SetPoint("TOPLEFT", inner, "TOPLEFT", 0, 0)
+UI.headerClip:SetHeight(HEADER_HEIGHT)
+UI.headerClip:SetClipsChildren(true)
+
+local headerRow = CreateFrame("Frame", nil, UI.headerClip)
 headerRow:SetHeight(HEADER_HEIGHT)
 headerRow:SetWidth(TotalColWidth())
 headerRow:SetFrameLevel((frame:GetFrameLevel() or 0) + 10)
-headerRow:SetPoint("TOPLEFT", inner, "TOPLEFT", 0, 0)
+headerRow:SetPoint("TOPLEFT", UI.headerClip, "TOPLEFT", 0, 0)
 
 do
     local hx = 0
@@ -171,6 +179,7 @@ end
 local listViewport = CreateFrame("Frame", nil, inner)
 listViewport:SetPoint("TOPLEFT", inner, "TOPLEFT", 0, -PAD)
 listViewport:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -SCROLL_GUTTER, PAD)
+UI.headerClip:SetPoint("RIGHT", listViewport, "RIGHT", 0, 0)
 
 local rowParent = CreateFrame("Frame", nil, listViewport)
 rowParent:SetPoint("TOPLEFT", listViewport, "TOPLEFT", 0, -(HEADER_HEIGHT + HEADER_ROW_GAP - PAD))
@@ -198,6 +207,37 @@ local headerFade = Theme.CreatePinnedHeaderScrollFade({
     scrollBar = scrollBar,
     headerBottomInset = 2,
 })
+-- Under the header, the list's width: not in the header's clipping frame, nor as wide as the scrolled header.
+if headerFade.frame then
+    headerFade.frame:SetParent(inner)
+    headerFade.frame:ClearAllPoints()
+    headerFade.frame:SetPoint("TOP", headerRow, "BOTTOM", 0, 2)
+    headerFade.frame:SetPoint("LEFT", listViewport, "LEFT", 0, 0)
+    headerFade.frame:SetPoint("RIGHT", listViewport, "RIGHT", 0, 0)
+    headerFade.frame:SetFrameLevel((headerRow:GetFrameLevel() or 0) + 50)
+end
+
+-- Sideways scrolling once the list is wider than its viewport (the tab's settings panel narrows it).
+UI.hScroll = AltArmy.HorizontalListScroll.Create({
+    scrollFrame = scroll,
+    barParent = parent,
+    getContentWidth = TotalColWidth,
+    isShown = function() return parent:IsVisible() end,
+    onScroll = function(offset)
+        headerRow:ClearAllPoints()
+        headerRow:SetPoint("TOPLEFT", UI.headerClip, "TOPLEFT", -offset, 0)
+    end,
+    -- the list's bottom rises over the bar while it shows (anchored to the panel, never to the slot)
+    onBarShown = function(shown, height)
+        listViewport:ClearAllPoints()
+        listViewport:SetPoint("TOPLEFT", inner, "TOPLEFT", 0, -PAD)
+        listViewport:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -SCROLL_GUTTER, PAD + (shown and height or 0))
+    end,
+})
+UI.hScroll.slot:SetPoint("BOTTOM", parent, "BOTTOM", 0, PAD)
+UI.hScroll.slot:SetPoint("LEFT", inner, "LEFT", 0, 0)
+UI.hScroll.slot:SetPoint("RIGHT", parent, "RIGHT", -SCROLL_GUTTER, 0)
+frame.UpdateRaidsHorizontalScroll = UI.hScroll.Update
 
 viewport.OnScroll(function()
     if headerFade then
@@ -259,13 +299,10 @@ local function RefreshRaidsList()
     UpdateHeaderSortIndicators()
 
     local now = time and time() or 0
-    local rows = LD.BuildRows(DS, now)
-    do
-        local GRF = AltArmy.GlobalRealmFilter
-        if GRF and GRF.FilterList then
-            rows = GRF.FilterList(rows, GetCurrentRealm())
-        end
-    end
+    -- the Cooldowns tab's realm filter (its settings panel)
+    local filter = CD.EnsureCooldownOptions().filter
+    local rows = CF.FilterList(LD.BuildRows(DS, now), filter, CF.Context(GetCurrentRealm()), { scopeOnly = true })
+    local otherRealms = CF.ShowsOtherRealms(filter) and AccountHasMultipleRealms()
 
     table.sort(rows, CompareLockoutRows)
 
@@ -288,8 +325,7 @@ local function RefreshRaidsList()
         y = y - ROW_HEIGHT
         row.rowData = rd
 
-        local showRealm = (AltArmy.GlobalRealmFilter and AltArmy.GlobalRealmFilter.Get() == "all")
-            and AccountHasMultipleRealms()
+        local showRealm = otherRealms
             and rd.realm
             and rd.realm ~= ""
         local charText = RF and RF.formatColoredCharacterNameRealm

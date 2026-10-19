@@ -595,16 +595,10 @@ end
 settingsBtn:SetScript("OnClick", function()
     local settings, key = activeSettings()
     if not settings then return end
-    if settings.optionsKey then
-        if AltArmy.OpenInterfaceOptions then
-            AltArmy.OpenInterfaceOptions(settings.optionsKey)
-        end
-    else
-        local frame = AltArmy.TabFrames[key]
-        local toggle = frame and frame[settings.toggle]
-        if toggle then
-            toggle(frame)
-        end
+    local frame = AltArmy.TabFrames[key]
+    local toggle = frame and frame[settings.toggle]
+    if toggle then
+        toggle(frame)
     end
     UpdateSettingsButtonGlow()
 end)

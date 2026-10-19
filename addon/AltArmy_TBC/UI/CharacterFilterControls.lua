@@ -3,7 +3,8 @@
 -- handle) and Class filter, each editing
 -- the tab's own `settings.filter` (Data/Characters/CharacterFilter.lua); then Pin individual characters
 -- (Current character, i.e. `settings.showSelfFirst`, and each character) and Hide individual characters,
--- over the tab's per-character pin / hide settings.
+-- over the tab's per-character pin / hide settings. With opts.scopeOnly (the Cooldowns panel) only the Realm
+-- filter and Group characters.
 
 if not AltArmy then return end
 
@@ -20,7 +21,8 @@ local SELF_LABEL = "Current character"
 ---   ("scope" | "levels" | "classes" | "group" | "pin" | "hide"; key and checked nil for "levels"),
 ---   groupCheckbox = { get(), set(on) } for the
 ---   Summary's grouping, getCharSetting(name, realm, "pin" | "hide"), setCharSetting(name, realm, pin, hide),
----   skipBankAlts (bank alts are always hidden on the tab, so not listed)
+---   skipBankAlts (bank alts are always hidden on the tab, so not listed), scopeOnly (stop after the Realm filter
+---   and Group characters), groupCheckbox.help = { title, lines } (its help icon's text)
 --- @return table { bottom = Frame to anchor the next row under, refresh(), Close() }
 function AltArmy.CreateCharacterFilterControls(parent, opts)
     opts = opts or {}
@@ -76,7 +78,7 @@ function AltArmy.CreateCharacterFilterControls(parent, opts)
                 onChange("group", nil, checked)
             end,
         })
-        Theme.AttachSettingsHelpIcon(groupRow, {
+        Theme.AttachSettingsHelpIcon(groupRow, opts.groupCheckbox.help or {
             title = "Group characters",
             lines = {
                 "Lists each realm and faction's characters under its own heading, this realm's first.",
@@ -86,8 +88,36 @@ function AltArmy.CreateCharacterFilterControls(parent, opts)
         below = groupRow
     end
 
+    local api = {}
+    local level -- the level slider, past scopeOnly
+
+    function api.refresh()
+        for _, d in ipairs(dropdowns) do
+            d.refresh()
+        end
+        if level then
+            local f = filter()
+            level.SetValues(f.levelMin, f.levelMax)
+        end
+        if groupRow then
+            groupRow.check:SetChecked(opts.groupCheckbox.get() and true or false)
+        end
+    end
+
+    function api.Close()
+        for _, d in ipairs(dropdowns) do
+            d:Close()
+        end
+    end
+
+    if opts.scopeOnly then
+        api.bottom = below
+        api.refresh()
+        return api
+    end
+
     local maxLevel = CF.MaxLevel()
-    local level = Theme.CreateRangeSlider(parent, {
+    level = Theme.CreateRangeSlider(parent, {
         relativeTo = below,
         relativePoint = "BOTTOMLEFT",
         y = -8,
@@ -237,25 +267,7 @@ function AltArmy.CreateCharacterFilterControls(parent, opts)
         end,
     })
 
-    local api = { bottom = hide.button }
-
-    function api.refresh()
-        for _, d in ipairs(dropdowns) do
-            d.refresh()
-        end
-        local f = filter()
-        level.SetValues(f.levelMin, f.levelMax)
-        if groupRow then
-            groupRow.check:SetChecked(opts.groupCheckbox.get() and true or false)
-        end
-    end
-
-    function api.Close()
-        for _, d in ipairs(dropdowns) do
-            d:Close()
-        end
-    end
-
+    api.bottom = hide.button
     api.refresh()
     return api
 end

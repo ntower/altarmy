@@ -6,6 +6,17 @@ Profession cooldown overview and raid/heroic lockouts.
 
 Know which crafts are ready, whether mats are on hand, mail stockpile reagents from a bank alt, and track instance lockouts.
 
+## Settings panel
+
+The toolbar's settings button opens a panel on the right of the tab, 40% of its width, as on the Summary, Gear and Reputation tabs. Both views narrow to the rest and scroll sideways (a bar under the list) once their columns no longer fit. Everything is saved in `AltArmyTBC_Options.cooldowns`.
+
+- **Realm filter**: the same choices as the Summary's (this realm and faction always; this realm's other faction, other realms, linked accounts), but the tab's own. It applies to both views and to the alerts. Other realms' names carry their realm. The first filter starts from the Summary's, which the tab followed until it had its own.
+- **Group characters** (on by default, Crafting only): a heading per realm and faction, this realm and faction first, as the Summary's sections. Each section is sorted by the column sort. Clicking a heading folds its section away or back (remembered in `collapsedGroups`). Folded rows aren't offered to Send Materials. Names then leave out the realm, which the heading gives.
+- **Show in UI**: which cooldowns the Crafting list shows.
+- **Alert when ready**: which cooldowns announce when ready (see Alerts). A cooldown hidden from the list still alerts.
+
+Both dropdowns list one entry per cooldown, A to Z: on TBC Anniversary its crafts (Brilliant Glass, Primal Mooncloth, Shadowcloth, Spellcloth, Transmute, Void Sphere / Prismatic Sphere), without WoW Forever's Research and Dedicated Study. On TBC Anniversary a cooldown that a specialization changes has two entries, for example **Transmute (all specs)** and **Transmute (Master of Transmutation only)**; ticking one unticks the other. Unticking both turns the cooldown off. The same goes for Spellcloth (Spellfire Tailor), Shadowcloth (Shadoweave Tailor) and Primal Mooncloth (Mooncloth Tailor). On WoW Forever the dropdowns list only Dedicated Study, Transmute and Research, with no specialization entries. Research reads **Research (mage)** and Dedicated Study **Dedicated Study (legacy talent)**. A dropdown's popup widens to fit its longest entry. Its button names what is ticked by the plain cooldown names: **All**, **None**, **All but** the one left out, or the ticked ones.
+
 ## Sub-views
 
 Persisted as Crafting vs **Raids** (`AltArmyTBC_Options.cooldowns.activeView`).
@@ -46,7 +57,7 @@ Tooltips: reagent counts, craftability, character-specific material context (bag
 
 ## Alerts
 
-Cooldown-ready alerts: chat, center-screen raid-warning style, or both; per-category reminder intervals; optional specialization-dependent visibility. Configured under Options → Cooldowns.
+When a cooldown becomes ready, a chat line ("Alt Army Transmute cooldown ready — Name") and a sound, once per ready cooldown until it is used again. Checked 5 seconds after login and every 30 seconds. Set per cooldown with **Alert when ready** in the settings panel, for the characters its realm filter shows; a linked account's characters never alert.
 
 ## Data source
 

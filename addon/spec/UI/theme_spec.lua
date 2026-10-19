@@ -2158,6 +2158,25 @@ describe("AltArmy.Theme", function()
             assert.is_true(api.popup._clamped)
         end)
 
+        it("with fitRows, widens its popup leftward to fit its widest row", function()
+            local parent = makeStubFrame()
+            local long = string.rep("x", 60) -- the stub measures 7 px a character: 420 px
+            local api = Theme.CreateMultiSelectCheckboxDropdown({
+                parent = parent,
+                relativeTo = parent,
+                keys = { "a", "b" },
+                labels = { a = "short", b = long },
+                fitRows = true,
+                getFilter = function() return {} end,
+            })
+            api.button._width = 200
+            api.refresh()
+            assert.is_true(api.popup._width > 420)
+            local last = api.popup._points[#api.popup._points]
+            assert.are.equal("TOPRIGHT", last[1])
+            assert.are.equal("BOTTOMRIGHT", last[3])
+        end)
+
         it("lays its rows out again when getKeys gives another list", function()
             local parent = makeStubFrame()
             local keys = { "a", "b" }

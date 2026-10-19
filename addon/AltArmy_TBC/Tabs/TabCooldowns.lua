@@ -25,6 +25,8 @@ local SEND_TIP_TEXT =
 local CD = AltArmy.CooldownData
 local DS = AltArmy.DataStore
 local RF = AltArmy.RealmFilter
+local CF = AltArmy.CharacterFilter
+local CS = AltArmy.CharacterSections
 local SP = AltArmy.StockpilePlan
 local SlideTransition = AltArmy.SlideTransition
 if not CD or not DS then return end
@@ -290,11 +292,27 @@ frame.RaidsView = raidsPanel
 
 local SetActiveCooldownsView -- forward-declared; defined after RefreshList
 
-local headerRow = CreateFrame("Frame", nil, tabContentInner)
+--- The settings panel, the realm/faction headings of a grouped list and the sideways scrolling, packed in one
+--- table (Lua 5.1's local limit).
+local settingsUI = {
+    headers = {}, -- the realm/faction headings shown, in list order
+    headerPool = {},
+    layoutSig = nil, -- the headings and rows the shown frames were laid out for
+}
+
+-- The column headers (and compose mode's Select All strip) scroll sideways with the rows: they sit in a frame
+-- the list's width that clips them, moved by the horizontal offset (settingsUI.PlaceHeaders).
+settingsUI.headerClip = CreateFrame("Frame", nil, tabContentInner)
+settingsUI.headerClip:SetPoint("TOPLEFT", tabContentInner, "TOPLEFT", 0, 0)
+settingsUI.headerClip:SetPoint("TOPRIGHT", tabContentInner, "TOPRIGHT", -SCROLL_GUTTER, 0)
+settingsUI.headerClip:SetHeight(HEADER_HEIGHT + SELECT_ALL_HEIGHT + 2)
+settingsUI.headerClip:SetClipsChildren(true)
+
+local headerRow = CreateFrame("Frame", nil, settingsUI.headerClip)
 headerRow:SetHeight(HEADER_HEIGHT)
 headerRow:SetWidth(totalColWidth)
 headerRow:SetFrameLevel((frame:GetFrameLevel() or 0) + 10)
-headerRow:SetPoint("TOPLEFT", tabContentInner, "TOPLEFT", 0, 0)
+headerRow:SetPoint("TOPLEFT", settingsUI.headerClip, "TOPLEFT", 0, 0)
 
 local hx = 0
 for _, sk in ipairs(SORT_KEYS_ORDER) do
@@ -338,8 +356,8 @@ sendHeaderBtn:Hide()
 sendHeaderBtn:EnableMouse(false)
 
 -- "All" select strip sits above the column headers in compose mode (header slides down).
-local selectAllBar = CreateFrame("Frame", nil, tabContentInner)
-selectAllBar:SetPoint("TOPLEFT", tabContentInner, "TOPLEFT", 0, 0)
+local selectAllBar = CreateFrame("Frame", nil, settingsUI.headerClip)
+selectAllBar:SetPoint("TOPLEFT", settingsUI.headerClip, "TOPLEFT", 0, 0)
 selectAllBar:SetHeight(SELECT_ALL_HEIGHT)
 selectAllBar:SetWidth(totalColWidth)
 selectAllBar:SetFrameLevel((headerRow:GetFrameLevel() or 0) + 1)
@@ -420,12 +438,23 @@ craftingEmptyLabel:Hide()
 
 -- Gradient under the pinned header when the list is scrolled (Gear / Summary pattern).
 headerRow:SetFrameLevel((tabContentInner:GetFrameLevel() or 0) + 10)
+selectAllBar:SetFrameLevel((headerRow:GetFrameLevel() or 0) + 1)
 cooldownHeaderFade = Theme.CreatePinnedHeaderScrollFade({
     headerFrame = headerRow,
     scrollFrame = scroll,
     scrollBar = scrollBar,
     headerBottomInset = 2,
 })
+-- Under the header, the list's width: not in the header's clipping frame, nor as wide as the scrolled header.
+if cooldownHeaderFade.frame then
+    local fade = cooldownHeaderFade.frame
+    fade:SetParent(tabContentInner)
+    fade:ClearAllPoints()
+    fade:SetPoint("TOP", headerRow, "BOTTOM", 0, 2)
+    fade:SetPoint("LEFT", listViewport, "LEFT", 0, 0)
+    fade:SetPoint("RIGHT", listViewport, "RIGHT", 0, 0)
+    fade:SetFrameLevel((headerRow:GetFrameLevel() or 0) + 50)
+end
 
 
 local rowPool = {}
@@ -731,6 +760,76 @@ function recipePicker:Open(row)
     end
 end
 
+--- Column headers and Select All at the horizontal offset (and the header's compose-mode slide).
+function settingsUI.PlaceHeaders()
+    local x = -(settingsUI.hScroll and settingsUI.hScroll.offset or 0)
+    headerRow:ClearAllPoints()
+    headerRow:SetPoint("TOPLEFT", settingsUI.headerClip, "TOPLEFT", x, -(sendBar.headerOffset or 0))
+    selectAllBar:ClearAllPoints()
+    selectAllBar:SetPoint("TOPLEFT", settingsUI.headerClip, "TOPLEFT", x, 0)
+end
+
+-- Sideways scrolling once the list is wider than its viewport (the settings panel narrows it).
+settingsUI.hScroll = AltArmy.HorizontalListScroll.Create({
+    scrollFrame = scroll,
+    barParent = tabContentPanel,
+    getContentWidth = function() return totalColWidth end,
+    isShown = function() return tabContentPanel:IsVisible() end,
+    onScroll = function()
+        recipePicker:Close() -- its search box sits over a Recipe cell that just moved
+        settingsUI.PlaceHeaders()
+    end,
+    -- the list's bottom rises over the bar while it shows (anchored to the tip row, never to the slot)
+    onBarShown = function(shown, height)
+        local lift = PAD + (shown and height or 0)
+        listViewport:ClearAllPoints()
+        listViewport:SetPoint("TOPLEFT", tabContentInner, "TOPLEFT", 0, -PAD)
+        listViewport:SetPoint("BOTTOMLEFT", tipRow, "TOPLEFT", 0, lift)
+        listViewport:SetPoint("BOTTOMRIGHT", tipRow, "TOPRIGHT", -SCROLL_GUTTER, lift)
+    end,
+})
+settingsUI.hScroll.slot:SetPoint("BOTTOMLEFT", tipRow, "TOPLEFT", 0, 0)
+settingsUI.hScroll.slot:SetPoint("BOTTOMRIGHT", tipRow, "TOPRIGHT", -SCROLL_GUTTER, 0)
+
+--- A realm/faction heading of the grouped list (the Summary's, scrolling with the rows): a click folds its
+--- section away or back (AltArmyTBC_Options.cooldowns.collapsedGroups).
+function settingsUI.PoolHeading()
+    local h = table.remove(settingsUI.headerPool)
+    if h then
+        h:Show()
+        return h
+    end
+    h = CreateFrame("Button", nil, scrollChild)
+    h:SetHeight(ROW_HEIGHT)
+    h:EnableMouse(true)
+    h:RegisterForClicks("LeftButtonUp")
+    h:SetScript("OnMouseWheel", function(_, delta)
+        scrollBinding.Wheel(delta)
+    end)
+    h:SetScript("OnClick", function(self)
+        if not self.sectionKey then return end
+        local folded = CD.EnsureCooldownOptions().collapsedGroups
+        folded[self.sectionKey] = not folded[self.sectionKey] or nil
+        RefreshList()
+    end)
+    local bg = h:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints(h)
+    local c = Theme.COLORS.gridHeaderBg
+    bg:SetColorTexture(c[1], c[2], c[3], c[4])
+    Theme.BindInteractableHover(h)
+    local icon = h:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(14, 14)
+    icon:SetPoint("LEFT", h, "LEFT", PAD, 0)
+    h.icon = icon
+    local label = h:CreateFontString(nil, "OVERLAY", Theme.FONTS.heading)
+    label:SetPoint("LEFT", icon, "RIGHT", 4, 0)
+    label:SetPoint("RIGHT", h, "RIGHT", -PAD, 0)
+    label:SetJustifyH("LEFT")
+    label:SetWordWrap(false)
+    h.label = label
+    return h
+end
+
 sendBar.openBtn = CreateFrame("Button", nil, tipRow, "UIPanelButtonTemplate")
 sendBar.openBtn:SetSize(120, 20)
 sendBar.openBtn:SetPoint("LEFT", tipRow, "LEFT", 0, 0)
@@ -865,9 +964,15 @@ ApplyColumnWidths = function(widths)
     for _, row in ipairs(rowPool) do
         layoutRow(row)
     end
+    for _, heading in ipairs(settingsUI.headers) do
+        heading:SetWidth(totalColWidth)
+    end
     if scrollChild then
         local _, h = scrollChild:GetSize()
         scrollChild:SetSize(totalColWidth, h or 1)
+    end
+    if settingsUI.hScroll then
+        settingsUI.hScroll.Update()
     end
     -- Keep checkbox fade in sync with Select All (header offset).
     do
@@ -908,8 +1013,7 @@ local function ApplyHeaderOffset(offset)
     offset = tonumber(offset) or 0
     if offset < 0 then offset = 0 end
     sendBar.headerOffset = offset
-    headerRow:ClearAllPoints()
-    headerRow:SetPoint("TOPLEFT", tabContentInner, "TOPLEFT", 0, -offset)
+    settingsUI.PlaceHeaders()
     local fadeAlpha = 0
     if SELECT_ALL_HEIGHT > 0 then
         fadeAlpha = math.min(1, offset / SELECT_ALL_HEIGHT)
@@ -1247,7 +1351,7 @@ ShowRecipeTooltip = function(owner, spellId, charTable, anchor)
         )
     end
     if charTable and CD.GetReagentHaveCounts then
-        local showRealm = (AltArmy.GlobalRealmFilter and AltArmy.GlobalRealmFilter.Get() == "all")
+        local showRealm = CF.ShowsOtherRealms(CD.EnsureCooldownOptions().filter)
             and AccountHasMultipleRealms()
             and charTable.realm
             and charTable.realm ~= ""
@@ -2631,6 +2735,13 @@ local function ReleaseRows()
         rowPool[#rowPool + 1] = r
     end
     activeRows = {}
+    for i = #settingsUI.headers, 1, -1 do
+        local h = settingsUI.headers[i]
+        settingsUI.headers[i] = nil
+        h:Hide()
+        settingsUI.headerPool[#settingsUI.headerPool + 1] = h
+    end
+    settingsUI.layoutSig = nil
 end
 
 --- After a list rebuild, row frames are reshuffled under the cursor; re-apply hover/tooltip.
@@ -2788,10 +2899,8 @@ local function FillCooldownListRow(row, rd, now, compose, curName, curRealm, opt
     end
     local _, classFile = DS:GetCharacterClass(row.charTableRef)
     row.charCell:SetTextColor(1, 1, 1, 1)
-    local showRealm = (AltArmy.GlobalRealmFilter and AltArmy.GlobalRealmFilter.Get() == "all")
-        and AccountHasMultipleRealms()
-        and rd.realm
-        and rd.realm ~= ""
+    -- other realms' names carry their realm, unless a heading names it (opts.showRealm)
+    local showRealm = opts.showRealm and rd.realm and rd.realm ~= ""
     local charText = RF and RF.formatColoredCharacterNameRealm
         and RF.formatColoredCharacterNameRealm(rd.name or "", rd.realm, showRealm, classFile)
         or ((rd.name or "") .. (showRealm and (" — " .. rd.realm) or ""))
@@ -2893,14 +3002,9 @@ RefreshList = function()
     if not opts then return end
 
     local now = time and time() or 0
-    local rows = CD.BuildRows(DS, opts, now)
-    do
-        local GRF = AltArmy.GlobalRealmFilter
-        if GRF and GRF.FilterList then
-            local _, curRealm = GetCurrentIdentity()
-            rows = GRF.FilterList(rows, curRealm)
-        end
-    end
+    local ctx = CF.Context(select(2, GetCurrentIdentity()))
+    -- the settings panel's realm filter
+    local rows = CF.FilterList(CD.BuildRows(DS, opts, now), opts.filter, ctx, { scopeOnly = true })
 
     for _, rd in ipairs(rows) do
         local ch = DS:GetCharacterFor(rd.charKeyName, rd.realm, rd.linkId)
@@ -2912,7 +3016,26 @@ RefreshList = function()
 
     table.sort(rows, CompareCooldownRows)
 
-    local reuse = CanReuseActiveCooldownRows(rows)
+    -- Group characters: a heading per realm and faction, this realm's first, each section in the sort's order
+    local grouped = opts.groupByRealmFaction ~= false
+    local elements = CS.BuildElements(rows, {
+        grouped = grouped,
+        currentRealm = ctx.currentRealm,
+        currentFaction = ctx.currentFaction,
+        collapsed = opts.collapsedGroups,
+    })
+    local shownRows, sigParts = {}, {}
+    for _, el in ipairs(elements) do
+        if el.kind == "header" then
+            sigParts[#sigParts + 1] = "#" .. el.key .. (el.collapsed and "-" or "+")
+        else
+            shownRows[#shownRows + 1] = el.entry
+            sigParts[#sigParts + 1] = RowSendKey(el.entry) or ""
+        end
+    end
+    local layoutSig = table.concat(sigParts, "\001")
+    -- the same headings and rows in the same order keep their frames (a fold or regroup moves them)
+    local reuse = layoutSig == settingsUI.layoutSig and CanReuseActiveCooldownRows(shownRows)
     -- Hiding/repooling frames while LMB is down cancels Button OnClick (and matSlot down/up).
     if IsLeftMouseDown() and #activeRows > 0 and not reuse then
         sendBar.pendingRefresh = true
@@ -2925,30 +3048,50 @@ RefreshList = function()
         ReleaseRows()
     end
 
-    local totalH = math.max(1, #rows) * ROW_HEIGHT
+    local totalH = math.max(1, #elements) * ROW_HEIGHT
     scrollChild:SetSize(totalColWidth, totalH)
 
     local curName, curRealm = GetCurrentIdentity()
     local compose = sendBar.mode == "compose"
     local preserveChecks = reuse and IsLeftMouseDown()
+    local showRealm = CF.ShowsOtherRealms(opts.filter) and not grouped and AccountHasMultipleRealms()
 
-    local y = 0
-    for i, rd in ipairs(rows) do
-        local row
-        if reuse then
-            row = activeRows[i]
+    local y, ri, hi = 0, 0, 0
+    for _, el in ipairs(elements) do
+        if el.kind == "header" then
+            hi = hi + 1
+            local h = settingsUI.headers[hi]
+            if not h then
+                h = settingsUI.PoolHeading()
+                settingsUI.headers[hi] = h
+            end
+            h:ClearAllPoints()
+            h:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, y)
+            h:SetWidth(totalColWidth)
+            h.label:SetText(el.label)
+            h.sectionKey = el.key
+            h.icon:SetTexture(el.collapsed and "Interface\\Buttons\\UI-PlusButton-Up"
+                or "Interface\\Buttons\\UI-MinusButton-Up")
         else
-            row = PoolRow()
-            activeRows[#activeRows + 1] = row
+            ri = ri + 1
+            local row
+            if reuse then
+                row = activeRows[ri]
+            else
+                row = PoolRow()
+                activeRows[#activeRows + 1] = row
+            end
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, y)
+            row:SetWidth(totalColWidth)
+            FillCooldownListRow(row, el.entry, now, compose, curName, curRealm, {
+                preserveChecks = preserveChecks,
+                showRealm = showRealm,
+            })
         end
-        row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, y)
-        row:SetWidth(totalColWidth)
         y = y - ROW_HEIGHT
-        FillCooldownListRow(row, rd, now, compose, curName, curRealm, {
-            preserveChecks = preserveChecks,
-        })
     end
+    settingsUI.layoutSig = layoutSig
 
     do
         local fadeAlpha = 0
@@ -3206,10 +3349,149 @@ SetActiveCooldownsView = function(which)
         SyncSortFromSaved()
         UpdateHeaderSortIndicators()
         UpdateSendBarMode()
+        settingsUI.hScroll.Update() -- its width may have moved while the view was hidden (the panel)
         RefreshList()
     end
 end
 frame.SetCooldownsView = SetActiveCooldownsView
+
+-- ---- Settings panel (60% list / 40% settings, as the Summary's, Gear's and Reputation's) ----
+-- Realm filter, Group characters (the crafting list), Show in UI and Alert when ready, all saved in
+-- AltArmyTBC_Options.cooldowns (CD.EnsureCooldownOptions). The toolbar's settings button toggles it
+-- (UI/MainTabs.lua: ToggleCooldownSettings / IsCooldownSettingsShown).
+do
+    local SPLIT = 0.6 -- the other tabs' GRID_SPLIT_FRACTION
+    local GAP = Theme.SECTION_GAP or 4
+
+    local panel = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    Theme.ApplyBackdrop(panel, "section")
+    panel:Hide()
+    settingsUI.panel = panel
+
+    local function LayoutPanel()
+        local w = frame:GetWidth()
+        if not w or w <= 0 then return end
+        panel:ClearAllPoints()
+        panel:SetPoint("TOPLEFT", frame, "TOPLEFT", w * SPLIT + GAP, -SECTION_INSET)
+        panel:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -SECTION_INSET, SECTION_INSET)
+    end
+
+    -- Crafting and Dungeons take the room left of the panel while it is open.
+    local function LayoutViews()
+        for _, view in ipairs({ tabContentPanel, raidsPanel }) do
+            view:ClearAllPoints()
+            view:SetPoint("TOPLEFT", frame, "TOPLEFT", SECTION_INSET, -SECTION_INSET)
+            if panel:IsShown() then
+                view:SetPoint("BOTTOMRIGHT", panel, "BOTTOMLEFT", -GAP, 0)
+            else
+                view:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -SECTION_INSET, SECTION_INSET)
+            end
+        end
+        settingsUI.hScroll.Update()
+        if frame.UpdateRaidsHorizontalScroll then
+            frame.UpdateRaidsHorizontalScroll()
+        end
+    end
+
+    local function RefreshActiveView()
+        if VIEW.active == "raids" then
+            if frame.RefreshRaidsList then
+                frame.RefreshRaidsList()
+            end
+        else
+            RefreshList()
+        end
+    end
+
+    local content = Theme.CreateSettingsPanelContent(panel)
+    local title = content:CreateFontString(nil, "OVERLAY", Theme.FONTS.title)
+    title:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
+    title:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, 0)
+    title:SetJustifyH("LEFT")
+    title:SetText("Cooldown Settings")
+    Theme.SetTitleColor(title)
+
+    local controlsHost = CreateFrame("Frame", nil, content)
+    controlsHost:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
+    controlsHost:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", 0, 0)
+
+    local controls = AltArmy.CreateCharacterFilterControls(controlsHost, {
+        anchorTo = title,
+        dropdownParent = panel,
+        scopeOnly = true,
+        getSettings = CD.EnsureCooldownOptions,
+        groupCheckbox = {
+            get = function() return CD.EnsureCooldownOptions().groupByRealmFaction ~= false end,
+            set = function(on) CD.EnsureCooldownOptions().groupByRealmFaction = on end,
+            help = {
+                title = "Group characters",
+                lines = {
+                    "Lists each realm and faction's crafting cooldowns under its own heading, this realm's first.",
+                    "Click a heading to fold them away.",
+                },
+            },
+        },
+        onChange = RefreshActiveView,
+    })
+
+    -- One entry per cooldown; on TBC a cooldown with a specialization has a second, "(<spec> only)" entry,
+    -- and ticking one of the pair unticks the other (CD.SetSettingsEntry).
+    local keys, labels = CD.SettingsEntries(DS.IsWowForever or false)
+    local function categoryDropdown(which, heading, relativeTo, onChange)
+        return Theme.CreateMultiSelectCheckboxDropdown({
+            parent = controlsHost,
+            dropdownParent = panel,
+            relativeTo = relativeTo,
+            relativePoint = "BOTTOMLEFT",
+            y = -8,
+            title = heading,
+            keys = keys,
+            labels = labels,
+            fitRows = true, -- "Primal Mooncloth (Mooncloth Tailor only)" is wider than the panel
+            getFilter = function() return CD.SettingsMap(CD.EnsureCooldownOptions(), which) end,
+            setEnabled = function(key, on) CD.SetSettingsEntry(CD.EnsureCooldownOptions(), which, key, on) end,
+            formatSummary = CD.FormatSettingsSummary,
+            onChange = onChange,
+        })
+    end
+    local showDropdown = categoryDropdown("show", "Show in UI", controls.bottom, function()
+        if VIEW.active ~= "raids" then
+            RefreshList()
+        end
+    end)
+    -- the alerts read the settings every check (Data/Cooldowns/CooldownAlerts.lua): nothing to redraw
+    local alertDropdown = categoryDropdown("alert", "Alert when ready", showDropdown.button, nil)
+
+    panel:SetScript("OnHide", function()
+        controls.Close()
+        showDropdown:Close()
+        alertDropdown:Close()
+    end)
+
+    function frame:IsCooldownSettingsShown()
+        return panel:IsShown()
+    end
+
+    function frame:ToggleCooldownSettings()
+        local open = not panel:IsShown()
+        panel:SetShown(open)
+        if open then
+            LayoutPanel()
+            controls.refresh()
+            showDropdown.refresh()
+            alertDropdown.refresh()
+        end
+        LayoutViews()
+        RefreshActiveView()
+    end
+
+    frame:HookScript("OnSizeChanged", function()
+        if panel:IsShown() then
+            LayoutPanel()
+            LayoutViews()
+        end
+    end)
+end
 
 -- Tabs hang from the panel top up into the main window's toolbar row (left of the search box).
 -- Parented to the tab frame so they hide with it (other tabs, Search mode).

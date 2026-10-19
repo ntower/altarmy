@@ -28,7 +28,7 @@ AltArmy TBC is an account-wide alt management addon for TBC Classic that:
 - Open with `/altarmy` or `/alta`.
 - Minimap button (left-click toggle, drag to move).
 - The toolbar item/recipe search box is on the Summary tab. Typing in it switches into Search mode. Reputation and Guild use the same toolbar spot for their own filter; Inventory puts its character picker and layout dropdown there. Gear, Economy, Cooldowns and Graphs have no toolbar search. Clicking any side tab leaves Search mode.
-- One toolbar settings button opens the active tab's settings (Summary, Gear, Reputation, Search panels; Cooldowns opens its Options page).
+- One toolbar settings button opens the active tab's settings panel (Summary, Gear, Reputation, Cooldowns, Search).
 - `/altarmy networth [all] [scale]` — vendor + Auctionator AH value across characters (Auctionator required).
 
 ## Tabs
@@ -56,7 +56,8 @@ AltArmy TBC is an account-wide alt management addon for TBC Classic that:
   - **Class filter**: every class, in its class colour (all on by default).
   - **Pin individual characters**: Current character (pins whichever character is logged in, overriding the filters and Hide), then each character. **Hide individual characters**: each character. Both list the characters the realm filter shows (never left out by level or class), grouped by realm and faction as the Summary's sections are (by name within each), each group under a divider row naming it (a line, "Realm — Faction" centered, a line; Current character, in no group, comes first), scroll past 12 rows, and pinning one unhides it and the other way round. Bank alts, always hidden on Gear, Reputation and Currency, are not listed there.
   - A tab's first filter starts from the old global "Characters shown" choice (`AltArmyTBC_Options.characterScope`, else `realmFilter`), which nothing writes any more.
-- Search, Inventory, Graphs, Cooldowns, cooldown alerts, the gear compare panel and `/networth` follow the **Summary tab's realm filter** (`GlobalRealmFilter`).
+- The Cooldowns tab's settings panel has its own **Realm filter** and **Group characters** (no level, class, pin or hide filters), which its cooldown alerts follow too.
+- Search, Inventory, Graphs, the gear compare panel and `/networth` follow the **Summary tab's realm filter** (`GlobalRealmFilter`).
 
 ### Linked accounts (WoW: Forever only; off on TBC Anniversary until tested there)
 
@@ -71,7 +72,7 @@ Your other WoW accounts (the same Battle.net login) send their characters to thi
 
 ### Alerts and reminders
 
-- **Cooldowns:** chat, raid-warning style, or both; per-category reminder intervals; optional specialization-dependent visibility.
+- **Cooldowns:** a chat line and a sound when a cooldown is ready, per cooldown (Alert when ready in the tab's settings panel, with TBC's specialization-only choices), for the characters that panel's realm filter shows.
 - **Gear upgrades:** chat (and clickable links) for loot, Need/Greed, quest rewards, and level-up upgrades for you or same-realm, same-faction alts; quest-reward overlays on turn-in / quest log.
 - **Mail expiry:** login chat when any character’s soonest mail returns within 5 days.
 

@@ -516,7 +516,8 @@ def vendor_offers(conn: sqlite3.Connection, zones: Sequence[ZoneBox]) -> list[Ve
                     at.map_y,
                 )
             )
-    return sorted(out, key=lambda o: (o.item_id, o.vendor))
+    # The whole row: a vendor can list an item twice (limited and not), and a set's order isn't stable
+    return sorted(out, key=astuple)
 
 
 def write_offers_csv(rows: Sequence[VendorOffer], path: Path) -> None:

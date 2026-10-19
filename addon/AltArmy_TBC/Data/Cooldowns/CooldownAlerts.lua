@@ -1,5 +1,7 @@
 -- AltArmy TBC — Cooldown availability alerts (chat + sound).
--- Uses CooldownData.EvaluateAlerts. Chat lines are prefixed with gold "Alt Army".
+-- Uses CooldownData.EvaluateAlerts (each category's Alert when ready, in the Cooldowns tab's settings panel) for the
+-- characters that panel's realm filter shows (AltArmyTBC_Options.cooldowns.filter). Chat lines are prefixed with
+-- gold "Alt Army".
 
 if not AltArmy then return end
 
@@ -78,10 +80,11 @@ function CA.RunEvaluateOnce()
     if not opts then return end
     local now = time and time() or 0
     local alerts = CD.EvaluateAlerts(DS, opts, now, alertState)
-    local GRF = AltArmy.GlobalRealmFilter
-    local showAllRealms = GRF and GRF.Get and GRF.Get() == "all"
-    if GRF and GRF.FilterList then
-        alerts = GRF.FilterList(alerts)
+    local CF = AltArmy.CharacterFilter
+    local showAllRealms = false
+    if CF and CF.FilterList and opts.filter then
+        alerts = CF.FilterList(alerts, opts.filter, CF.Context(), { scopeOnly = true })
+        showAllRealms = CF.ShowsOtherRealms(opts.filter)
     end
     announceBatch(alerts, showAllRealms)
 end

@@ -30,17 +30,26 @@ CD.CATEGORY_ORDER = {
     "dedicated_study",
 }
 
---- Categories WoW Forever's Options → Cooldowns tab shows (the rest are TBC-specific crafts).
-CD.FOREVER_OPTIONS_CATEGORY_ORDER = { "dedicated_study", "transmute", "research" }
+--- The cooldowns the Cooldowns tab's settings panel lists on each client, by title A to Z: WoW Forever's three
+--- (the rest are TBC-specific crafts), and TBC's crafts without Forever's Research and Dedicated Study.
+CD.FOREVER_OPTIONS_CATEGORY_ORDER = { "dedicated_study", "research", "transmute" }
+CD.TBC_OPTIONS_CATEGORY_ORDER = {
+    "brilliant_glass",
+    "primal_mooncloth",
+    "shadowcloth",
+    "spellcloth",
+    "transmute",
+    "void_sphere",
+}
 
---- Category keys the Options → Cooldowns tab builds rows for.
+--- Category keys the settings panel's Show in UI and Alert when ready dropdowns list.
 ---@param isForever boolean
 ---@return string[]
 function CD.GetOptionsCategoryOrder(isForever)
     if isForever then
         return CD.FOREVER_OPTIONS_CATEGORY_ORDER
     end
-    return CD.CATEGORY_ORDER
+    return CD.TBC_OPTIONS_CATEGORY_ORDER
 end
 
 -- TBC enchanting sphere crafts share one cooldown (2 days).
@@ -265,7 +274,140 @@ function CD.EnsureCooldownOptions()
     if cd.listSortAscending == nil then
         cd.listSortAscending = true
     end
+    -- The Cooldowns settings panel: its realm filter (CharacterFilter), Group characters and the folded
+    -- realm/faction sections of the crafting list.
+    if cd.groupByRealmFaction == nil then
+        cd.groupByRealmFaction = true
+    end
+    if type(cd.collapsedGroups) ~= "table" then
+        cd.collapsedGroups = {}
+    end
+    local CF = AltArmy.CharacterFilter
+    if CF and CF.Ensure then
+        if cd.filter == nil then
+            -- The first filter starts from the Summary's, which the tab followed until it had its own.
+            local summary = rawget(_G, "AltArmyTBC_SummarySettings")
+            local scope = type(summary) == "table" and type(summary.filter) == "table" and summary.filter.scope
+            if type(scope) == "table" then
+                cd.filter = {
+                    version = CF.VERSION,
+                    scope = {
+                        otherFaction = scope.otherFaction == true,
+                        otherRealms = scope.otherRealms == true,
+                        linked = scope.linked ~= false,
+                    },
+                    classes = {},
+                }
+            end
+        end
+        CF.Ensure(cd)
+    end
     return cd
+end
+
+--- The settings panel's Show in UI and Alert when ready dropdowns: one entry per category of
+--- GetOptionsCategoryOrder, and after each category with a specialization on this client a second,
+--- "<title> (<specialization> only)", entry keyed "<key>:spec" (ticking one of the pair unticks the other).
+CD.SPEC_NAMES = {
+    transmute = "Master of Transmutation",
+    spellcloth = "Spellfire Tailor",
+    shadowcloth = "Shadoweave Tailor",
+    primal_mooncloth = "Mooncloth Tailor",
+}
+CD.SPEC_SUFFIX = ":spec"
+--- Said after a cooldown's name in the dropdowns' rows (not in their summaries): who has it.
+CD.SETTINGS_NOTES = {
+    research = "mage",
+    dedicated_study = "legacy talent",
+}
+
+local SETTINGS_FIELDS = {
+    show = { on = "showInUI", spec = "showOnlyIfSpecialization" },
+    alert = { on = "alertWhenAvailable", spec = "alertOnlyIfSpecialization" },
+}
+
+--- @param isForever boolean
+--- @return string[] keys, table<string, string> labels
+function CD.SettingsEntries(isForever)
+    local keys, labels = {}, {}
+    for _, key in ipairs(CD.GetOptionsCategoryOrder(isForever)) do
+        local title = CD.CATEGORIES[key] and CD.CATEGORIES[key].title or key
+        local specName = CD.SPEC_NAMES[key]
+        if specName and CD.CategoryHasSpecialization(key) then
+            keys[#keys + 1] = key
+            labels[key] = title .. " (all specs)"
+            local specKey = key .. CD.SPEC_SUFFIX
+            keys[#keys + 1] = specKey
+            labels[specKey] = title .. " (" .. specName .. " only)"
+        else
+            keys[#keys + 1] = key
+            local note = CD.SETTINGS_NOTES[key]
+            labels[key] = note and (title .. " (" .. note .. ")") or title
+        end
+    end
+    return keys, labels
+end
+
+--- Which entries are ticked: every key explicit (the dropdown reads a missing key as ticked).
+--- @param options table AltArmyTBC_Options.cooldowns
+--- @param which "show"|"alert"
+function CD.SettingsMap(options, which)
+    local fields = SETTINGS_FIELDS[which]
+    local map = {}
+    for key, cat in pairs(options and options.categories or {}) do
+        local on = cat[fields.on] ~= false
+        -- a saved gate counts only where the client has the specialization (never on WoW Forever)
+        local spec = cat[fields.spec] == true and CD.CategoryHasSpecialization(key)
+        map[key] = on and not spec
+        map[key .. CD.SPEC_SUFFIX] = on and spec
+    end
+    return map
+end
+
+--- A dropdown entry ticked or unticked: ticking turns the category on with the entry's specialization
+--- gate (so its sibling reads unticked); unticking turns the category off.
+function CD.SetSettingsEntry(options, which, entryKey, checked)
+    local fields = SETTINGS_FIELDS[which]
+    if not fields or type(entryKey) ~= "string" then return end
+    local key, isSpec = entryKey, false
+    local suffixAt = #entryKey - #CD.SPEC_SUFFIX
+    if suffixAt > 0 and entryKey:sub(suffixAt + 1) == CD.SPEC_SUFFIX then
+        key, isSpec = entryKey:sub(1, suffixAt), true
+    end
+    local cat = options and options.categories and options.categories[key]
+    if not cat then return end
+    if checked then
+        cat[fields.on] = true
+        cat[fields.spec] = isSpec
+    else
+        cat[fields.on] = false
+    end
+end
+
+--- The dropdown button's text, by the cooldowns' plain names (no "(all specs)", "(<spec> only)" or note):
+--- "All", "None", "All but <name>" when one is off, else the ticked ones.
+function CD.FormatSettingsSummary(keys, labels, map)
+    local on, off = {}, {}
+    for _, key in ipairs(keys or {}) do
+        if key:sub(-#CD.SPEC_SUFFIX) ~= CD.SPEC_SUFFIX then -- one category: its entry or its spec entry
+            local title = CD.CATEGORIES[key] and CD.CATEGORIES[key].title or (labels and labels[key]) or key
+            if map[key] ~= false or map[key .. CD.SPEC_SUFFIX] == true then
+                on[#on + 1] = title
+            else
+                off[#off + 1] = title
+            end
+        end
+    end
+    if #on == 0 then
+        return "None"
+    end
+    if #off == 0 then
+        return "All"
+    end
+    if #off == 1 then
+        return "All but " .. off[1]
+    end
+    return table.concat(on, ", ")
 end
 
 function CD.IsTrackedSpellId(spellId)
@@ -1069,14 +1211,16 @@ end
 --- @param DS table AltArmy.DataStore
 --- @param options table AltArmyTBC_Options.cooldowns shape
 --- @param now number|nil unix
+--- @param opts table|nil { all = true }: every category and character, whatever Show in UI says (the alerts)
 --- @return table[] rows { categoryKey, categoryTitle, name, realm, spellId, expiresUnix }
-function CD.BuildRows(DS, options, now)
+function CD.BuildRows(DS, options, now, opts)
     now = now or (time and time() or 0)
+    local all = opts and opts.all == true
     local rows = {}
     if not DS or not DS.ForEachCharacter then return rows end
 
     for _, catKey in ipairs(CD.CATEGORY_ORDER) do
-        if CategoryListVisible(catKey, options) then
+        if all or CategoryListVisible(catKey, options) then
             local cat = CD.CATEGORIES[catKey]
             if cat then
                 local catOpts = options.categories and options.categories[catKey] or {}
@@ -1093,7 +1237,8 @@ function CD.BuildRows(DS, options, now)
                             include = select(1, CD.FindRecipeProfession(char, cat.spellId))
                         end
                         if include
-                            and CD.RowMeetsSpecializationGate(catKey, char, catOpts.showOnlyIfSpecialization == true)
+                            and CD.RowMeetsSpecializationGate(catKey, char,
+                                not all and catOpts.showOnlyIfSpecialization == true)
                         then
                             local spellId = CD.ResolveEffectiveSpellId(catKey, char, options)
                             local rawExpires
@@ -1119,6 +1264,7 @@ function CD.BuildRows(DS, options, now)
                                 charKeyName = displayName,
                                 name = displayName,
                                 realm = realm,
+                                faction = char and char.faction or nil, -- the realm filter and grouping
                                 linkId = linkId,
                                 classFile = char and char.classFile or nil,
                                 spellId = spellId,
@@ -1154,7 +1300,8 @@ function CD.EvaluateAlerts(DS, options, now, stateMutate)
     stateMutate = stateMutate or {}
     stateMutate.lastAvailAlertAt = stateMutate.lastAvailAlertAt or {}
 
-    local rows = CD.BuildRows(DS, options, now)
+    -- every category, whatever Show in UI says: Alert when ready is its own setting
+    local rows = CD.BuildRows(DS, options, now, { all = true })
     for _, row in ipairs(rows) do
         local catKey = row.categoryKey
         local catOpts = options.categories and options.categories[catKey] or {}

@@ -159,12 +159,6 @@ panel.default = function()
     if panel.minimapCheckbox then
         panel.minimapCheckbox:SetChecked(true)
     end
-    if AltArmy.CooldownData and AltArmy.CooldownData.ResetCooldownOptionsToDefaults then
-        AltArmy.CooldownData.ResetCooldownOptionsToDefaults()
-    end
-    if panel.RefreshCooldownOptionsFromVars then
-        panel.RefreshCooldownOptionsFromVars()
-    end
     if panel.RefreshGearUpgradeOptionsFromVars then
         panel.RefreshGearUpgradeOptionsFromVars()
     end
@@ -187,9 +181,6 @@ panel.refresh = function()
     if panel.minimapCheckbox then
         panel.minimapCheckbox:SetChecked(minimapShown())
     end
-    if panel.RefreshCooldownOptionsFromVars then
-        panel.RefreshCooldownOptionsFromVars()
-    end
     if panel.RefreshGearUpgradeOptionsFromVars then
         panel.RefreshGearUpgradeOptionsFromVars()
     end
@@ -202,7 +193,7 @@ panel.refresh = function()
 end
 
 -- ---------------------------------------------------------------------------
--- Pages: `panel` is the AltArmy entry in Options -> AddOns; General, Characters, Gear, Cooldowns and
+-- Pages: `panel` is the AltArmy entry in Options -> AddOns; General, Sharing, Characters, Gear and
 -- Debug are its sub-pages, nested under it in the list (Settings.RegisterCanvasLayoutSubcategory, as
 -- Auctionator and AceConfigDialog's AddToBlizOptions do; `parent` on clients without Settings).
 -- ---------------------------------------------------------------------------
@@ -221,18 +212,17 @@ rootIntro:SetPoint("TOPLEFT", panel, "TOPLEFT", LEFT_INSET, PAGE_CONTENT_TOP)
 rootIntro:SetWidth(520)
 rootIntro:SetJustifyH("LEFT")
 rootIntro:SetText("Version " .. tostring(AltArmy.Version or "?") .. "\n\n"
-    .. "Choose a page under Alt Army on the left: General, Characters, Gear or Cooldowns.\n\n"
+    .. "Choose a page under Alt Army on the left: General, Sharing, Characters or Gear.\n\n"
     .. "Type /altarmy to open the Alt Army window.")
 
 --- id -> { page = canvas frame, label, category = Settings subcategory once registered }
 panel.pages = {}
-local PAGE_ORDER = { "general", "sharing", "characters", "gearUpgrades", "cooldowns", "debug" }
+local PAGE_ORDER = { "general", "sharing", "characters", "gearUpgrades", "debug" }
 local PAGE_LABELS = {
     general = "General",
     sharing = "Sharing",
     characters = "Characters",
     gearUpgrades = "Gear",
-    cooldowns = "Cooldowns",
     debug = "Debug",
 }
 
@@ -259,7 +249,6 @@ end
 local tabGeneral, pageGeneral = CreateOptionsPage("general")
 local tabCharacters, pageCharacters = CreateOptionsPage("characters")
 local tabGearUpgrades, pageGearUpgrades = CreateOptionsPage("gearUpgrades")
-local tabCooldowns = CreateOptionsPage("cooldowns")
 local tabDebug, pageDebug = CreateOptionsPage("debug")
 -- Sharing: guild sharing (and, to come, linked accounts). On panel, not main-chunk locals (200-local limit).
 panel.tabSharing, panel.pageSharing = CreateOptionsPage("sharing")
@@ -1731,8 +1720,6 @@ local function FocusGeneralControl(flash)
     return true
 end
 
--- Host frame for UI/CooldownOptions.lua (loaded after this file)
-panel.tabCooldownsHost = tabCooldowns
 panel.tabGearUpgradesHost = tabGearUpgrades
 
 -- ---------------------------------------------------------------------------
@@ -2154,10 +2141,6 @@ end
 
 local function applyOptionsFocus(focus)
     if not focus then return end
-    local tabId = focus.tab or "general"
-    if tabId == "cooldowns" and panel.RefreshCooldownOptionsFromVars then
-        panel.RefreshCooldownOptionsFromVars()
-    end
     if focus.name and focus.realm then
         SelectCharacterEntry(focus.name, focus.realm, focus.classFile)
         UpdateCharSettings()
@@ -2670,7 +2653,7 @@ end
 AltArmy.OptionsPanel = panel
 
 --- Opens Options -> AddOns -> AltArmy at a sub-page.
---- @param initialTab string|nil "general" (default), "sharing", "characters", "gearUpgrades", "cooldowns",
+--- @param initialTab string|nil "general" (default), "sharing", "characters", "gearUpgrades"
 --- or "debug"
 --- @param opts table|nil { name, realm, flash = "main"|"bankAlt"|"guildShare"|"autoDelete"|"autoScan"|"scanMode" }
 --- A flashed General tab control's section is opened first (Guild: main, guildShare, autoDelete;

@@ -10,7 +10,7 @@ See levels, rest XP, money, played time, and last online at a glance; pin/hide c
 
 - Scrollable character table with a totals row (one total for everything listed).
 - Settings panel: **Realm filter**, **Group characters**, **Level filter**, **Class filter**, **Pin individual characters** and **Hide individual characters** (see [Realm filtering](../FEATURES.md#realm-filtering-and-character-visibility)).
-- The Summary's realm filter is also the one Search, Inventory, Graphs, Cooldowns and the gear compare panel use.
+- The Summary's realm filter is also the one Search, Inventory, Graphs and the gear compare panel use (Cooldowns has its own).
 - **Group characters** (on by default): the list is split into a section per realm and faction, each under a header ("Realm — Faction (n)"): this realm and faction first, then this realm's other faction, then other realms A to Z. Clicking a header folds its section away (a plus icon) or back (a minus icon), remembered in `collapsedGroups`. Headers stick to the top of the list while their section scrolls under them, until the next one pushes them out (`Data/Characters/CharacterSections.lua`, as Search's section headers). Names then leave out the realm, which the header gives. Sorting by a column sorts within each section.
 
 ## Columns

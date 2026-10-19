@@ -191,8 +191,11 @@ describe("MainTabs", function()
       assert.are.equal("ToggleSearchSettings", MainTabs.Get("Search").settings.toggle)
     end)
 
-    it("routes Cooldowns settings to Interface Options", function()
-      assert.are.equal("cooldowns", MainTabs.Get("Cooldowns").settings.optionsKey)
+    it("routes Cooldowns settings to its own panel", function()
+      local s = MainTabs.Get("Cooldowns").settings
+      assert.are.equal("ToggleCooldownSettings", s.toggle)
+      assert.are.equal("IsCooldownSettingsShown", s.isShown)
+      assert.is_nil(s.optionsKey)
     end)
 
     it("routes Economy settings to its Currency view, only while that view is available", function()
