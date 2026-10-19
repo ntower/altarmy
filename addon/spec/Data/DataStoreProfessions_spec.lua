@@ -235,6 +235,81 @@ describe("DataStoreProfessions", function()
     end)
   end)
 
+  describe("WoW Forever's item and transmute cooldown scans", function()
+    local SALT_SHAKER_ITEM, SALT_SHAKER_SPELL = 15846, 19566
+    local saved
+
+    before_each(function()
+      saved = {
+        GetSpellCooldown = _G.GetSpellCooldown, C_Spell = _G.C_Spell, C_Container = _G.C_Container,
+        GetItemCooldown = _G.GetItemCooldown, time = _G.time, GetTime = _G.GetTime,
+        IsWowForever = DS.IsWowForever,
+      }
+      DS.IsWowForever = true
+      _G.AltArmyTBC_Data = { Characters = { TestRealm = { TestPlayer = {} } } }
+      DS.accountData = _G.AltArmyTBC_Data
+      _G.UnitName = function() return "TestPlayer" end
+      _G.GetRealmName = function() return "TestRealm" end
+      _G.time = function() return 1000 end
+      _G.GetTime = function() return 50 end
+      _G.C_Container = nil
+      _G.GetItemCooldown = nil
+    end)
+
+    after_each(function()
+      _G.GetSpellCooldown, _G.C_Spell = saved.GetSpellCooldown, saved.C_Spell
+      _G.C_Container, _G.GetItemCooldown = saved.C_Container, saved.GetItemCooldown
+      _G.time, _G.GetTime = saved.time, saved.GetTime
+      DS.IsWowForever = saved.IsWowForever
+    end)
+
+    local function player()
+      return _G.AltArmyTBC_Data.Characters.TestRealm.TestPlayer
+    end
+
+    local function holdSaltShaker()
+      player().Containers = { [0] = { items = { [2] = { itemID = SALT_SHAKER_ITEM, count = 1 } } } }
+    end
+
+    it("saves the Salt Shaker's use cooldown from C_Container.GetItemCooldown under its use spell", function()
+      holdSaltShaker()
+      _G.C_Container = {
+        GetItemCooldown = function(itemId)
+          if itemId == SALT_SHAKER_ITEM then return 50, 71 * 3600, 1 end
+          return 0, 0, 1
+        end,
+      }
+      DS:TryScanTrackedItemCooldown(SALT_SHAKER_ITEM, SALT_SHAKER_SPELL)
+      assert.are.equal(1000 + 71 * 3600, player().ProfCooldownExpiry[SALT_SHAKER_SPELL].expiresAtUnix)
+    end)
+
+    it("falls back to the global GetItemCooldown", function()
+      holdSaltShaker()
+      _G.GetItemCooldown = function() return 50, 3600, 1 end
+      DS:TryScanTrackedItemCooldowns()
+      assert.are.equal(1000 + 3600, player().ProfCooldownExpiry[SALT_SHAKER_SPELL].expiresAtUnix)
+    end)
+
+    it("saves nothing for a character not holding the item", function()
+      _G.GetItemCooldown = function() return 50, 3600, 1 end
+      DS:TryScanTrackedItemCooldowns()
+      assert.is_nil(player().ProfCooldownExpiry and player().ProfCooldownExpiry[SALT_SHAKER_SPELL])
+    end)
+
+    it("doesn't copy the transmute cooldown onto Mithril to Truesilver, which has its own", function()
+      player().Professions = { Alchemy = { Recipes = { [17187] = {}, [17559] = {}, [11480] = {} } } }
+      _G.GetSpellCooldown = function(spellId)
+        if spellId == 17187 then return 50, 47 * 3600 end
+        return 0, 0
+      end
+      DS:TryScanTransmuteCooldownsFromSpellApi(17187)
+      local exp = player().ProfCooldownExpiry
+      assert.are.equal(1000 + 47 * 3600, exp[17187].expiresAtUnix)
+      assert.are.equal(1000 + 47 * 3600, exp[17559].expiresAtUnix)
+      assert.is_nil(exp[11480])
+    end)
+  end)
+
   describe("CooldownRemainingSecondsFromSpellApi", function()
     it("computes start+duration remaining for normal GetSpellCooldown values", function()
       local rem = DS._CooldownRemainingSecondsFromSpellApiForTest(50, 3600, 100, 1000)

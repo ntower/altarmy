@@ -14,12 +14,15 @@ local CD = AltArmy.CooldownData
 ---@field spellId number|nil Primary spell for single mode (same as spellIds[1]).
 ---@field legacyTalent boolean|nil Known via a Legacy talent (char.legacyTalents.spells), not a profession recipe.
 ---@field noReagents boolean|nil Needs no materials: no mats count, tooltip reagents or stockpile send.
+---@field itemId number|nil An item's use cooldown (saved under its use spell, spellId): a row for whoever holds one.
+---@field unannounced boolean|nil In the game data but not announced: hidden unless Debug's Show unannounced cooldowns.
 
---- Longest plausible tracked profession cooldown in TBC (~Shadowcloth 3d 20h).
+--- Longest plausible tracked profession cooldown (TBC's Shadowcloth 3d 20h, WoW Forever's Mooncloth 95h).
 --- Saved values above this are shown as unscanned in the UI (see IsExpiryPlausible).
 CD.MAX_PROF_COOLDOWN_SECONDS = 4 * 86400
 
-CD.CATEGORY_ORDER = {
+--- The categories each client tracks (BuildRows' order): TBC's, and WoW Forever's from its game data.
+CD.TBC_CATEGORY_ORDER = {
     "transmute",
     "spellcloth",
     "shadowcloth",
@@ -29,10 +32,74 @@ CD.CATEGORY_ORDER = {
     "research",
     "dedicated_study",
 }
+CD.FOREVER_CATEGORY_ORDER = {
+    "transmute",
+    "mooncloth",
+    "salt_shaker",
+    "research",
+    "dedicated_study",
+    "essence_of_innovation",
+}
 
---- The cooldowns the Cooldowns tab's settings panel lists on each client, by title A to Z: WoW Forever's three
---- (the rest are TBC-specific crafts), and TBC's crafts without Forever's Research and Dedicated Study.
-CD.FOREVER_OPTIONS_CATEGORY_ORDER = { "dedicated_study", "research", "transmute" }
+--- Every category key on either client (saved options, the tracked spell ids).
+CD.CATEGORY_ORDER = {}
+do
+    local seen = {}
+    for _, list in ipairs({ CD.TBC_CATEGORY_ORDER, CD.FOREVER_CATEGORY_ORDER }) do
+        for _, key in ipairs(list) do
+            if not seen[key] then
+                seen[key] = true
+                CD.CATEGORY_ORDER[#CD.CATEGORY_ORDER + 1] = key
+            end
+        end
+    end
+end
+
+local function IsForever()
+    local DS = AltArmy and AltArmy.DataStore
+    return DS ~= nil and DS.IsWowForever == true
+end
+
+local function ShowsUnannounced()
+    local D = AltArmy and AltArmy.Debug
+    return D ~= nil and D.IsShowUnannouncedCooldowns ~= nil and D.IsShowUnannouncedCooldowns() == true
+end
+
+--- The list without unannounced categories, unless Debug shows them.
+local function WithoutUnannounced(keys)
+    if ShowsUnannounced() then
+        return keys
+    end
+    local out = {}
+    for _, key in ipairs(keys) do
+        local cat = CD.CATEGORIES[key]
+        if not (cat and cat.unannounced) then
+            out[#out + 1] = key
+        end
+    end
+    return out
+end
+
+--- The categories this client lists rows and alerts for.
+---@param isForever boolean
+---@return string[]
+function CD.GetCategoryOrder(isForever)
+    if isForever then
+        return WithoutUnannounced(CD.FOREVER_CATEGORY_ORDER)
+    end
+    return CD.TBC_CATEGORY_ORDER
+end
+
+--- The cooldowns the Cooldowns tab's settings panel lists on each client, by title A to Z: WoW Forever's
+--- (the rest are TBC-specific crafts), and TBC's crafts without Forever's Study and Dedicated Study.
+CD.FOREVER_OPTIONS_CATEGORY_ORDER = {
+    "dedicated_study",
+    "essence_of_innovation",
+    "mooncloth",
+    "salt_shaker",
+    "research", -- Study
+    "transmute",
+}
 CD.TBC_OPTIONS_CATEGORY_ORDER = {
     "brilliant_glass",
     "primal_mooncloth",
@@ -47,7 +114,7 @@ CD.TBC_OPTIONS_CATEGORY_ORDER = {
 ---@return string[]
 function CD.GetOptionsCategoryOrder(isForever)
     if isForever then
-        return CD.FOREVER_OPTIONS_CATEGORY_ORDER
+        return WithoutUnannounced(CD.FOREVER_OPTIONS_CATEGORY_ORDER)
     end
     return CD.TBC_OPTIONS_CATEGORY_ORDER
 end
@@ -82,6 +149,39 @@ CD.TRANSMUTE_AUTOMATIC_FALLBACK_SPELL_IDS = {
     17187, -- Transmute: Arcanite
 }
 
+-- WoW Forever: the spells of the game data's shared "Transmute - Alchemy" cooldown (SpellCategory 310). The
+-- lockout is as long as the spell cast says: 47h Arcanite and Legionite, 23h the elementals, 2h the Onyxia
+-- scale, 10 min Elemental Fire. Iron to Gold and Mithril to Truesilver have their own 1h cooldown there, so
+-- they are not in the group (and not tracked).
+CD.FOREVER_TRANSMUTE_SPELL_IDS = {
+    17187, -- Transmute: Arcanite
+    1317279, -- Transmute: Legionite
+    17559, 17560, 17561, 17562, 17563, 17564, 17565, 17566, -- the elemental transmutes
+    22430, -- Refined Scale of Onyxia
+    25146, -- Transmute: Elemental Fire
+}
+
+--- WoW Forever's Auto after the last cast: Arcanite, then Legionite.
+CD.FOREVER_TRANSMUTE_AUTOMATIC_FALLBACK_SPELL_IDS = {
+    17187, -- Transmute: Arcanite
+    1317279, -- Transmute: Legionite
+}
+
+--- The transmutes that share one cooldown on this client.
+function CD.GetTransmuteSpellIds()
+    if IsForever() then
+        return CD.FOREVER_TRANSMUTE_SPELL_IDS
+    end
+    return CD.TRANSMUTE_SPELL_IDS
+end
+
+function CD.GetTransmuteFallbackSpellIds()
+    if IsForever() then
+        return CD.FOREVER_TRANSMUTE_AUTOMATIC_FALLBACK_SPELL_IDS
+    end
+    return CD.TRANSMUTE_AUTOMATIC_FALLBACK_SPELL_IDS
+end
+
 local function KeySet(list)
     local s = {}
     for _, id in ipairs(list) do
@@ -91,6 +191,7 @@ local function KeySet(list)
 end
 
 CD.TRANSMUTE_SPELL_SET = KeySet(CD.TRANSMUTE_SPELL_IDS)
+CD.FOREVER_TRANSMUTE_SPELL_SET = KeySet(CD.FOREVER_TRANSMUTE_SPELL_IDS)
 CD.SPHERE_SPELL_SET = KeySet(CD.SPHERE_SPELL_IDS)
 
 -- TBC profession specialization passive spell IDs (for cooldown UI / alerts).
@@ -114,7 +215,7 @@ CD.CATEGORIES = {
         key = "transmute",
         title = "Transmute",
         mode = "group",
-        spellIds = CD.TRANSMUTE_SPELL_IDS,
+        spellIds = CD.TRANSMUTE_SPELL_IDS, -- TBC's; WoW Forever's are GetTransmuteSpellIds()
     },
     spellcloth = {
         key = "spellcloth",
@@ -150,12 +251,13 @@ CD.CATEGORIES = {
         mode = "group",
         spellIds = CD.SPHERE_SPELL_IDS,
     },
-    -- WoW Forever: Comprehension (mage-only profession), shown as "Research" in the spellbook; 1h.
+    -- WoW Forever: Comprehension (mage-only profession), shown as "Research" in the spellbook; 1h. Listed by its
+    -- spell's name, Study (the key stays "research": saved settings use it).
     -- Study is the only Research recipe known so far. Revisit if more appear: if they share one
     -- cooldown this should become a "group" category like transmute.
     research = {
         key = "research",
-        title = "Research",
+        title = "Study",
         mode = "single",
         spellId = 1302508, -- Study
         spellIds = { 1302508 },
@@ -170,16 +272,62 @@ CD.CATEGORIES = {
         legacyTalent = true,
         noReagents = true,
     },
+    -- WoW Forever: Mooncloth keeps vanilla's long cooldown (95h in the game data; none on TBC).
+    mooncloth = {
+        key = "mooncloth",
+        title = "Mooncloth",
+        mode = "single",
+        spellId = 18560,
+        spellIds = { 18560 },
+    },
+    -- WoW Forever: the Salt Shaker item's use (71h) refines Deeprock Salt; a row for whoever holds one.
+    salt_shaker = {
+        key = "salt_shaker",
+        title = "Salt Shaker",
+        mode = "single",
+        spellId = 19566, -- the item's use spell, which its cooldown is saved under
+        spellIds = { 19566 },
+        itemId = 15846,
+    },
+    -- WoW Forever: Legacy talent (Profession tree), 23h: crafts an Essence of Innovation and researches a new
+    -- recipe at 300 skill. In the game data but not announced yet, so hidden unless Debug shows it.
+    essence_of_innovation = {
+        key = "essence_of_innovation",
+        title = "Essence of Innovation",
+        mode = "single",
+        spellId = 1225470,
+        spellIds = { 1225470 },
+        legacyTalent = true,
+        unannounced = true,
+    },
 }
 
 -- Reagent lists for mats + tooltips come from AltArmyTBC_Data.RecipeReagents, filled when you
 -- open a tradeskill or craft window (ScanRecipes / ScanCraftRecipes read the client APIs).
 
 --- Built-in reagents for tracked recipes whose reagents the client scan can't capture. WoW Forever's
---- C_TradeSkillUI recipe scan doesn't read reagents yet, so without this Research has no mats.
---- A scanned RecipeReagents entry still wins.
+--- C_TradeSkillUI recipe scan doesn't read reagents yet, so without this its cooldowns have no mats (from
+--- its game data's SpellReagents). A scanned RecipeReagents entry still wins.
 CD.KNOWN_RECIPE_REAGENTS = {
     [1302508] = { { 17056, 1 } }, -- Study: 1x Light Feather
+    [17187] = { { 12359, 1 }, { 12363, 1 } }, -- Transmute: Arcanite: Thorium Bar, Arcane Crystal
+    [1317279] = { { 251291, 1 }, { 248819, 1 } }, -- Transmute: Legionite: Heavy Thorium Bar, Fel Crystal
+    [17559] = { { 7082, 1 } }, -- Air to Fire: Essence of Air
+    [17560] = { { 7078, 1 } }, -- Fire to Earth: Essence of Fire
+    [17561] = { { 7076, 1 } }, -- Earth to Water: Essence of Earth
+    [17562] = { { 7080, 1 } }, -- Water to Air: Essence of Water
+    [17563] = { { 12808, 1 } }, -- Undeath to Water: Essence of Undeath
+    [17564] = { { 7080, 1 } }, -- Water to Undeath: Essence of Water
+    [17565] = { { 12803, 1 } }, -- Life to Earth: Living Essence
+    [17566] = { { 7076, 1 } }, -- Earth to Life: Essence of Earth
+    [22430] = { { 15410, 1 } }, -- Refined Scale of Onyxia: Scale of Onyxia
+    [25146] = { { 7077, 1 } }, -- Transmute: Elemental Fire: Heart of Fire
+    [18560] = { { 14256, 2 } }, -- Mooncloth: 2x Felcloth
+    [19566] = { { 8150, 1 } }, -- Salt Shaker: Deeprock Salt
+    -- Essence of Innovation: an essence of each element, Pristine Scale, Viridian Dye, Azerothium Bar
+    [1225470] = {
+        { 7076, 1 }, { 7078, 1 }, { 7080, 1 }, { 7082, 1 }, { 249429, 1 }, { 249431, 1 }, { 249726, 1 },
+    },
 }
 
 --- Lookup order matches DataStoreProfession captures (accountData then SavedVariables root).
@@ -209,32 +357,40 @@ local function RecipeReagentsTableForSpell(spellId)
     return CD.KNOWN_RECIPE_REAGENTS[spellId]
 end
 
---- Flat set of every spell id we persist cooldown expiry for.
-function CD.GetAllTrackedSpellIds()
-    local out = {}
-    local seen = {}
-    for _, id in ipairs(CD.TRANSMUTE_SPELL_IDS) do
+--- The spell ids one client's categories persist cooldown expiry for (its transmutes, then each category's).
+local function TrackedSpellIdsFor(transmuteIds, categoryOrder, out, seen)
+    out = out or {}
+    seen = seen or {}
+    local function add(id)
         if not seen[id] then
             seen[id] = true
             out[#out + 1] = id
         end
     end
-    for _, key in ipairs(CD.CATEGORY_ORDER) do
+    for _, id in ipairs(transmuteIds) do
+        add(id)
+    end
+    for _, key in ipairs(categoryOrder) do
         local cat = CD.CATEGORIES[key]
-        if cat and cat.spellIds then
+        if cat and cat.spellIds and key ~= "transmute" then
             for _, sid in ipairs(cat.spellIds) do
-                if not seen[sid] then
-                    seen[sid] = true
-                    out[#out + 1] = sid
-                end
+                add(sid)
             end
         end
     end
     return out, seen
 end
 
-local _, TRACKED_SET = CD.GetAllTrackedSpellIds()
-CD._TRACKED_SPELL_SET = TRACKED_SET
+--- Flat set of every spell id we persist cooldown expiry for, on either client.
+function CD.GetAllTrackedSpellIds()
+    local out, seen = TrackedSpellIdsFor(CD.TRANSMUTE_SPELL_IDS, CD.TBC_CATEGORY_ORDER)
+    return TrackedSpellIdsFor(CD.FOREVER_TRANSMUTE_SPELL_IDS, CD.FOREVER_CATEGORY_ORDER, out, seen)
+end
+
+local _, TBC_TRACKED_SET = TrackedSpellIdsFor(CD.TRANSMUTE_SPELL_IDS, CD.TBC_CATEGORY_ORDER)
+local _, FOREVER_TRACKED_SET = TrackedSpellIdsFor(CD.FOREVER_TRANSMUTE_SPELL_IDS, CD.FOREVER_CATEGORY_ORDER)
+CD._TRACKED_SPELL_SET = TBC_TRACKED_SET
+CD._FOREVER_TRACKED_SPELL_SET = FOREVER_TRACKED_SET
 
 --- Defaults for AltArmyTBC_Options.cooldowns (SavedVariables).
 function CD.ResetCooldownOptionsToDefaults()
@@ -319,6 +475,7 @@ CD.SPEC_SUFFIX = ":spec"
 CD.SETTINGS_NOTES = {
     research = "mage",
     dedicated_study = "legacy talent",
+    essence_of_innovation = "legacy talent",
 }
 
 local SETTINGS_FIELDS = {
@@ -410,8 +567,52 @@ function CD.FormatSettingsSummary(keys, labels, map)
     return table.concat(on, ", ")
 end
 
+--- Whether this client persists the spell's cooldown (its own categories' spells only).
 function CD.IsTrackedSpellId(spellId)
-    return spellId and TRACKED_SET[spellId] == true
+    if not spellId then return false end
+    if IsForever() then
+        return FOREVER_TRACKED_SET[spellId] == true
+    end
+    return TBC_TRACKED_SET[spellId] == true
+end
+
+--- The item whose use cooldown a tracked spell is (an itemId category's spellId), else nil.
+function CD.ItemForTrackedSpell(spellId)
+    if not spellId then return nil end
+    for _, key in ipairs(CD.GetCategoryOrder(IsForever())) do
+        local cat = CD.CATEGORIES[key]
+        if cat and cat.itemId and cat.spellId == spellId then
+            return cat.itemId
+        end
+    end
+    return nil
+end
+
+--- {itemId, spellId} of this client's item cooldowns, for the login read.
+function CD.TrackedItemCooldowns()
+    local out = {}
+    for _, key in ipairs(CD.GetCategoryOrder(IsForever())) do
+        local cat = CD.CATEGORIES[key]
+        if cat and cat.itemId and cat.spellId then
+            out[#out + 1] = { itemId = cat.itemId, spellId = cat.spellId }
+        end
+    end
+    return out
+end
+
+--- Whether the character's last bags or bank scan holds the item.
+function CD.CharacterHoldsItem(char, itemId)
+    if not char or type(char.Containers) ~= "table" or not itemId then return false end
+    for _, bag in pairs(char.Containers) do
+        if type(bag) == "table" and type(bag.items) == "table" then
+            for _, slot in pairs(bag.items) do
+                if type(slot) == "table" and slot.itemID == itemId then
+                    return true
+                end
+            end
+        end
+    end
+    return false
 end
 
 --- True when the character's captured Legacy talents include spellId (see DataStoreLegacy).
@@ -448,18 +649,21 @@ function CD.FindRecipeProfession(char, spellId)
     return false, nil
 end
 
---- Known transmute if recipe id is in transmute set OR name contains "Transmute" (fallback).
+--- Known transmute if recipe id is in transmute set OR name contains "Transmute" (fallback; TBC only: WoW
+--- Forever's group is its game data's, without Iron to Gold and Mithril to Truesilver).
 function CD.CharacterKnowsTransmute(char, getSpellInfoFn)
     if not char or not char.Professions then return false end
+    local set = IsForever() and CD.FOREVER_TRANSMUTE_SPELL_SET or CD.TRANSMUTE_SPELL_SET
     for _, prof in pairs(char.Professions) do
         if prof and prof.Recipes then
             for rid in pairs(prof.Recipes) do
-                if CD.TRANSMUTE_SPELL_SET[rid] then
+                if set[rid] then
                     return true
                 end
             end
         end
     end
+    if IsForever() then return false end
     local gsi = getSpellInfoFn or GetSpellInfo
     if gsi then
         for _, prof in pairs(char.Professions) do
@@ -502,9 +706,29 @@ function CD.CollectAccountKnownTransmuteSpellIds(data, getSpellInfoFn)
     return out
 end
 
---- True if spellId is an alchemy transmute (ID set or localized name contains "transmute").
+--- True for any alchemy transmute recipe, whether or not it shares the transmute cooldown (TBC's ID set, WoW
+--- Forever's there too, or a localized name containing "transmute"): the Search tab's yield bonus label.
+function CD.IsTransmuteRecipe(spellId, getSpellInfoFn)
+    if not spellId then return false end
+    if CD.TRANSMUTE_SPELL_SET[spellId] then return true end
+    if IsForever() and CD.FOREVER_TRANSMUTE_SPELL_SET[spellId] then return true end
+    local gsi = getSpellInfoFn or GetSpellInfo
+    if gsi then
+        local name = gsi(spellId)
+        if type(name) == "string" and name:lower():find("transmute", 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
+--- True if spellId is in this client's shared transmute cooldown: TBC's ID set or a localized name containing
+--- "transmute"; on WoW Forever its ID set alone (its Iron to Gold and Truesilver have their own cooldowns).
 function CD.IsTransmuteSpellId(spellId, getSpellInfoFn)
     if not spellId then return false end
+    if IsForever() then
+        return CD.FOREVER_TRANSMUTE_SPELL_SET[spellId] == true
+    end
     if CD.TRANSMUTE_SPELL_SET[spellId] then return true end
     local gsi = getSpellInfoFn or GetSpellInfo
     if gsi then
@@ -544,6 +768,9 @@ end
 local function GroupSpellIds(categoryKey)
     if not CD.IsGroupCategory(categoryKey) then
         return nil
+    end
+    if categoryKey == "transmute" then
+        return CD.GetTransmuteSpellIds()
     end
     return CD.CATEGORIES[categoryKey].spellIds
 end
@@ -644,10 +871,14 @@ local function ResolveTransmuteSpellAuto(char)
     if not char then return nil end
     local last = char.lastTransmute
     local lastId = type(last) == "table" and type(last.spellId) == "number" and last.spellId or nil
+    -- WoW Forever: a last cast saved before its group lost Iron to Gold and Truesilver doesn't count
+    if lastId and IsForever() and not CD.FOREVER_TRANSMUTE_SPELL_SET[lastId] then
+        lastId = nil
+    end
     if lastId and select(1, CD.FindRecipeProfession(char, lastId)) then
         return lastId
     end
-    for _, sid in ipairs(CD.TRANSMUTE_AUTOMATIC_FALLBACK_SPELL_IDS) do
+    for _, sid in ipairs(CD.GetTransmuteFallbackSpellIds()) do
         if select(1, CD.FindRecipeProfession(char, sid)) then
             return sid
         end
@@ -779,7 +1010,7 @@ end
 --- Effective transmute spell for cooldown rows:
 --- 0) manual cooldownGroupChoice when still known,
 --- 1) last successful transmute when still known,
---- 2) Primal Might then Arcanite when known.
+--- 2) Primal Might then Arcanite when known (WoW Forever: Arcanite then Legionite).
 --- nil = do not show transmute row.
 function CD.ResolveTransmuteSpellForCharacter(char)
     if not char then return nil end
@@ -1182,11 +1413,11 @@ function CD.GetExpiryUnix(char, spellId)
     return nil
 end
 
---- Alchemy transmutes share one cooldown; expiry may be stored under any transmute spell id.
+--- Alchemy transmutes share one cooldown; expiry may be stored under any of this client's transmute spell ids.
 function CD.GetTransmuteExpiryUnix(char)
     if not char then return nil end
     local best = nil
-    for _, sid in ipairs(CD.TRANSMUTE_SPELL_IDS) do
+    for _, sid in ipairs(CD.GetTransmuteSpellIds()) do
         local exp = CD.GetExpiryUnix(char, sid)
         if exp ~= nil and (best == nil or exp > best) then
             best = exp
@@ -1219,7 +1450,7 @@ function CD.BuildRows(DS, options, now, opts)
     local rows = {}
     if not DS or not DS.ForEachCharacter then return rows end
 
-    for _, catKey in ipairs(CD.CATEGORY_ORDER) do
+    for _, catKey in ipairs(CD.GetCategoryOrder(IsForever())) do
         if all or CategoryListVisible(catKey, options) then
             local cat = CD.CATEGORIES[catKey]
             if cat then
@@ -1231,6 +1462,8 @@ function CD.BuildRows(DS, options, now, opts)
                             include = CD.ResolveTransmuteSpellForCharacter(char) ~= nil
                         elseif catKey == "void_sphere" then
                             include = CD.ResolveSphereSpellForCharacter(char) ~= nil
+                        elseif cat.itemId then
+                            include = CD.CharacterHoldsItem(char, cat.itemId)
                         elseif cat.legacyTalent then
                             include = CD.CharacterHasLegacyTalentSpell(char, cat.spellId)
                         elseif cat.mode == "single" and cat.spellId then

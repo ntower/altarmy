@@ -1726,8 +1726,9 @@ end
 --- Scan all transmute spells and persist the longest remaining cooldown.
 function DS:TryScanTransmuteCooldownsFromSpellApi(preferredSpellId)
     local CD = AltArmy and AltArmy.CooldownData
-    if not CD or not CD.TRANSMUTE_SPELL_IDS or not CD.IsTrackedSpellId then return end
+    if not CD or not CD.GetTransmuteSpellIds or not CD.IsTrackedSpellId then return end
     if not HasSpellCooldownApi() then return end
+    local transmuteIds = CD.GetTransmuteSpellIds()
 
     local char = GetCurrentCharTable()
     if not char then return end
@@ -1748,7 +1749,7 @@ function DS:TryScanTransmuteCooldownsFromSpellApi(preferredSpellId)
     end
 
     consider(preferredSpellId)
-    for _, sid in ipairs(CD.TRANSMUTE_SPELL_IDS) do
+    for _, sid in ipairs(transmuteIds) do
         consider(sid)
     end
 
@@ -1759,7 +1760,7 @@ function DS:TryScanTransmuteCooldownsFromSpellApi(preferredSpellId)
             and char.ProfCooldownExpiry[bestSpellId].expiresAtUnix
         if bestExp and bestExp > wall then
             char.ProfCooldownExpiry = char.ProfCooldownExpiry or {}
-            for _, sid in ipairs(CD.TRANSMUTE_SPELL_IDS) do
+            for _, sid in ipairs(transmuteIds) do
                 if CD.IsTrackedSpellId(sid) and select(1, CD.FindRecipeProfession(char, sid)) then
                     char.ProfCooldownExpiry[sid] = { expiresAtUnix = bestExp }
                 end
@@ -1850,6 +1851,55 @@ function DS:TryScanTrackedCooldownFromSpellApi(spellId)
         CooldownRemainingSecondsFromSpellApi(a, b, gt, wall),
         tostring(char.ProfCooldownExpiry[spellId] and char.ProfCooldownExpiry[spellId].expiresAtUnix)
     ))
+end
+
+--- An item's use cooldown: C_Container.GetItemCooldown, else the global GetItemCooldown; both give
+--- (start, duration, enable) like GetSpellCooldown.
+local function GetItemCooldownCompat(itemId)
+    local cc = rawget(_G, "C_Container")
+    if type(cc) == "table" and type(cc.GetItemCooldown) == "function" then
+        return cc.GetItemCooldown(itemId)
+    end
+    local fn = rawget(_G, "GetItemCooldown")
+    if type(fn) == "function" then
+        return fn(itemId)
+    end
+    return nil, nil
+end
+
+--- Persist a tracked item's use cooldown (Salt Shaker), saved under its use spell's id like a recipe's.
+--- Only while the current character holds the item (its last bags or bank scan).
+function DS:TryScanTrackedItemCooldown(itemId, spellId)
+    local CD = AltArmy and AltArmy.CooldownData
+    if not CD or not CD.IsTrackedSpellId or not CD.CharacterHoldsItem then return end
+    if not itemId or not spellId or not CD.IsTrackedSpellId(spellId) then return end
+
+    local char = GetCurrentCharTable()
+    if not char or not CD.CharacterHoldsItem(char, itemId) then return end
+
+    local a, b = GetItemCooldownCompat(itemId)
+    if a == nil then return end
+    local gt = GetTime and GetTime() or 0
+    local wall = time and time() or 0
+    PersistCooldownExpiry(char, spellId, a, b, gt, wall, "ItemApi", "spell")
+    LogCooldownScanDebug(string.format(
+        "ItemApi item=%d spell=%d a=%s b=%s expUnix=%s",
+        itemId,
+        spellId,
+        tostring(a),
+        tostring(b),
+        tostring(char.ProfCooldownExpiry and char.ProfCooldownExpiry[spellId]
+            and char.ProfCooldownExpiry[spellId].expiresAtUnix)
+    ))
+end
+
+--- Every tracked item cooldown this client has (login, so it shows without using the item first).
+function DS:TryScanTrackedItemCooldowns()
+    local CD = AltArmy and AltArmy.CooldownData
+    if not CD or not CD.TrackedItemCooldowns then return end
+    for _, entry in ipairs(CD.TrackedItemCooldowns()) do
+        self:TryScanTrackedItemCooldown(entry.itemId, entry.spellId)
+    end
 end
 
 --- Scan action bars for tracked spell/item cooldowns (current character only).

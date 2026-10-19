@@ -70,8 +70,8 @@ function RYB.ResolveRecipeBonusLabel(recipeID, resultItemID)
     end
 
     local CD = AltArmy and AltArmy.CooldownData
-    if recipeID and CD and CD.IsTransmuteSpellId then
-        if CD.IsTransmuteSpellId(recipeID, GetSpellInfo) then
+    if recipeID and CD and CD.IsTransmuteRecipe then
+        if CD.IsTransmuteRecipe(recipeID, GetSpellInfo) then
             return "Transmute"
         end
     elseif recipeID and CD and CD.TRANSMUTE_SPELL_SET and CD.TRANSMUTE_SPELL_SET[recipeID] then

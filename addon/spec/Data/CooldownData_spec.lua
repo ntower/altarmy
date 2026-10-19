@@ -833,7 +833,8 @@ describe("CooldownData", function()
         local function alchemist()
             return {
                 name = "Alch",
-                Professions = { Alchemy = { Recipes = { [29688] = { color = 1 } } } },
+                -- Primal Might is TBC's; Arcanite is in WoW Forever's transmute group too
+                Professions = { Alchemy = { Recipes = { [29688] = { color = 1 }, [17187] = { color = 1 } } } },
             }
         end
 
@@ -1042,7 +1043,7 @@ describe("CooldownData", function()
     end)
 
     describe("GetOptionsCategoryOrder", function()
-        it("returns TBC's crafts A to Z on TBC, without WoW Forever's Research and Dedicated Study", function()
+        it("returns TBC's crafts A to Z on TBC, without WoW Forever's Study and Dedicated Study", function()
             assert.are.same({
                 "brilliant_glass", "primal_mooncloth", "shadowcloth", "spellcloth", "transmute", "void_sphere",
             }, CD.GetOptionsCategoryOrder(false))
@@ -1057,8 +1058,9 @@ describe("CooldownData", function()
             end
         end)
 
-        it("returns Dedicated Study, Research and Transmute (A to Z) on WoW Forever", function()
-            assert.are.same({ "dedicated_study", "research", "transmute" }, CD.GetOptionsCategoryOrder(true))
+        it("returns WoW Forever's cooldowns (A to Z), without the unannounced Essence of Innovation", function()
+            assert.are.same({ "dedicated_study", "mooncloth", "salt_shaker", "research", "transmute" },
+                CD.GetOptionsCategoryOrder(true))
         end)
     end)
 
@@ -1080,7 +1082,7 @@ describe("CooldownData", function()
                 if key == "research" then found = true end
             end
             assert.is_true(found)
-            assert.are.equal("Research", CD.CATEGORIES.research.title)
+            assert.are.equal("Study", CD.CATEGORIES.research.title)
             assert.are.equal("single", CD.CATEGORIES.research.mode)
             assert.is_true(CD.IsTrackedSpellId(STUDY))
             assert.is_nil(CD.CategorySpecField("research"))
@@ -1104,7 +1106,7 @@ describe("CooldownData", function()
                 if r.categoryKey == "research" then research[#research + 1] = r end
             end
             assert.are.equal(1, #research)
-            assert.are.equal("Research", research[1].categoryTitle)
+            assert.are.equal("Study", research[1].categoryTitle)
             assert.are.equal("Frell Blast", research[1].name)
             assert.are.equal(STUDY, research[1].spellId)
             assert.are.equal(1000 + 3600, research[1].expiresUnix)
@@ -1181,6 +1183,218 @@ describe("CooldownData", function()
             local alerts = CD.EvaluateAlerts(ds, AltArmyTBC_Options.cooldowns, 1000 + 23 * 3600, state)
             assert.are.equal(1, #alerts)
             assert.are.equal("dedicated_study", alerts[1].categoryKey)
+        end)
+    end)
+
+    describe("WoW Forever's cooldown groups", function()
+        local ARCANITE, LEGIONITE, AIR_TO_FIRE, TRUESILVER = 17187, 1317279, 17559, 11480
+        local MOONCLOTH, SALT_SHAKER_SPELL, SALT_SHAKER_ITEM, INNOVATION = 18560, 19566, 15846, 1225470
+        local savedDS, savedDebug, showUnannounced
+
+        before_each(function()
+            savedDS, savedDebug = AltArmy.DataStore, AltArmy.Debug
+            AltArmy.DataStore = { IsWowForever = true }
+            showUnannounced = false
+            AltArmy.Debug = { IsShowUnannouncedCooldowns = function() return showUnannounced end }
+            _G.AltArmyTBC_Data.RecipeReagents = {}
+        end)
+        after_each(function()
+            AltArmy.DataStore, AltArmy.Debug = savedDS, savedDebug
+        end)
+
+        local function alchemist(recipes, extra)
+            local char = { name = "Alch", Professions = { Alchemy = { Recipes = {} } } }
+            for _, id in ipairs(recipes) do
+                char.Professions.Alchemy.Recipes[id] = { color = 1 }
+            end
+            for k, v in pairs(extra or {}) do
+                char[k] = v
+            end
+            return char
+        end
+
+        local function rowsOf(rows, key)
+            local out = {}
+            for _, r in ipairs(rows) do
+                if r.categoryKey == key then out[#out + 1] = r end
+            end
+            return out
+        end
+
+        local function nameOf(id)
+            local names = {
+                [ARCANITE] = "Transmute: Arcanite",
+                [LEGIONITE] = "Transmute: Legionite",
+                [AIR_TO_FIRE] = "Transmute: Air to Fire",
+                [TRUESILVER] = "Transmute: Mithril to Truesilver",
+            }
+            return names[id]
+        end
+
+        it("lists its own categories, Essence of Innovation only when Debug shows unannounced ones", function()
+            assert.are.same({ "transmute", "mooncloth", "salt_shaker", "research", "dedicated_study" },
+                CD.GetCategoryOrder(true))
+            showUnannounced = true
+            assert.are.same(
+                { "transmute", "mooncloth", "salt_shaker", "research", "dedicated_study", "essence_of_innovation" },
+                CD.GetCategoryOrder(true))
+            assert.are.same({ "dedicated_study", "essence_of_innovation", "mooncloth", "salt_shaker", "research",
+                "transmute" }, CD.GetOptionsCategoryOrder(true))
+        end)
+
+        it("leaves TBC's categories and tracked spells as they were", function()
+            assert.are.same({ "transmute", "spellcloth", "shadowcloth", "primal_mooncloth", "brilliant_glass",
+                "void_sphere", "research", "dedicated_study" }, CD.GetCategoryOrder(false))
+            AltArmy.DataStore.IsWowForever = false
+            assert.is_true(CD.IsTrackedSpellId(TRUESILVER))
+            assert.is_true(CD.IsTransmuteSpellId(TRUESILVER, nameOf))
+            assert.is_false(CD.IsTrackedSpellId(MOONCLOTH))
+            assert.is_false(CD.IsTrackedSpellId(LEGIONITE))
+            assert.is_nil(CD.ItemForTrackedSpell(SALT_SHAKER_SPELL))
+            local char = alchemist({ TRUESILVER, ARCANITE })
+            char.Professions.Tailoring = { Recipes = { [MOONCLOTH] = { color = 1 } } }
+            char.Containers = { [0] = { items = { [1] = { itemID = SALT_SHAKER_ITEM, count = 1 } } } }
+            local rows = CD.BuildRows(mockDS({ TestRealm = { A = char } }), AltArmyTBC_Options.cooldowns, 1000)
+            assert.are.equal(1, #rowsOf(rows, "transmute"))
+            assert.are.equal(0, #rowsOf(rows, "mooncloth"))
+            assert.are.equal(0, #rowsOf(rows, "salt_shaker"))
+        end)
+
+        it("groups its game data's transmutes: Legionite in, Iron to Gold and Truesilver out", function()
+            assert.is_true(CD.IsTransmuteSpellId(LEGIONITE, nameOf))
+            assert.is_true(CD.IsTransmuteSpellId(AIR_TO_FIRE, nameOf))
+            -- a "Transmute:" name doesn't put a spell in the group here
+            assert.is_false(CD.IsTransmuteSpellId(TRUESILVER, nameOf))
+            assert.is_false(CD.IsTransmuteSpellId(11479, nameOf))
+            assert.is_false(CD.IsTrackedSpellId(TRUESILVER))
+            assert.is_true(CD.IsTrackedSpellId(LEGIONITE))
+            assert.is_false(CD.CharacterKnowsTransmute(alchemist({ TRUESILVER }), nameOf))
+            assert.is_true(CD.CharacterKnowsTransmute(alchemist({ LEGIONITE }), nameOf))
+            -- the Search tab's yield label still counts every transmute recipe
+            assert.is_true(CD.IsTransmuteRecipe(TRUESILVER, nameOf))
+        end)
+
+        it("gives no Transmute row to a character knowing only Mithril to Truesilver", function()
+            local char = alchemist({ TRUESILVER }, { lastTransmute = { spellId = TRUESILVER } })
+            local rows = CD.BuildRows(mockDS({ TestRealm = { A = char } }), AltArmyTBC_Options.cooldowns, 1000)
+            assert.are.equal(0, #rowsOf(rows, "transmute"))
+        end)
+
+        it("ignores a Truesilver cast as the last transmute", function()
+            local char = alchemist({ TRUESILVER, ARCANITE })
+            CD.RecordSuccessfulTransmuteCast(char, TRUESILVER)
+            assert.is_nil(char.lastTransmute)
+            CD.RecordSuccessfulTransmuteCast(char, ARCANITE)
+            assert.are.equal(ARCANITE, char.lastTransmute.spellId)
+        end)
+
+        it("Auto picks Arcanite, then Legionite", function()
+            assert.are.equal(ARCANITE, CD.ResolveTransmuteSpellForCharacter(alchemist({ LEGIONITE, ARCANITE })))
+            assert.are.equal(LEGIONITE, CD.ResolveTransmuteSpellForCharacter(alchemist({ LEGIONITE, TRUESILVER })))
+            assert.is_nil(CD.ResolveTransmuteSpellForCharacter(alchemist({ AIR_TO_FIRE })))
+            -- the last cast still wins
+            assert.are.equal(AIR_TO_FIRE, CD.ResolveTransmuteSpellForCharacter(
+                alchemist({ AIR_TO_FIRE, ARCANITE }, { lastTransmute = { spellId = AIR_TO_FIRE } })))
+        end)
+
+        it("the recipe picker lists only the group's known transmutes", function()
+            local char = alchemist({ ARCANITE, TRUESILVER, LEGIONITE })
+            assert.are.same({ ARCANITE, LEGIONITE }, CD.GetKnownGroupSpellIds(char, "transmute"))
+        end)
+
+        it("takes the group's expiry over its own transmutes alone", function()
+            local char = alchemist({ ARCANITE }, { ProfCooldownExpiry = {
+                [AIR_TO_FIRE] = { expiresAtUnix = 1000 + 23 * 3600 },
+                [TRUESILVER] = { expiresAtUnix = 1000 + 3 * 86400 }, -- its own cooldown, not the group's
+            } })
+            assert.are.equal(1000 + 23 * 3600, CD.GetTransmuteExpiryUnix(char))
+            local rows = CD.BuildRows(mockDS({ TestRealm = { A = char } }), AltArmyTBC_Options.cooldowns, 1000)
+            local t = rowsOf(rows, "transmute")
+            assert.are.equal(1, #t)
+            assert.are.equal("23h 0m", t[1].timeText)
+        end)
+
+        it("gives a tailor knowing Mooncloth a row with its 95-hour cooldown and Felcloth mats", function()
+            local char = {
+                name = "Tailor",
+                Professions = { Tailoring = { Recipes = { [MOONCLOTH] = { color = 1 } } } },
+                ProfCooldownExpiry = { [MOONCLOTH] = { expiresAtUnix = 1000 + 95 * 3600 } },
+            }
+            local rows = CD.BuildRows(mockDS({ TestRealm = { A = char } }), AltArmyTBC_Options.cooldowns, 1000)
+            local m = rowsOf(rows, "mooncloth")
+            assert.are.equal(1, #m)
+            assert.are.equal(MOONCLOTH, m[1].spellId)
+            assert.are.equal("3d 23h 0m", m[1].timeText)
+            assert.is_false(m[1].noReagents)
+            assert.are.same({ { 14256, 2 } }, CD.GetReagentList(MOONCLOTH))
+        end)
+
+        it("built-in reagents give way to scanned ones", function()
+            assert.are.same({ { 12359, 1 }, { 12363, 1 } }, CD.GetReagentList(ARCANITE))
+            assert.are.same({ { 251291, 1 }, { 248819, 1 } }, CD.GetReagentList(LEGIONITE))
+            _G.AltArmyTBC_Data.RecipeReagents[ARCANITE] = { { 99999, 3 } }
+            assert.are.same({ { 99999, 3 } }, CD.GetReagentList(ARCANITE))
+        end)
+
+        it("gives a Salt Shaker row to whoever holds one, in bags or bank", function()
+            local holder = {
+                name = "Holder",
+                Containers = { [-1] = { items = { [3] = { itemID = SALT_SHAKER_ITEM, count = 1 } } } },
+                ProfCooldownExpiry = { [SALT_SHAKER_SPELL] = { expiresAtUnix = 1000 + 71 * 3600 } },
+            }
+            local other = { name = "Other", Containers = { [0] = { items = { [1] = { itemID = 8150, count = 5 } } } } }
+            local ds = mockDS({ TestRealm = { Holder = holder, Other = other } })
+            local rows = rowsOf(CD.BuildRows(ds, AltArmyTBC_Options.cooldowns, 1000), "salt_shaker")
+            assert.are.equal(1, #rows)
+            assert.are.equal("Holder", rows[1].name)
+            assert.are.equal(SALT_SHAKER_SPELL, rows[1].spellId)
+            assert.are.equal("2d 23h 0m", rows[1].timeText)
+            assert.are.same({ { 8150, 1 } }, CD.GetReagentList(SALT_SHAKER_SPELL))
+            assert.are.equal(SALT_SHAKER_ITEM, CD.ItemForTrackedSpell(SALT_SHAKER_SPELL))
+            assert.are.same({ { itemId = SALT_SHAKER_ITEM, spellId = SALT_SHAKER_SPELL } }, CD.TrackedItemCooldowns())
+
+            local alerts = CD.EvaluateAlerts(ds, AltArmyTBC_Options.cooldowns, 1000 + 71 * 3600, {})
+            assert.are.equal(1, #alerts)
+            assert.are.equal("salt_shaker", alerts[1].categoryKey)
+        end)
+
+        describe("Essence of Innovation (unannounced Legacy talent)", function()
+            local function innovator(expiresAtUnix)
+                return {
+                    name = "Inventor",
+                    legacyTalents = { spells = { [INNOVATION] = 1 } },
+                    ProfCooldownExpiry = { [INNOVATION] = { expiresAtUnix = expiresAtUnix } },
+                }
+            end
+
+            it("is tracked even while hidden, so its cooldown is saved", function()
+                assert.is_true(CD.IsTrackedSpellId(INNOVATION))
+            end)
+
+            it("has no row or alert while hidden", function()
+                local ds = mockDS({ TestRealm = { Inventor = innovator(900) } })
+                assert.are.equal(0, #rowsOf(CD.BuildRows(ds, AltArmyTBC_Options.cooldowns, 1000),
+                    "essence_of_innovation"))
+                assert.are.equal(0, #CD.EvaluateAlerts(ds, AltArmyTBC_Options.cooldowns, 1000, {}))
+            end)
+
+            it("shown, it is a row for the talent's holders with mats, and alerts when ready", function()
+                showUnannounced = true
+                local ds = mockDS({ TestRealm = {
+                    Inventor = innovator(1000 + 23 * 3600),
+                    Other = { name = "Other", legacyTalents = { spells = { [1225469] = 1 } } },
+                } })
+                local rows = rowsOf(CD.BuildRows(ds, AltArmyTBC_Options.cooldowns, 1000), "essence_of_innovation")
+                assert.are.equal(1, #rows)
+                assert.are.equal("Inventor", rows[1].name)
+                assert.are.equal("23h 0m", rows[1].timeText)
+                assert.is_false(rows[1].noReagents)
+                assert.is_false(CD.SpellNeedsNoReagents(INNOVATION))
+                assert.are.equal(7, #CD.GetReagentList(INNOVATION))
+                local alerts = CD.EvaluateAlerts(ds, AltArmyTBC_Options.cooldowns, 1000 + 23 * 3600, {})
+                local fired = rowsOf(alerts, "essence_of_innovation")
+                assert.are.equal(1, #fired)
+            end)
         end)
     end)
 
@@ -1298,9 +1512,10 @@ describe("CooldownData", function()
             it("has no specialization entries on WoW Forever", function()
                 AltArmy.DataStore.IsWowForever = true
                 local keys, labels = CD.SettingsEntries(true)
-                assert.are.same({ "dedicated_study", "research", "transmute" }, keys)
+                assert.are.same({ "dedicated_study", "mooncloth", "salt_shaker", "research", "transmute" }, keys)
                 assert.are.equal("Transmute", labels.transmute)
-                assert.are.equal("Research (mage)", labels.research)
+                assert.are.equal("Salt Shaker", labels.salt_shaker)
+                assert.are.equal("Study (mage)", labels.research)
                 assert.are.equal("Dedicated Study (legacy talent)", labels.dedicated_study)
                 assert.is_nil(labels["transmute:spec"])
                 -- a gate saved on TBC is ignored there, so the plain entry reads ticked
@@ -1384,16 +1599,17 @@ describe("CooldownData", function()
                 assert.are.equal("Brilliant Glass, Transmute", summary())
             end)
 
-            it("FormatSettingsSummary on WoW Forever's three", function()
+            it("FormatSettingsSummary on WoW Forever's", function()
                 AltArmy.DataStore.IsWowForever = true
                 local keys, labels = CD.SettingsEntries(true)
                 local cd = AltArmyTBC_Options.cooldowns
                 cd.categories.research.showInUI = false
                 -- the note "(mage)" is the row's alone
-                assert.are.equal("All but Research",
+                assert.are.equal("All but Study",
                     CD.FormatSettingsSummary(keys, labels, CD.SettingsMap(cd, "show")))
                 cd.categories.transmute.showInUI = false
-                assert.are.equal("Dedicated Study",
+                cd.categories.mooncloth.showInUI = false
+                assert.are.equal("Dedicated Study, Salt Shaker",
                     CD.FormatSettingsSummary(keys, labels, CD.SettingsMap(cd, "show")))
             end)
         end)

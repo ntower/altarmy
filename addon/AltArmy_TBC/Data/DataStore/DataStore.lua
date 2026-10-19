@@ -658,6 +658,22 @@ cooldownAfterCastFrame:SetScript("OnUpdate", nil)
 cooldownAfterCastFrame.elapsed = 0
 cooldownAfterCastFrame.pendingSpellId = nil
 
+--- Read a cast's cooldown once the client has it: a shared group's (transmute, spheres), an item's use
+--- (Salt Shaker), else the spell's own.
+local function ScanCooldownAfterCast(CD, sid)
+    if not sid then return end
+    local itemId = CD.ItemForTrackedSpell and CD.ItemForTrackedSpell(sid)
+    if CD.IsTransmuteSpellId and CD.IsTransmuteSpellId(sid) and DS.TryScanTransmuteCooldownsFromSpellApi then
+        DS:TryScanTransmuteCooldownsFromSpellApi(sid)
+    elseif CD.IsSphereSpellId and CD.IsSphereSpellId(sid) and DS.TryScanSphereCooldownsFromSpellApi then
+        DS:TryScanSphereCooldownsFromSpellApi(sid)
+    elseif itemId and DS.TryScanTrackedItemCooldown then
+        DS:TryScanTrackedItemCooldown(itemId, sid)
+    elseif DS.TryScanTrackedCooldownFromSpellApi then
+        DS:TryScanTrackedCooldownFromSpellApi(sid)
+    end
+end
+
 -- Player GUID is fixed for the session; cached so the combat-log hot path skips UnitGUID.
 local cleuPlayerGUID
 
@@ -707,17 +723,7 @@ frame:SetScript("OnEvent", function(_, event, ...)
                     f:SetScript("OnUpdate", nil)
                     local sid = f.pendingSpellId
                     f.pendingSpellId = nil
-                    if sid and CD.IsTransmuteSpellId and CD.IsTransmuteSpellId(sid)
-                        and DS.TryScanTransmuteCooldownsFromSpellApi
-                    then
-                        DS:TryScanTransmuteCooldownsFromSpellApi(sid)
-                    elseif sid and CD.IsSphereSpellId and CD.IsSphereSpellId(sid)
-                        and DS.TryScanSphereCooldownsFromSpellApi
-                    then
-                        DS:TryScanSphereCooldownsFromSpellApi(sid)
-                    elseif sid and DS.TryScanTrackedCooldownFromSpellApi then
-                        DS:TryScanTrackedCooldownFromSpellApi(sid)
-                    end
+                    ScanCooldownAfterCast(CD, sid)
                 end
             end)
         end
@@ -742,17 +748,7 @@ frame:SetScript("OnEvent", function(_, event, ...)
                 f:SetScript("OnUpdate", nil)
                 local sid = f.pendingSpellId
                 f.pendingSpellId = nil
-                if sid and CD.IsTransmuteSpellId and CD.IsTransmuteSpellId(sid)
-                    and DS.TryScanTransmuteCooldownsFromSpellApi
-                then
-                    DS:TryScanTransmuteCooldownsFromSpellApi(sid)
-                elseif sid and CD.IsSphereSpellId and CD.IsSphereSpellId(sid)
-                    and DS.TryScanSphereCooldownsFromSpellApi
-                then
-                    DS:TryScanSphereCooldownsFromSpellApi(sid)
-                elseif sid and DS.TryScanTrackedCooldownFromSpellApi then
-                    DS:TryScanTrackedCooldownFromSpellApi(sid)
-                end
+                ScanCooldownAfterCast(CD, sid)
             end
         end)
         return
@@ -834,6 +830,8 @@ frame:SetScript("OnEvent", function(_, event, ...)
             if DS.TryScanTrackedCooldownsFromActionBars then
                 DS:TryScanTrackedCooldownsFromActionBars()
             end
+            -- after ScanBags: an item's cooldown is read only while the character holds it
+            if DS.TryScanTrackedItemCooldowns then DS:TryScanTrackedItemCooldowns() end
             bagScanFrame.elapsed = 0
             bagScanFrame:SetScript("OnUpdate", function(f, elapsed)
                 f.elapsed = f.elapsed + elapsed
@@ -843,6 +841,7 @@ frame:SetScript("OnEvent", function(_, event, ...)
                     if DS.TryScanTrackedCooldownsFromActionBars then
                         DS:TryScanTrackedCooldownsFromActionBars()
                     end
+                    if DS.TryScanTrackedItemCooldowns then DS:TryScanTrackedItemCooldowns() end
                 end
             end)
             if DS.RunLevelHistoryBackfill then

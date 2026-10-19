@@ -934,6 +934,61 @@ describe("DataStore", function()
       assert.are.equal(0, #trackedLookups)
     end)
   end)
+
+  describe("cooldown read after a cast", function()
+    local eventHandler, onUpdates, calls
+
+    before_each(function()
+      eventHandler, onUpdates, calls = nil, {}, {}
+      _G.CreateFrame = function()
+        local f = { RegisterEvent = function() end }
+        f.SetScript = function(self, script, handler)
+          if script == "OnEvent" then eventHandler = handler end
+          if script == "OnUpdate" then onUpdates[self] = handler end
+        end
+        return f
+      end
+      _G.UnitName = function() return "Alice" end
+      _G.GetRealmName = function() return "R1" end
+      _G.AltArmyTBC_Data = { Characters = { R1 = { Alice = {} } } }
+      package.loaded["DataStore"] = nil
+      require("DataStore")
+      DS = AltArmy.DataStore
+      AltArmy.CooldownData = {
+        IsTrackedSpellId = function() return true end,
+        IsTransmuteSpellId = function(sid) return sid == 17187 end,
+        IsSphereSpellId = function() return false end,
+        ItemForTrackedSpell = function(sid) return sid == 19566 and 15846 or nil end,
+      }
+      DS.TryScanTransmuteCooldownsFromSpellApi = function(_, sid) calls[#calls + 1] = { "transmute", sid } end
+      DS.TryScanTrackedItemCooldown = function(_, item, sid) calls[#calls + 1] = { "item", item, sid } end
+      DS.TryScanTrackedCooldownFromSpellApi = function(_, sid) calls[#calls + 1] = { "spell", sid } end
+    end)
+
+    after_each(function()
+      AltArmy.CooldownData = nil
+    end)
+
+    local function castAndWait(spellId)
+      eventHandler(nil, "UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-1", spellId)
+      for frame, handler in pairs(onUpdates) do
+        if frame.pendingSpellId == spellId then
+          handler(frame, 1)
+        end
+      end
+    end
+
+    it("reads an item's use cooldown (Salt Shaker) through the item reader", function()
+      castAndWait(19566)
+      assert.are.same({ { "item", 15846, 19566 } }, calls)
+    end)
+
+    it("reads the transmute group, else the spell's own", function()
+      castAndWait(17187)
+      castAndWait(18560)
+      assert.are.same({ { "transmute", 17187 }, { "spell", 18560 } }, calls)
+    end)
+  end)
   describe("resting state", function()
     local eventHandler, resting, savedIsResting, savedTime
 

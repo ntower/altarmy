@@ -49,6 +49,9 @@ function D.Ensure()
     if d.windowWidthResize == nil then
         d.windowWidthResize = false
     end
+    if d.showUnannouncedCooldowns == nil then
+        d.showUnannouncedCooldowns = false
+    end
     -- Legacy SavedVariables key from when the whole resize grip was a debug toggle; no longer read.
     d.windowResize = nil
     -- Legacy SavedVariables key from the dual-engine experiment; no longer read.
@@ -209,6 +212,19 @@ function D.SetWindowWidthResizeEnabled(on)
     if AltArmy.ApplyWindowResize then
         AltArmy.ApplyWindowResize()
     end
+end
+
+--- When true, the Cooldowns tab lists cooldowns that are in WoW Forever's game data but not announced yet
+--- (CooldownData's `unannounced` categories: Essence of Innovation). Their cooldowns are saved either way.
+--- Standalone flag (does not require master debug on).
+function D.IsShowUnannouncedCooldowns()
+    D.Ensure()
+    return AltArmyTBC_Options.debug.showUnannouncedCooldowns == true
+end
+
+function D.SetShowUnannouncedCooldowns(on)
+    D.Ensure()
+    AltArmyTBC_Options.debug.showUnannouncedCooldowns = on == true
 end
 
 function D.RefreshZygorDependentUi()

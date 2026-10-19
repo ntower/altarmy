@@ -52,6 +52,9 @@ AC.MANIFEST = {
     -- Profession cooldown capture after a cast (DataStoreProfessions GetSpellCooldownCompat).
     { area = "Item Info", label = "GetSpellCooldown",
       candidates = { "GetSpellCooldown", "C_Spell.GetSpellCooldown" } },
+    -- Item use cooldowns (Salt Shaker, DataStoreProfessions GetItemCooldownCompat).
+    { area = "Item Info", label = "GetItemCooldown",
+      candidates = { "C_Container.GetItemCooldown", "GetItemCooldown" } },
 
     -- Professions/Tradeskills
     { area = "Professions", label = "GetNumTradeSkills", candidates = { "GetNumTradeSkills" } },

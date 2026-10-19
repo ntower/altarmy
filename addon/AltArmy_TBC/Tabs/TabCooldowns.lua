@@ -752,7 +752,7 @@ function recipePicker:Open(row)
     if dd.popup and row.catBtn then
         dd.popup:ClearAllPoints()
         dd.popup:SetPoint("TOPLEFT", row.catBtn, "BOTTOMLEFT", 0, -2)
-        dd.popup:SetFrameStrata("DIALOG")
+        Theme.RaiseDropdownPopup(dd.popup)
         dd.popup:Show()
         if Theme._openSingleSelectDropdowns then
             Theme._openSingleSelectDropdowns[dd.popup] = true
@@ -991,8 +991,8 @@ SyncSendCheckFade = function(alpha)
     local sendW = colWidths.Send or 0
     local function apply(row)
         if not row or not row.sendSlot then return end
-        -- Own character / cross-realm: no Send checkbox.
-        if row.sendEligible and sendW > 0.5 and alpha > 0.01 then
+        -- Own character / no materials: no Send checkbox; another realm or faction: a disabled one.
+        if (row.sendEligible or row.sendBlocked) and sendW > 0.5 and alpha > 0.01 then
             row.sendSlot:SetSize(sendW, ROW_HEIGHT)
             row.sendSlot:Show()
             row.sendSlot:SetAlpha(alpha)
@@ -1638,6 +1638,13 @@ local function PoolRow()
 
         -- Checkbox steals mouse from the row; forward hover so highlight appears immediately.
         row.sendCheck:SetScript("OnEnter", function(self)
+            local parent = RowFromChild(self)
+            if parent and parent.sendBlocked and sendBar.mode == "compose" then
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(parent.sendBlocked, 1, 1, 1, 1, true)
+                GameTooltip:Show()
+                return
+            end
             ApplyRowHoverFromChild(self, true)
         end)
         row.sendCheck:SetScript("OnLeave", function(self)
@@ -2922,8 +2929,19 @@ local function FillCooldownListRow(row, rd, now, compose, curName, curRealm, opt
     row.sendKey = key
     local isSelf = (rd.charKeyName == curName) and (rd.realm == curRealm)
     local sameRealm = (rd.realm == curRealm)
+    local curFaction = DS.GetCurrentPlayerFaction and DS:GetCurrentPlayerFaction() or ""
+    local sameFaction = (rd.faction or "") == "" or curFaction == "" or rd.faction == curFaction
     -- Cooldowns that need no materials (Dedicated Study) have nothing to send.
-    row.sendEligible = (not isSelf) and sameRealm and not rd.noReagents
+    row.sendEligible = (not isSelf) and sameRealm and sameFaction and not rd.noReagents
+    -- Mail can't reach another realm or faction: a disabled checkbox saying so (its tooltip).
+    row.sendBlocked = nil
+    if not isSelf and not rd.noReagents and not (sameRealm and sameFaction) then
+        local factionText = (rd.faction and rd.faction ~= "") and rd.faction or "Unknown"
+        row.sendBlocked = "Can't send mail to " .. tostring(rd.realm or "") .. " - " .. factionText
+    end
+    if row.sendCheck then
+        row.sendCheck:SetAlpha(row.sendBlocked and 0.4 or 1)
+    end
     local fadingSend = (sendBar.headerOffset or 0) > 0.5 or (colWidths.Send or 0) > 0.5
     if compose or fadingSend then
         local checked

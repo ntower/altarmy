@@ -10,7 +10,7 @@ AltArmy TBC is an account-wide alt management addon for TBC Classic that:
 - Presents cross-character information in tabbed dashboards.
 - Supports item and recipe search across characters, with recipe skill, difficulty and source filters from built-in recipe data (optional guildmate recipes).
 - Shows what each Waylaid Crate costs per point of Merchant's Favor, filled from the auction house or crafted by your characters, what each Craftsman's Writ's order costs to buy or to craft with your characters, and explains alt-army.com's crafting planner (WoW Forever).
-- Tracks profession cooldown readiness (including WoW Forever's Comprehension "Research" and the Legacy talent Dedicated Study), stockpile mailing, and raid/heroic lockouts.
+- Tracks profession cooldown readiness (on WoW Forever its shared transmute cooldown, Mooncloth, the Salt Shaker, Comprehension's Study and the Legacy talent Dedicated Study), stockpile mailing, and raid/heroic lockouts.
 - Graphs leveling progress over calendar and played time.
 - Optionally shares character cards and recipes with guildmates.
 - Provides configurable filters, sorting, pin/hide, bank-alt flags, and alerts.

@@ -273,4 +273,50 @@ describe("DataStoreLegacy", function()
             assert.are.equal(2, char.dataVersions.legacyTalents)
         end)
     end)
+
+    describe("the Legacy talents' cooldowns at login", function()
+        local onEvent, scanned, savedCreateFrame, savedScanLegacy, savedTryScan, savedCD
+
+        before_each(function()
+            onEvent, scanned = nil, {}
+            savedCreateFrame, savedCD = _G.CreateFrame, AltArmy.CooldownData
+            savedScanLegacy, savedTryScan = DS.ScanLegacyTalents, DS.TryScanTrackedCooldownFromSpellApi
+            _G.CreateFrame = function()
+                return {
+                    RegisterEvent = function() end,
+                    SetScript = function(_, script, handler)
+                        if script == "OnEvent" then onEvent = handler end
+                    end,
+                }
+            end
+            _G.UnitName = function() return "Legacychar" end
+            _G.GetRealmName = function() return "Faerlina" end
+            AltArmyTBC_Data.Characters = { Faerlina = { Legacychar = {
+                legacyTalents = { spells = { [1225469] = 1, [1225470] = 1, [1225459] = 2 } },
+            } } }
+            package.loaded["CooldownData"] = nil
+            require("CooldownData")
+            package.loaded["DataStoreLegacy"] = nil
+            require("DataStoreLegacy")
+            DS.ScanLegacyTalents = function() end
+            DS.TryScanTrackedCooldownFromSpellApi = function(_, spellId) scanned[#scanned + 1] = spellId end
+        end)
+
+        after_each(function()
+            _G.CreateFrame, AltArmy.CooldownData = savedCreateFrame, savedCD
+            DS.ScanLegacyTalents, DS.TryScanTrackedCooldownFromSpellApi = savedScanLegacy, savedTryScan
+        end)
+
+        it("reads Dedicated Study's and Essence of Innovation's cooldowns, even while the latter is hidden", function()
+            onEvent(nil, "PLAYER_ENTERING_WORLD")
+            table.sort(scanned)
+            assert.are.same({ 1225469, 1225470 }, scanned)
+        end)
+
+        it("reads nothing for a character without those talents", function()
+            AltArmyTBC_Data.Characters.Faerlina.Legacychar.legacyTalents = { spells = { [1225459] = 2 } }
+            onEvent(nil, "PLAYER_ENTERING_WORLD")
+            assert.are.same({}, scanned)
+        end)
+    end)
 end)

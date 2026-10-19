@@ -591,9 +591,38 @@ panel.debugWindowResizeHint:SetText(
         .. "Inventory tab reflows to the width so far. Off puts the window back to its stock width, at its "
         .. "height; /altarmy resetsize restores the stock size.")
 
+-- Unannounced cooldowns (WoW Forever game data not announced yet). On panel, to spare main-chunk locals.
+panel.debugUnannouncedCooldownsCheckbox = Theme.CreateLabeledCheckbox(debugScrollChild, {
+    point = "TOPLEFT",
+    relativeTo = panel.debugWindowResizeHint,
+    relativePoint = "BOTTOMLEFT",
+    x = 0,
+    y = -16,
+    text = "Show unannounced cooldowns",
+    fullWidthHover = true,
+    onClick = function(checked)
+        if AltArmy.Debug and AltArmy.Debug.SetShowUnannouncedCooldowns then
+            AltArmy.Debug.SetShowUnannouncedCooldowns(checked)
+        end
+        local cdFrame = AltArmy.TabFrames and AltArmy.TabFrames.Cooldowns
+        if cdFrame and cdFrame.RefreshCooldownList then
+            cdFrame.RefreshCooldownList()
+        end
+    end,
+}).check
+
+panel.debugUnannouncedCooldownsHint = debugScrollChild:CreateFontString(nil, "ARTWORK", Theme.FONTS.body)
+panel.debugUnannouncedCooldownsHint:SetPoint("TOPLEFT", panel.debugUnannouncedCooldownsCheckbox, "BOTTOMLEFT", 0, -8)
+panel.debugUnannouncedCooldownsHint:SetWidth(520)
+panel.debugUnannouncedCooldownsHint:SetJustifyH("LEFT")
+panel.debugUnannouncedCooldownsHint:SetText(
+    "Lists WoW Forever cooldowns that are in the game data but not announced yet (Essence of Innovation) on "
+        .. "the Cooldowns tab, and alerts for them. Their cooldowns are saved either way. The tab's settings "
+        .. "dropdowns pick it up after /reload.")
+
 local function UpdateDebugScrollRange()
     local top = debugScrollChild:GetTop()
-    local bottom = panel.debugWindowResizeHint:GetBottom()
+    local bottom = panel.debugUnannouncedCooldownsHint:GetBottom()
     if top and bottom then
         debugScrollChild:SetHeight(math.max(1, top - bottom + 16))
     else
@@ -637,6 +666,9 @@ function RefreshDebugCheckboxes()
     end
     if panel.debugWindowResizeCheckbox then
         panel.debugWindowResizeCheckbox:SetChecked(d.windowWidthResize == true)
+    end
+    if panel.debugUnannouncedCooldownsCheckbox then
+        panel.debugUnannouncedCooldownsCheckbox:SetChecked(d.showUnannouncedCooldowns == true)
     end
     ResetDeleteAllHistoryButton()
     ResetClearManualGroupsButton()
