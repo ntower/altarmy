@@ -348,6 +348,33 @@ describe("LevelProgressData", function()
       assert.is_not_nil(names.Three)
       assert.is_nil(names.One)
     end)
+
+    it("reads each character's own history when two share a name", function()
+      seedChar("Player-1-A", "R3", makeChar({
+        name = "Frell Aa", classFile = "ROGUE",
+        levelHistory = { milestones = { [2] = { playedLevel = 100 } } },
+      }))
+      seedChar("Player-1-B", "R3", makeChar({
+        name = "Frell Aa", classFile = "SHAMAN",
+        levelHistory = { milestones = { [2] = { playedLevel = 100 }, [3] = { playedLevel = 200 } } },
+      }))
+
+      AltArmy.SummaryData = AltArmy.SummaryData or {}
+      AltArmy.SummaryData.GetCharacterList = function()
+        return {
+          { name = "Frell Aa", realm = "R3", key = "Player-1-A", level = 2, classFile = "ROGUE" },
+          { name = "Frell Aa", realm = "R3", key = "Player-1-B", level = 3, classFile = "SHAMAN" },
+        }
+      end
+
+      local list = LPD.GetCharactersWithHistory()
+      assert.are.equal(1, #list)
+      assert.are.equal("SHAMAN", list[1].classFile)
+      assert.are.equal("Player-1-B", list[1].key)
+      local insufficient = LPD.GetCharactersWithInsufficientHistory()
+      assert.are.equal(1, #insufficient)
+      assert.are.equal("Player-1-A", insufficient[1].key)
+    end)
   end)
 
   describe("GetAxisRange", function()

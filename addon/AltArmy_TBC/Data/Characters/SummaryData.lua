@@ -192,6 +192,8 @@ function AltArmy.SummaryData.GetCharacterList()
             table.insert(list, {
                 name = name,
                 realm = realm or "",
+                -- storage key (GUID, or the name for entries saved before GUIDs): two of one name differ
+                key = charName,
                 faction = charData.faction,
                 linkId = linkId,
                 level = level,

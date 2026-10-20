@@ -40,61 +40,180 @@ Logic.OUTLIER_TOP_DURATION_COUNT = 10
 Logic.OUTLIER_TOP_MARGIN = 6
 Logic.ROLLING_AVERAGE_WINDOW = 5
 Logic.COMPARE_SELECT_ALL_MIN_COUNT = 4
-Logic.COLOR_VARIATION_CYCLE = 3
-Logic.COLOR_VARIATION_BRIGHTEN = 0.35
-Logic.COLOR_VARIATION_DARKEN = 0.6
-Logic.COLOR_VARIATION_DARKEN_LIGHT = 0.78
-Logic.COLOR_VARIATION_WHITE_THRESHOLD = 0.9
+-- Line colors for a second, third, ... selected character of the same class.
+-- Chosen offline by greedy max-min OKLab distance from the nine class colors,
+-- the chart backdrop and the neutral gray, so each is clearly unlike all of them
+-- and each other (every pairwise distance is over DISTINCT_COLOR_DISTANCE; a
+-- distance of 0.02 is about just noticeable, 0.1 a clearly different color).
+-- At runtime AssignLineColors picks, per repeat, the one farthest from
+-- everything already on the chart.
+Logic.FALLBACK_LINE_COLORS = {
+    { 0.90, 0.00, 0.98 }, -- magenta
+    { 0.01, 0.64, 0.13 }, -- green
+    { 0.95, 0.09, 0.37 }, -- crimson
+    { 0.20, 0.59, 0.60 }, -- teal
+    { 0.22, 1.00, 0.91 }, -- aqua
+    { 0.15, 0.98, 0.26 }, -- lime
+    { 0.70, 0.43, 0.57 }, -- mauve
+    { 0.95, 0.77, 0.99 }, -- lavender
+    { 0.99, 0.77, 0.58 }, -- peach
+    { 0.19, 0.75, 0.55 }, -- sea green
+}
+-- Colors a line must also stand apart from: the chart backdrop (Theme's
+-- sectionBg) and the neutral gray of an unknown class.
+Logic.LINE_COLOR_AVOID = {
+    { 0.08, 0.08, 0.10 },
+    { 0.70, 0.70, 0.70 },
+}
+Logic.DISTINCT_COLOR_DISTANCE = 0.1
 
---- Assigns a color-variation code (0=exact, 1, 2, cycling) to each entry based
---- on its position within its own class, preserving input order.
---- @param classFiles table array of class identifiers (strings)
---- @return table array of variation codes parallel to classFiles
-function Logic.BuildClassVariationIndices(classFiles)
-    local counts = {}
+local function LinearizeChannel(c)
+    if c <= 0.04045 then
+        return c / 12.92
+    end
+    return ((c + 0.055) / 1.055) ^ 2.4
+end
+
+local function CubeRoot(x)
+    if x <= 0 then return 0 end
+    return x ^ (1 / 3)
+end
+
+--- Converts an sRGB color (0..1 channels) to OKLab, a perceptually uniform
+--- space where Euclidean distance approximates how different two colors look.
+--- @param r number
+--- @param g number
+--- @param b number
+--- @return number L, number a, number b
+function Logic.ToOklab(r, g, b)
+    r, g, b = LinearizeChannel(r), LinearizeChannel(g), LinearizeChannel(b)
+    local l = CubeRoot(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b)
+    local m = CubeRoot(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b)
+    local s = CubeRoot(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b)
+    return 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+        1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+        0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s
+end
+
+local function OklabDistance(p, q)
+    local dl, da, db = p[1] - q[1], p[2] - q[2], p[3] - q[3]
+    return math.sqrt(dl * dl + da * da + db * db)
+end
+
+--- Perceptual distance between two sRGB colors (OKLab Euclidean distance).
+--- @return number
+function Logic.ColorDistance(r1, g1, b1, r2, g2, b2)
+    return OklabDistance({ Logic.ToOklab(r1, g1, b1) }, { Logic.ToOklab(r2, g2, b2) })
+end
+
+local fallbackOklab = nil
+
+local function FallbackOklab()
+    if not fallbackOklab then
+        fallbackOklab = {}
+        for i, c in ipairs(Logic.FALLBACK_LINE_COLORS) do
+            fallbackOklab[i] = { Logic.ToOklab(c[1], c[2], c[3]) }
+        end
+    end
+    return fallbackOklab
+end
+
+-- The untaken palette index whose nearest in-use color is farthest away
+-- (ties to the lowest index, so the result is deterministic).
+local function PickFarthest(used, taken)
+    local bestIndex, bestScore = nil, -1
+    for i, lab in ipairs(FallbackOklab()) do
+        if not taken[i] then
+            local nearest = math.huge
+            for _, u in ipairs(used) do
+                local d = OklabDistance(lab, u)
+                if d < nearest then nearest = d end
+            end
+            if nearest > bestScore then
+                bestIndex, bestScore = i, nearest
+            end
+        end
+    end
+    return bestIndex
+end
+
+--- Picks a line color for each selected character, in order. The first
+--- character of each class keeps its class color; every later one gets the
+--- fallback color farthest (in OKLab) from everything already on the chart:
+--- the class colors present, the backdrop and the fallbacks picked before it.
+--- Once every fallback is in use they are picked again, nearest-last.
+--- @param entries table array of { classFile = string|nil, r, g, b }
+--- @return table array of { r, g, b } parallel to entries
+function Logic.AssignLineColors(entries)
     local out = {}
-    for i = 1, #classFiles do
-        local cf = classFiles[i]
-        local n = counts[cf] or 0
-        out[i] = n % Logic.COLOR_VARIATION_CYCLE
-        counts[cf] = n + 1
+    local used = {}
+    for _, c in ipairs(Logic.LINE_COLOR_AVOID) do
+        used[#used + 1] = { Logic.ToOklab(c[1], c[2], c[3]) }
+    end
+
+    local seenClass = {}
+    for i, e in ipairs(entries) do
+        local key = e.classFile or ""
+        if not seenClass[key] then
+            seenClass[key] = true
+            out[i] = { r = e.r, g = e.g, b = e.b }
+            used[#used + 1] = { Logic.ToOklab(e.r, e.g, e.b) }
+        end
+    end
+
+    local taken = {}
+    for i = 1, #entries do
+        if not out[i] then
+            local index = PickFarthest(used, taken)
+            if not index then
+                taken = {}
+                index = PickFarthest(used, taken)
+            end
+            taken[index] = true
+            local c = Logic.FALLBACK_LINE_COLORS[index]
+            out[i] = { r = c[1], g = c[2], b = c[3] }
+            used[#used + 1] = FallbackOklab()[index]
+        end
     end
     return out
 end
 
-local function ChannelBrighten(c)
-    return c + (1 - c) * Logic.COLOR_VARIATION_BRIGHTEN
+--- A character's key in the Graph's saved selection: realm\storage key (the GUID,
+--- or the name for an entry saved before GUIDs), so two characters of one name
+--- stay apart; a linked account's carries its link, so it is never one of ours.
+--- @param entry table { realm, name, key = string|nil, linkId = string|nil }
+--- @return string
+function Logic.SelectionKey(entry)
+    local id = entry.key or entry.name or ""
+    local key = (entry.realm or "") .. "\\" .. id
+    if entry.linkId then
+        key = key .. "\1" .. entry.linkId
+    end
+    return key
 end
 
-local function IsNearWhite(r, g, b)
-    local headroom = 1 - Logic.COLOR_VARIATION_WHITE_THRESHOLD
-    return (1 - r) < headroom and (1 - g) < headroom and (1 - b) < headroom
+local function NameKey(entry)
+    return Logic.SelectionKey({ realm = entry.realm, name = entry.name, linkId = entry.linkId })
 end
 
---- Returns a variation of the given color for a variation code.
---- Code 0 returns the color unchanged. For normal colors code 1 brightens and
---- code 2 darkens. For near-white colors (no brighten headroom) both codes return
---- distinct darker shades so they stay visible and distinguishable.
---- @param r number
---- @param g number
---- @param b number
---- @param code number 0, 1, or 2
---- @return number r, number g, number b
-function Logic.VaryColor(r, g, b, code)
-    if code == 0 then
-        return r, g, b
+--- Moves selections saved by name, before they were keyed by storage key, to the
+--- key of every listed character of that name, in place. A name key matching no
+--- listed character is left as it is.
+--- @param selected table saved selection keys -> true
+--- @param list table the compare list's entries
+function Logic.MigrateNameSelections(selected, list)
+    local migrated = {}
+    for _, entry in ipairs(list) do
+        local nameKey = NameKey(entry)
+        local key = Logic.SelectionKey(entry)
+        if key ~= nameKey and selected[nameKey] then
+            selected[key] = true
+            migrated[nameKey] = true
+        end
     end
-
-    if IsNearWhite(r, g, b) then
-        local factor = (code == 1) and Logic.COLOR_VARIATION_DARKEN_LIGHT or Logic.COLOR_VARIATION_DARKEN
-        return r * factor, g * factor, b * factor
+    for nameKey in pairs(migrated) do
+        selected[nameKey] = nil
     end
-
-    if code == 1 then
-        return ChannelBrighten(r), ChannelBrighten(g), ChannelBrighten(b)
-    end
-
-    return r * Logic.COLOR_VARIATION_DARKEN, g * Logic.COLOR_VARIATION_DARKEN, b * Logic.COLOR_VARIATION_DARKEN
 end
 
 function Logic.ShouldShowCompareSelectAll(characterCount)

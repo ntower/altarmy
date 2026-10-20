@@ -79,8 +79,6 @@ local UpdateSelectAllCheckbox
 local HideOutlierOptionTooltip
 local UpdateMetricDependentOptions
 
-local CharKey = AltArmy.CharKey
-
 local function EnsureSettings()
     AltArmyTBC_GraphSettings.selected = AltArmyTBC_GraphSettings.selected or {}
     if AltArmyTBC_GraphSettings.logarithmic == nil then
@@ -117,7 +115,7 @@ end
 
 local function GetSeriesForEntry(entry)
     if not LPD or not entry then return {} end
-    return LPD.GetSeriesForCharacter(entry.name, entry.realm, GetSelectedMetric(), entry.linkId)
+    return LPD.GetSeriesForCharacter(entry.key or entry.name, entry.realm, GetSelectedMetric(), entry.linkId)
 end
 
 local function IsLogarithmic()
@@ -160,35 +158,27 @@ local function WireOptionRowCheck(getSaved, setSaved, clearHoverPreview, setHove
     end
 end
 
--- A character's key here: a linked account's carries its link, so it is never one of ours of the same name.
-local function GraphKey(name, realm, linkId)
-    return CharKey(name, realm) .. (linkId and ("\1" .. linkId) or "")
+local function IsSelected(entry)
+    return EnsureSettings().selected[Logic.SelectionKey(entry)] == true
 end
 
-local function IsSelected(realm, name, linkId)
-    local s = EnsureSettings()
-    return s.selected[GraphKey(name, realm, linkId)] == true
+local function SetSelected(entry, on)
+    EnsureSettings().selected[Logic.SelectionKey(entry)] = on and true or nil
 end
 
-local function SetSelected(realm, name, on, linkId)
-    local s = EnsureSettings()
-    if on then
-        s.selected[GraphKey(name, realm, linkId)] = true
-    else
-        s.selected[GraphKey(name, realm, linkId)] = nil
-    end
-end
-
+-- Selections saved by name, before they were keyed by GUID, move to the GUID keys as the list is read.
 local function GetCompareList()
     if not LPD or not LPD.GetCharactersWithHistory then return {} end
-    return LPD.GetCharactersWithHistory()
+    local list = LPD.GetCharactersWithHistory()
+    Logic.MigrateNameSelections(EnsureSettings().selected, list)
+    return list
 end
 
 local function GetSelectedCharacters()
     local out = {}
     if not LPD or not LPD.GetCharactersWithHistory then return out end
-    for _, entry in ipairs(LPD.GetCharactersWithHistory()) do
-        if IsSelected(entry.realm, entry.name, entry.linkId) then
+    for _, entry in ipairs(GetCompareList()) do
+        if IsSelected(entry) then
             out[#out + 1] = entry
         end
     end
@@ -197,24 +187,24 @@ end
 
 local function EntryKey(entry)
     if not entry then return "" end
-    return GraphKey(entry.name, entry.realm, entry.linkId)
+    return Logic.SelectionKey(entry)
 end
 
--- Maps each selected character key to its color, applying same-class variations
--- (exact / brighter / darker, cycling) so duplicate-class lines stay distinct.
+-- Maps each selected character key to its line color: the class color, or for a
+-- second, third, ... character of a class the fallback color farthest from
+-- everything else on the chart (Logic.AssignLineColors).
 local function BuildSelectedColorByKey()
     local selected = GetSelectedCharacters()
-    local classFiles = {}
-    for i, entry in ipairs(selected) do
-        classFiles[i] = entry.classFile
-    end
-
-    local variations = Logic.BuildClassVariationIndices(classFiles)
-    local map = {}
+    local entries = {}
     for i, entry in ipairs(selected) do
         local r, g, b = LPD.GetClassColor(entry.classFile)
-        r, g, b = Logic.VaryColor(r, g, b, variations[i] or 0)
-        map[EntryKey(entry)] = { r = r, g = g, b = b }
+        entries[i] = { classFile = entry.classFile, r = r, g = g, b = b }
+    end
+
+    local colors = Logic.AssignLineColors(entries)
+    local map = {}
+    for i, entry in ipairs(selected) do
+        map[EntryKey(entry)] = colors[i]
     end
     return map
 end
@@ -304,10 +294,10 @@ local function OnCompareRowUnchecked(row, entry)
 end
 
 local function ToggleCompareSelection(row, entry)
-    local wasChecked = IsSelected(entry.realm, entry.name, entry.linkId)
+    local wasChecked = IsSelected(entry)
     local checked = not wasChecked
     row.check:SetChecked(checked)
-    SetSelected(entry.realm, entry.name, checked, entry.linkId)
+    SetSelected(entry, checked)
     if wasChecked and not checked then
         OnCompareRowUnchecked(row, entry)
     end
@@ -816,7 +806,7 @@ end
 local function CountCompareSelected(list)
     local count = 0
     for _, entry in ipairs(list) do
-        if IsSelected(entry.realm, entry.name, entry.linkId) then
+        if IsSelected(entry) then
             count = count + 1
         end
     end
@@ -830,7 +820,7 @@ end
 
 local function SetAllCompareSelected(selectAll)
     for _, entry in ipairs(GetCompareList()) do
-        SetSelected(entry.realm, entry.name, selectAll, entry.linkId)
+        SetSelected(entry, selectAll)
     end
 end
 
@@ -1482,7 +1472,7 @@ HandleCompareRowLeave = function(row, entry)
     hoveredCompareEntry = nil
     SetRowHoverHighlight(row, false)
 
-    if IsSelected(entry.realm, entry.name, entry.linkId) then
+    if IsSelected(entry) then
         ApplyHighlight()
         return
     end
@@ -1506,7 +1496,7 @@ end
 
 local function RefreshSelector()
     if not LPD or not LPD.GetCharactersWithHistory then return end
-    local list = LPD.GetCharactersWithHistory()
+    local list = GetCompareList()
     local insufficientList = {}
     if LPD.GetCharactersWithInsufficientHistory then
         insufficientList = LPD.GetCharactersWithInsufficientHistory()
@@ -1579,11 +1569,11 @@ local function RefreshSelector()
         -- White so class/gray realm escape codes from FormatCharacterLabel render correctly
         row.label:SetTextColor(1, 1, 1, 1)
 
-        row.check:SetChecked(IsSelected(entry.realm, entry.name, entry.linkId))
+        row.check:SetChecked(IsSelected(entry))
         row.check:SetScript("OnClick", function(self)
-            local wasChecked = IsSelected(entry.realm, entry.name, entry.linkId)
+            local wasChecked = IsSelected(entry)
             local nowChecked = self:GetChecked() and true or false
-            SetSelected(entry.realm, entry.name, nowChecked, entry.linkId)
+            SetSelected(entry, nowChecked)
             if wasChecked and not nowChecked then
                 OnCompareRowUnchecked(row, entry)
             end

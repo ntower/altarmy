@@ -14,6 +14,37 @@ describe("GraphLogic", function()
         Logic = AltArmy.GraphLogic
     end)
 
+    describe("Selection keys", function()
+        it("keys a character by its storage key, so two of one name stay apart", function()
+            local rogue = { name = "Frell Aa", realm = "R", key = "Player-1-A" }
+            local shaman = { name = "Frell Aa", realm = "R", key = "Player-1-B" }
+            assert.are.equal("R\\Player-1-A", Logic.SelectionKey(rogue))
+            assert.are_not.equal(Logic.SelectionKey(rogue), Logic.SelectionKey(shaman))
+        end)
+
+        it("falls back to the name and carries a linked account's link", function()
+            assert.are.equal("R\\Frell", Logic.SelectionKey({ name = "Frell", realm = "R" }))
+            assert.are.equal("R\\Player-1-A\1acct",
+                Logic.SelectionKey({ name = "Frell", realm = "R", key = "Player-1-A", linkId = "acct" }))
+        end)
+
+        it("moves selections saved by name to every character of that name", function()
+            local selected = { ["R\\Frell Aa"] = true, ["R\\Other"] = true, ["R\\Frell\1acct"] = true }
+            Logic.MigrateNameSelections(selected, {
+                { name = "Frell Aa", realm = "R", key = "Player-1-A" },
+                { name = "Frell Aa", realm = "R", key = "Player-1-B" },
+                { name = "Frell", realm = "R", key = "Player-2-A", linkId = "acct" },
+                { name = "Other", realm = "R", key = "Other" },
+            })
+            assert.are.same({
+                ["R\\Player-1-A"] = true,
+                ["R\\Player-1-B"] = true,
+                ["R\\Player-2-A\1acct"] = true,
+                ["R\\Other"] = true,
+            }, selected)
+        end)
+    end)
+
     describe("Compare select all", function()
         it("shows the All row only when there are more than four characters", function()
             assert.is_false(Logic.ShouldShowCompareSelectAll(4))
@@ -728,58 +759,153 @@ describe("GraphLogic", function()
         end)
     end)
 
-    describe("BuildClassVariationIndices", function()
-        it("assigns variation 0 to a lone class member", function()
-            local indices = Logic.BuildClassVariationIndices({ "WARRIOR", "MAGE" })
-            assert.are.same({ 0, 0 }, indices)
+    describe("Line colors", function()
+        -- RAID_CLASS_COLORS of the nine classes
+        local CLASS_COLORS = {
+            WARRIOR = { 0.78, 0.61, 0.43 },
+            PALADIN = { 0.96, 0.55, 0.73 },
+            HUNTER = { 0.67, 0.83, 0.45 },
+            ROGUE = { 1.00, 0.96, 0.41 },
+            PRIEST = { 1.00, 1.00, 1.00 },
+            SHAMAN = { 0.00, 0.44, 0.87 },
+            MAGE = { 0.25, 0.78, 0.92 },
+            WARLOCK = { 0.53, 0.53, 0.93 },
+            DRUID = { 1.00, 0.49, 0.04 },
+        }
+
+        local function entry(classFile)
+            local c = CLASS_COLORS[classFile]
+            return { classFile = classFile, r = c[1], g = c[2], b = c[3] }
+        end
+
+        local function distance(a, b)
+            return Logic.ColorDistance(a.r, a.g, a.b, b.r, b.g, b.b)
+        end
+
+        local function isFallback(c)
+            for _, f in ipairs(Logic.FALLBACK_LINE_COLORS) do
+                if f[1] == c.r and f[2] == c.g and f[3] == c.b then return true end
+            end
+            return false
+        end
+
+        describe("ToOklab", function()
+            it("matches the reference values", function()
+                local L, a, b = Logic.ToOklab(1, 1, 1)
+                assert.is_near(1, L, 1e-6)
+                assert.is_near(0, a, 1e-6)
+                assert.is_near(0, b, 1e-6)
+                L, a, b = Logic.ToOklab(1, 0, 0)
+                assert.is_near(0.6280, L, 1e-3)
+                assert.is_near(0.2249, a, 1e-3)
+                assert.is_near(0.1258, b, 1e-3)
+                L = Logic.ToOklab(0, 0, 0)
+                assert.is_near(0, L, 1e-6)
+            end)
         end)
 
-        it("cycles 0,1,2 within each class in order", function()
-            local indices = Logic.BuildClassVariationIndices({
-                "WARRIOR", "MAGE", "WARRIOR", "WARRIOR", "WARRIOR",
-            })
-            assert.are.same({ 0, 0, 1, 2, 0 }, indices)
+        describe("ColorDistance", function()
+            it("is zero for the same color and symmetric", function()
+                assert.are.equal(0, Logic.ColorDistance(0.5, 0.4, 0.3, 0.5, 0.4, 0.3))
+                assert.are.equal(
+                    Logic.ColorDistance(1, 0, 0, 0, 0, 1),
+                    Logic.ColorDistance(0, 0, 1, 1, 0, 0)
+                )
+            end)
+
+            it("puts a brightened shade of a color far closer than another hue", function()
+                local r, g, b = 0.78, 0.61, 0.43
+                local brighter = Logic.ColorDistance(
+                    r, g, b, r + (1 - r) * 0.35, g + (1 - g) * 0.35, b + (1 - b) * 0.35
+                )
+                local magenta = Logic.ColorDistance(r, g, b, 0.90, 0.00, 0.98)
+                assert.is_true(magenta > 0.2)
+                assert.is_true(brighter < magenta / 2)
+            end)
         end)
 
-        it("returns an empty table for no entries", function()
-            assert.are.same({}, Logic.BuildClassVariationIndices({}))
-        end)
-    end)
-
-    describe("VaryColor", function()
-        it("returns the color unchanged for code 0", function()
-            local r, g, b = Logic.VaryColor(0.5, 0.4, 0.3, 0)
-            assert.are.equal(0.5, r)
-            assert.are.equal(0.4, g)
-            assert.are.equal(0.3, b)
-        end)
-
-        it("brightens toward white for code 1 on normal colors", function()
-            local r, g, b = Logic.VaryColor(0.4, 0.4, 0.4, 1)
-            local expected = 0.4 + (1 - 0.4) * Logic.COLOR_VARIATION_BRIGHTEN
-            assert.are.equal(expected, r)
-            assert.are.equal(expected, g)
-            assert.are.equal(expected, b)
-            assert.is_true(r > 0.4)
+        describe("FALLBACK_LINE_COLORS", function()
+            it("are each clearly distinct from every class color, the avoided colors and each other", function()
+                local others = {}
+                for _, c in pairs(CLASS_COLORS) do others[#others + 1] = c end
+                for _, c in ipairs(Logic.LINE_COLOR_AVOID) do others[#others + 1] = c end
+                local palette = Logic.FALLBACK_LINE_COLORS
+                for i, f in ipairs(palette) do
+                    for _, o in ipairs(others) do
+                        local d = Logic.ColorDistance(f[1], f[2], f[3], o[1], o[2], o[3])
+                        assert.is_true(d >= Logic.DISTINCT_COLOR_DISTANCE)
+                    end
+                    for j = i + 1, #palette do
+                        local g = palette[j]
+                        local d = Logic.ColorDistance(f[1], f[2], f[3], g[1], g[2], g[3])
+                        assert.is_true(d >= Logic.DISTINCT_COLOR_DISTANCE)
+                    end
+                end
+            end)
         end)
 
-        it("darkens for code 2 on normal colors", function()
-            local r, g, b = Logic.VaryColor(0.4, 0.4, 0.4, 2)
-            local expected = 0.4 * Logic.COLOR_VARIATION_DARKEN
-            assert.are.equal(expected, r)
-            assert.are.equal(expected, g)
-            assert.are.equal(expected, b)
-            assert.is_true(r < 0.4)
-        end)
+        describe("AssignLineColors", function()
+            it("keeps the class color for the first character of each class", function()
+                local colors = Logic.AssignLineColors({ entry("WARRIOR"), entry("MAGE") })
+                assert.are.same({ { r = 0.78, g = 0.61, b = 0.43 }, { r = 0.25, g = 0.78, b = 0.92 } }, colors)
+            end)
 
-        it("uses two distinct darker shades for near-white colors", function()
-            local r1 = Logic.VaryColor(1, 1, 1, 1)
-            local r2 = Logic.VaryColor(1, 1, 1, 2)
-            assert.is_true(r1 < 1)
-            assert.is_true(r2 < 1)
-            assert.is_true(r1 > r2)
-            assert.are.equal(1 * Logic.COLOR_VARIATION_DARKEN_LIGHT, r1)
-            assert.are.equal(1 * Logic.COLOR_VARIATION_DARKEN, r2)
+            it("gives later characters of a class a fallback, each distinct from everything shown", function()
+                local entries = { entry("WARRIOR"), entry("MAGE"), entry("WARRIOR"), entry("WARRIOR"), entry("MAGE") }
+                local colors = Logic.AssignLineColors(entries)
+                assert.are.equal(5, #colors)
+                for i, c in ipairs(colors) do
+                    if i <= 2 then
+                        assert.is_false(isFallback(c))
+                    else
+                        assert.is_true(isFallback(c))
+                    end
+                    for j = i + 1, #colors do
+                        assert.is_true(distance(c, colors[j]) >= Logic.DISTINCT_COLOR_DISTANCE)
+                    end
+                end
+            end)
+
+            it("picks the fallback farthest from what is on the chart first", function()
+                -- with no Warlock shown magenta is the farthest fallback; a Warlock's lavender pushes it back
+                local colors = Logic.AssignLineColors({ entry("WARRIOR"), entry("WARRIOR") })
+                assert.are.same({ r = 0.90, g = 0.00, b = 0.98 }, colors[2])
+                colors = Logic.AssignLineColors({ entry("WARLOCK"), entry("WARLOCK") })
+                assert.are_not.same({ r = 0.90, g = 0.00, b = 0.98 }, colors[2])
+                assert.is_true(distance(colors[1], colors[2]) >= 0.2)
+            end)
+
+            it("is deterministic", function()
+                local entries = { entry("HUNTER"), entry("HUNTER"), entry("DRUID"), entry("HUNTER") }
+                assert.are.same(Logic.AssignLineColors(entries), Logic.AssignLineColors(entries))
+            end)
+
+            it("uses every fallback before repeating one", function()
+                local entries = {}
+                local n = #Logic.FALLBACK_LINE_COLORS
+                for i = 1, n + 3 do entries[i] = entry("PRIEST") end
+                local colors = Logic.AssignLineColors(entries)
+                assert.are.equal(n + 3, #colors)
+                local seen = {}
+                for i = 2, n + 1 do
+                    local key = colors[i].r .. "," .. colors[i].g .. "," .. colors[i].b
+                    assert.is_nil(seen[key])
+                    seen[key] = true
+                end
+                assert.is_true(isFallback(colors[n + 2]))
+            end)
+
+            it("treats characters without a class as one class", function()
+                local colors = Logic.AssignLineColors({
+                    { r = 0.7, g = 0.7, b = 0.7 }, { r = 0.7, g = 0.7, b = 0.7 },
+                })
+                assert.is_false(isFallback(colors[1]))
+                assert.is_true(isFallback(colors[2]))
+            end)
+
+            it("returns an empty table for no entries", function()
+                assert.are.same({}, Logic.AssignLineColors({}))
+            end)
         end)
     end)
 end)

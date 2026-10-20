@@ -179,7 +179,7 @@ local function CountUsableMilestones(milestones)
 end
 
 --- Build sorted chart series for one character.
---- @param name string
+--- @param name string its storage key (GUID), or its name
 --- @param realm string
 --- @param metric string|nil LPD.METRIC_TIME_PER_LEVEL or LPD.METRIC_CUMULATIVE_PLAYED
 --- @param linkId string|nil the linked account a row's character came from (nil: ours)
@@ -357,6 +357,7 @@ local function BuildCharacterEntry(entry, char)
         realm = entry.realm,
         faction = entry.faction or (char and char.faction) or nil,
         linkId = entry.linkId,
+        key = entry.key,
         classFile = entry.classFile or (char and char.classFile) or "",
         level = entry.level or (char and char.level) or 0,
     }
@@ -377,7 +378,7 @@ local function CollectCharactersByMilestoneCount(minCount, maxExclusive)
     end
 
     for _, entry in ipairs(SD.GetCharacterList()) do
-        local char = DS:GetCharacterFor(entry.name, entry.realm, entry.linkId)
+        local char = DS:GetCharacterFor(entry.key or entry.name, entry.realm, entry.linkId)
         local milestones = char and char.levelHistory and char.levelHistory.milestones
         if HasAnyMilestone(milestones) then
             local count = CountUsableMilestones(milestones)
@@ -407,7 +408,7 @@ function LPD.GetCharactersWithInsufficientHistory()
     end
 
     for _, entry in ipairs(SD.GetCharacterList()) do
-        local char = DS:GetCharacterFor(entry.name, entry.realm, entry.linkId)
+        local char = DS:GetCharacterFor(entry.key or entry.name, entry.realm, entry.linkId)
         if char and GetUsableMilestoneCountForChar(char) < 2 then
             out[#out + 1] = BuildCharacterEntry(entry, char)
         end
