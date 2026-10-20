@@ -1345,8 +1345,25 @@ function Theme.CreatePinnedHeaderScrollFade(opts)
         end
     end
 
+    -- Anchor under `pinned` (a sticky group header at the top of the list), or back under the header.
+    local pinnedTo = nil
+    local function pinBelow(pinned)
+        if pinned == pinnedTo then return end
+        pinnedTo = pinned
+        fadeFrame:ClearAllPoints()
+        if pinned then
+            fadeFrame:SetPoint("TOPLEFT", pinned, "BOTTOMLEFT", 0, 0)
+            fadeFrame:SetPoint("TOPRIGHT", pinned, "BOTTOMRIGHT", 0, 0)
+            fadeFrame:SetFrameLevel((pinned:GetFrameLevel() or 0) + 50)
+        else
+            fadeFrame:SetPoint("TOPLEFT", headerFrame, "BOTTOMLEFT", 0, topOverlap)
+            fadeFrame:SetPoint("TOPRIGHT", headerFrame, "BOTTOMRIGHT", 0, topOverlap)
+            fadeFrame:SetFrameLevel(headerLevel + 50)
+        end
+    end
+
     update()
-    return { frame = fadeFrame, Update = update }
+    return { frame = fadeFrame, Update = update, PinBelow = pinBelow }
 end
 
 --- Vertical gradient strip on the left edge of a horizontally scrolling viewport; visible when scroll offset > 0.

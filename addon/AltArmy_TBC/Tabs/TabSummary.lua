@@ -633,8 +633,10 @@ function sectionHeaders.Get(i)
     return h
 end
 
---- Show a header for each entry of `layout` ({ top, label }), hide the rest.
+--- Show a header for each entry of `layout` ({ top, label }), hide the rest; returns the one pinned to the
+--- top of the list, if any.
 function sectionHeaders.Place(layout)
+    local pinned = nil
     for i, item in ipairs(layout) do
         local h = sectionHeaders.Get(i)
         h:ClearAllPoints()
@@ -645,10 +647,14 @@ function sectionHeaders.Place(layout)
         h.icon:SetTexture(item.collapsed and "Interface\\Buttons\\UI-PlusButton-Up"
             or "Interface\\Buttons\\UI-MinusButton-Up")
         h:Show()
+        if item.top == 0 then
+            pinned = h
+        end
     end
     for i = #layout + 1, #sectionHeaders.pool do
         sectionHeaders.pool[i]:Hide()
     end
+    return pinned
 end
 
 local rowPool = {}
@@ -1101,7 +1107,12 @@ Update = function()
         end
     end
 
-    sectionHeaders.Place(AltArmy.CharacterSections.StickyHeaderLayout(elements, offset, visibleRows, ROW_HEIGHT))
+    local pinnedSection = sectionHeaders.Place(
+        AltArmy.CharacterSections.StickyHeaderLayout(elements, offset, visibleRows, ROW_HEIGHT))
+    -- the scroll gradient goes under the section header pinned at the top, else under the column headers
+    if summaryHeaderFade and summaryHeaderFade.PinBelow then
+        summaryHeaderFade.PinBelow(pinnedSection)
+    end
 
     -- Totals row: Level, Money, Played only; ours alone (a linked account's gold isn't ours)
     local totalLevel, totalMoney, totalPlayed = 0, 0, 0
