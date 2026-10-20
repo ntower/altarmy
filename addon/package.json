@@ -2,7 +2,7 @@
   "name": "altarmy-tbc",
   "version": "2.3.3",
   "private": true,
-  "description": "AltArmy — WoW TBC Classic addon (character summary, gear, search)",
+  "description": "AltArmy — WoW addon for Forever and TBC Anniversary (character summary, gear, search)",
   "scripts": {
     "setup:dev": "node scripts/setup-dev-tools.js",
     "typecheck": "node -e \"process.exit(0)\"",

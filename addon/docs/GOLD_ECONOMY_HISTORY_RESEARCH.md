@@ -172,7 +172,7 @@ Why this matters:
 
 ## Product positioning recommendation
 
-For broad usability in TBC:
+For broad usability on WoW: Forever (and TBC Anniversary):
 
 - Keep the entry experience as simple as Accountant Classic
 - Add deeper journals and export workflows like Journalator

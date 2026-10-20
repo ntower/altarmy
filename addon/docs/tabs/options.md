@@ -30,6 +30,7 @@ Options opened on a particular control (for example from the Alt Army scan butto
 | Command | Action |
 |---------|--------|
 | `/altarmy` / `/alta` | Open main UI |
+| `/alta <tab> [view]` | Open one tab, or one of its sub-views: `summary`, `economy` (`currency`, `crates`, `writs`, `supply`), `gear` (`grid`, `upgrade`), `inventory` (`bags`, `bank`, `mail`), `reputation`, `cooldowns` (`crafting`, `dungeons`), `graphs`, `guild` (`UI/MainTabs.lua`) |
 | `/altarmy networth [all] [scale]` | Net worth (vendor + Auctionator); `all` = all realms; scale 0–1 (default 0.9) |
 | `/altarmy export` | Export for the Alt Army website (see below; there is no button for it) |
 | `/altarmy scan` | Scan the open auction house (same as the **Alt Army scan** button): the kind the scan mode allows now (Options → General → Auction House) |

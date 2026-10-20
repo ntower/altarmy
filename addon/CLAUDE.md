@@ -7,7 +7,7 @@ workflows (`.github/workflows/addon-*.yml`), the pre-commit hook (`.githooks/`) 
 
 ## Project
 
-AltArmy TBC is a **World of Warcraft: The Burning Crusade Classic** account-wide alt-management addon. UI and data live under `AltArmy_TBC/` (Lua 5.1). Tests and tooling: `npm test`, `npm run check` (see `TESTING.md`, `LINTING.md`).
+AltArmy TBC is an account-wide alt-management addon for **World of Warcraft: Forever** (the main focus) and **TBC Anniversary** (supported, but not what new work is aimed at). The name and the `AltArmy_TBC/` folder predate Forever. UI and data live under `AltArmy_TBC/` (Lua 5.1). Tests and tooling: `npm test`, `npm run check` (see `TESTING.md`, `LINTING.md`).
 
 ## Documentation
 
@@ -52,6 +52,6 @@ Use `npm test` and `npm run check` / `npm run lint` from the repo root. Do **not
 
 ### Lua 5.1 local-variable limit
 
-WoW TBC runs Lua 5.1, which allows at most **200 local variables per function** (a file's main chunk counts as one function). Exceeding it fails at load with `main function has more than 200 local variables` — **luacheck does not catch this**; only `npm run check`'s Lua 5.1 compile pass does. Run it after editing large `Tabs/Tab*.lua` files (especially `TabGuild.lua` / `TabGear.lua` / `TabSearch.lua`), before considering the work done.
+WoW (Forever and TBC alike) runs Lua 5.1, which allows at most **200 local variables per function** (a file's main chunk counts as one function). Exceeding it fails at load with `main function has more than 200 local variables` — **luacheck does not catch this**; only `npm run check`'s Lua 5.1 compile pass does. Run it after editing large `Tabs/Tab*.lua` files (especially `TabGuild.lua` / `TabGear.lua` / `TabSearch.lua`), before considering the work done.
 
 When editing those large UI files: prefer packing related constants/session state into one table (`local UI = { ... }`, `local state = { ... }`) instead of many top-level `local`s; prefer small helper modules under `Data/` for pure logic rather than growing a tab file's main-chunk locals. Nested `do ... end` blocks do **not** reset the limit, only a new function gets a fresh 200; forward declarations (`local foo` then `foo = function...`) still count. If the warning appears, count top-level locals and reduce by grouping into tables or extracting helpers until comfortably under 200, leaving headroom for future edits.

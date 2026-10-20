@@ -1,19 +1,17 @@
 -- AltArmy TBC — Legacy Talent tracking (WoW Forever's account-wide Legacy Points system).
 -- Requires DataStore.lua loaded first.
 --
--- Speculative API surface: as of 2026-09-21, Blizzard has published no addon-facing documentation
--- for the Legacy system (see docs/WOW_FOREVER_COMPATIBILITY_RESEARCH.md, "Legacy Talents"). The
--- best community evidence (Thunderz96/forever-addon-kit, a beta addon-dev findings repo) confirms
--- only that "both [class talents and Legacy trees] run on Retail's trait system (C_Traits)" and
--- that the panel opens via ToggleLegacySystemUI at level 25 — no confirmed config/tree/node IDs or
--- exact function signatures exist yet. The system/tree ids come from Forever's DB2 (see
+-- Blizzard has published no addon-facing documentation for the Legacy system (see
+-- docs/WOW_FOREVER_COMPATIBILITY_RESEARCH.md, "Legacy Talents"). Both class talents and Legacy
+-- trees run on Retail's trait system (C_Traits). The system/tree ids come from Forever's DB2 (see
 -- LEGACY_SYSTEM_ID below); the config is resolved by them (C_Traits.GetConfigIDBySystemID, else
--- GetConfigIDByTreeID). This module calls the same C_Traits chain Retail's own class
--- talent trees use (GetNodeInfo/GetEntryInfo/GetDefinitionInfo), behind existence checks and pcall
--- throughout, so a wrong guess makes it silently capture nothing rather than error — same
--- "existence check over version check" house style as DataStoreTalents.lua's C_SpecializationInfo
--- fallback. Every candidate is also tracked in ApiCheck.lua so a real Forever login can confirm or
--- correct these guesses via /altarmy debug apicheck.
+-- GetConfigIDByTreeID), and the trees are walked with the same C_Traits chain Retail's own class
+-- talent trees use (GetNodeInfo/GetEntryInfo/GetDefinitionInfo). This works on Forever: the
+-- Cooldowns tab's Dedicated Study row and the website's Master Chef and Bartering read what it
+-- stores. Everything stays behind existence checks and pcall, so a client without the API
+-- captures nothing rather than erroring — the same "existence check over version check" house
+-- style as DataStoreTalents.lua's C_SpecializationInfo fallback. Every candidate is tracked in
+-- ApiCheck.lua (/altarmy debug apicheck).
 -- luacheck: globals C_Traits C_Spell GetSpellInfo C_EventUtils
 
 if not AltArmy or not AltArmy.DataStore then return end

@@ -4,6 +4,21 @@ Status: **preliminary planning**, written 2026-09-14. Blizzard announced *World 
 
 This is research only — no code changes. Nothing here is user-visible, so it doesn't trigger the CLAUDE.md "update docs in the same task" rule; it's meant to seed that work once Forever specifics are known.
 
+## Status as of 2026-10-20
+
+The doc below is a log, oldest first; each entry marks its own resolution inline. Checked against the code on 2026-10-20:
+
+**Settled.** Interface number and store ids; every area the first `/altarmy debug apicheck` run found missing (reputations, talents, item and spell info, auctions, profession list and recipe scan, with reagents the one exception below); recipes for Skinning, Mining, Herbalism and Fishing; secret values and the two bundled-library crashes; GUID-keyed characters; the auction house full scan; Legacy talents v2 (the Cooldowns tab's Dedicated Study row and the website's Master Chef and Bartering both read `legacyTalents.spells`, so the DB2-id config lookup works); First Aid's `GetProfessions` slot (2026-10-18); the SavedVariables cold-start client bug (everything built since, guild share, linked accounts, Inventory, relies on saved data persisting).
+
+**Still open.**
+- Reagents on Forever: no `C_TradeSkillUI.GetRecipeSchematic` path (`DataStoreProfessions.lua`). The Cooldowns tab carries built-in reagent lists for the cooldown crafts instead.
+- Two raw `GetSpellInfo` sites with no `C_Spell` fallback, silent on Forever: `SummaryData.lua` (the Poisons name) and `SearchSettings.lua` (profession key by spell name).
+- The minimap icon's position: LibDBIcon is upstream minor 56 with no local patch. The untested lead is the cold-start bug above, which would mean it fixed itself; drag, restart the client and see.
+- `C_Item.GetItemStats` on Forever and whether its keys match the tooltip parser's: no apicheck run has been recorded since 2026-09-17.
+- Guild link reads: the roster GUID return, the linked window's name shape, `GetBaseProfessionInfo`'s levels and the retail guild profession roster (`GetNumGuildTradeSkill` is in the apicheck manifest); the name format of addon-message senders and roster names (2026-09-28).
+- `GetRecipeCooldown` read from a link-opened window; Shaman dual wield (coded as denied); the wand `LEVEL_OVERRIDES` TODO in `PawnScalesForever.lua`; Wago's Forever patch field (`addon-release.yml` still sends only `supported_bc_patch`).
+- `SafeRegisterEvent` is used by `DataStore.lua`, `DataStoreTalents.lua`, `DataStoreLegacy.lua` and `WritOrders.lua`; about 30 other files still call `RegisterEvent` directly, all for core events, and no crash has come of it.
+
 ## How WoW addons support multiple game versions today
 
 Every retail/Classic/Cata Classic/etc. client build is still Lua 5.1 with the same addon-loading model (`.toc` → ordered file list → `SavedVariables`). What differs between versions is the **API surface** (functions added/removed/renamed, e.g. `C_Container` vs. old `GetContainerItemInfo`) and the **`## Interface` number** each client accepts. Addons bridge that gap with a mix of three mechanisms, almost always used together rather than as alternatives:
@@ -380,7 +395,7 @@ Dispatch: added `TRADE_SKILL_DATA_SOURCE_CHANGED` to `DataStore.lua`'s `SafeRegi
 > **Only linkable professions answer (tested 2026-10-04).** The server answers a profession link only for a skill line whose DB2 `SkillLine.CanLink` is 1. On Forever that is First Aid, Blacksmithing, Leatherworking, Alchemy, Cooking, Tailoring, Engineering and Enchanting. It is 0 for Fishing, Mining, Herbalism, Skinning and Comprehension (the mage profession: skill line 3012, window spell Research 1310041). Links to Comprehension (`trade:<GUID>:1310041:3012`) and Fishing (`trade:<GUID>:1240948:356`) never opened, so the reader tries only `R.LINKABLE_SKILL_LINES`. The others still need their window opened by the player (Comprehension: `/cast Research`).
 >
 > Still unverified in game:
-> - whether the own link comes back unlinked or linked under the player's name (both are accepted);
+> - ~~whether the own link comes back unlinked or linked under the player's name (both are accepted)~~ — answered 2026-10-05, below: linked, under the player's full name;
 > - whether `GetRecipeCooldown` reads correctly from a window opened this way.
 >
 > Set `/altarmy debug on` to get the `ownRecipeRead` dev dump.
@@ -425,13 +440,15 @@ One real bug surfaced and was fixed during implementation, worth recording as a 
 
 The `C_Reputation.GetFactionDataByIndex` field names used in the fallback (`reaction`, `currentReactionThreshold`, `nextReactionThreshold`, `currentStanding`, `atWarWith`, `canToggleAtWar`, `isHeader`, `isCollapsed`, `hasRep`, `isWatched`, `isChild`, `factionID`) are inferred from the public retail API shape, not yet confirmed against a live Forever snapshot — flagged in the code as unverified pre-beta-access, same epistemic status as the rest of this document until someone can run it in Forever and check `AltArmyTBC_Data.Characters[...].Reputations` actually populates.
 
+> **✅ Resolved (by use, noted 2026-10-20):** the Reputation tab and the website's reputation vendor discounts (the export's `R|` lines, built 2026-09-30) have read Forever characters' standings through this path since; the fields are right.
+
 **Talents — deliberately not implemented.** Re-read `DataStoreTalents.lua` in full: `readTalentTabs()`/`ScanTalents()` already fail safe (guarded, no partial writes), and `DT.ResolveSpecKey()` already has a designed no-data fallback (guesses a per-class "leveling spec"). Unlike Reputations, there is no well-grounded `C_*` field mapping to reach for here — Thaoky's own `DataStore_Talents.lua` is genuinely mid-rewrite (large sections commented out, referenced `C_SpecializationInfo.GetTalentInfo` sits inside disabled code), and modern retail's actual talent system (trait trees keyed by configID/nodeID via `C_Traits`/`C_ClassTalents`) isn't a simple tab/point-count analog of TBC's 3-tab system — there's nothing to safely fall back to without guessing at an entirely different data model. Shipping speculative `C_Traits` code with unverified field names would risk writing wrong data into `char.talents` (worse than the current honest "no data" state) rather than degrading gracefully like the `C_Reputation` fallback does.
 
 **Decision:** leave Talents as-is. The per-class `ResolveSpecKey` fallback is the intended, permanent Forever behavior for now — not a placeholder awaiting a fix. Revisit only if/when someone can check in-game what talent-related APIs Forever actually exposes (`/altarmy debug apicheck`'s Talents rows, plus manual `/dump` exploration of `C_Traits`/`C_ClassTalents`/`C_SpecializationInfo`), since Thaoky's code doesn't currently answer that question.
 
 ## Phase B progress: Item Info / Spell Info — compat layer built, DataStore and UI layers migrated (2026-09-17)
 
-> **Status:** the "UI layer still open" / "Not yet migrated" notes in this section are superseded by the "Full UI/presentation layer migrated" entry further down, plus the 2026-09-23 recipe-name fix. **Still open:** raw `GetSpellInfo` call sites with no `C_Spell` fallback — `SummaryData.lua` (poisons name), `SearchSettings.lua`, `TabCooldowns.lua`. (The three in `RecipeCraftLib.lua` went with CraftLib on 2026-10-02; its replacement, `Data/Recipes/RecipeInfo.lua`, falls back to `C_Spell`.)
+> **Status:** the "UI layer still open" / "Not yet migrated" notes in this section are superseded by the "Full UI/presentation layer migrated" entry further down, plus the 2026-09-23 recipe-name fix. **Still open (checked 2026-10-20):** raw `GetSpellInfo` call sites with no `C_Spell` fallback — `SummaryData.lua` (poisons name), `SearchSettings.lua`. (`TabCooldowns.lua` has since moved to `DS.CompatGetSpellInfo`; the three in `RecipeCraftLib.lua` went with CraftLib on 2026-10-02, and its replacement, `Data/Recipes/RecipeInfo.lua`, falls back to `C_Spell`.)
 
 Added [`DataStoreItemSpellCompat.lua`](../AltArmy_TBC/Data/DataStore/DataStoreItemSpellCompat.lua), a new small module (loaded right after core `DataStore.lua` in the `.toc`, before everything that could use it) exposing `DS.CompatGetItemInfo`, `CompatGetItemInfoInstant`, `CompatGetItemStats`, `CompatIsUsableItem`, `CompatGetSpellInfo`, and `CompatGetSpellLink`. Each tries the legacy global first, falls back to `C_Item`/`C_Spell`, and returns the **same tuple shape** as the legacy call so callers don't need to change their `select()`/destructuring logic — just the function name. `CompatGetSpellInfo` is the one genuine shape change: `C_Spell.GetSpellInfo` returns a table, not a multi-return, so it's unpacked back to the legacy 7-value shape with `rank` always `nil` (spell ranks are a TBC-and-earlier concept with no retail/Forever equivalent). Covered by a new [`DataStoreItemSpellCompat_spec.lua`](../spec/Data/DataStoreItemSpellCompat_spec.lua). `.luacheckrc` gained `C_Item`/`C_Spell`/`IsUsableItem`/`GetItemStats` globals; `Data/ApiCheck.lua`'s Item Info rows gained the matching `C_Item.*`/`C_Spell.*` candidates.
 
@@ -547,6 +564,8 @@ Investigated the user's report that "addons can't save data between sessions" on
 - **A larger-capacity workaround exists but needs a script outside the game:** since the client still runs ordinary addon Lua files at login (just not the SavedVariables ones), one tester built an external script that copies each addon's `WTF\...\SavedVariables\<Addon>.lua` into a small "seed" `.lua` file, loaded via a `!!`-prefixed loader addon listing that seed directly in its own `.toc` (so it loads as plain addon code, not as a SavedVariables load). This restores full-size data but requires a companion script running outside WoW plus a relog (not just `/reload`) whenever a new addon is added to the bridge.
 
 **Decision: no code change to AltArmy_TBC.** Given how much data this addon stores (characters, gear, professions, auctions, reputations, etc. across the whole account), neither community workaround is viable to build in: the 255-char macro trick is far too small for our data volume, and the external-script bridge asks end users to run something outside the game and is fragile (silent staleness if the bridge script isn't running). This is a client bug, not an addon-architecture problem — same treatment this doc already gives the still-unresolved minimap-position-save bug above. Logged here so it isn't mistaken for an AltArmy_TBC-specific bug if a user reports lost data, and to revisit once Blizzard ships a fix or acknowledges it (neither has happened yet).
+
+> **✅ Gone (noted 2026-10-20):** a later beta build fixed it. Everything built since (guild share, linked accounts, the Inventory tab, the auction scans) relies on saved data surviving a client restart, and it does.
 
 ## Weapon DPS silently ignored in gear compare/scoring on Forever (2026-09-20)
 
@@ -667,6 +686,8 @@ WoW Forever's **Legacy** system: an account-wide progression layer, separate fro
 - It stores `legacyTalents.spells[definition spellID] = rank`.
 - `ProfitExport` sends those ranks as `T|<spell id>|<rank>` lines.
 - Both config getters are now in `ApiCheck.lua`. They are real Retail APIs, but it's still unconfirmed that Forever serves the Legacy config through them.
+
+> **✅ Confirmed by use (noted 2026-10-20):** Forever does. The Cooldowns tab's Dedicated Study row (2026-10-19) appears only for characters whose `legacyTalents.spells` holds that talent, and the website's Master Chef and Bartering come from the `T|` lines; both have worked on Forever characters.
 
 ## Recipe names/tooltips resolved to unrelated items (2026-09-23)
 

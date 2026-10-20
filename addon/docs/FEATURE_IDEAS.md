@@ -1,6 +1,6 @@
 # AltArmy TBC — Feature Ideas
 
-Possible new features for `AltArmy_TBC`, compared against popular WoW alt/account-management addons. Status is relative to the current codebase. Shipped details live in [FEATURES.md](FEATURES.md) and [tabs/](tabs/).
+Possible new features for `AltArmy_TBC`, compared against popular WoW alt/account-management addons. WoW: Forever is the addon's main focus; TBC Anniversary stays supported but is not what drives the roadmap. Status is relative to the current codebase. Shipped details live in [FEATURES.md](FEATURES.md) and [tabs/](tabs/).
 
 ## Comparison baseline
 
@@ -33,7 +33,7 @@ Compared against:
 
 ---
 
-## Highest-value additions (best TBC fit)
+## Highest-value additions
 
 ### 1) Lockouts planner — partial
 
@@ -113,6 +113,6 @@ Compared against:
 
 ## Notes for scoping
 
-- Prefer strong TBC relevance first (lockouts, cooldowns, mail, gold).
+- WoW: Forever comes first: prefer what helps there (lockouts, cooldowns, mail, gold all do). TBC Anniversary stays supported, so a Forever-only feature should degrade quietly on TBC (as the Economy tab does) and nothing shared should break there.
 - Keep data collection event-driven.
 - Add opt-in controls for noisy reminders.

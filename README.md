@@ -1,6 +1,6 @@
 # Alt Army
 
-Account-wide alt management for World of Warcraft (TBC Anniversary and WoW: Forever), in two parts that share
+Account-wide alt management for World of Warcraft (WoW: Forever, and TBC Anniversary), in two parts that share
 this repository:
 
 - **[`addon/`](addon/README.md)** – the Alt Army addon: character summary, gear and reputation grids, profession

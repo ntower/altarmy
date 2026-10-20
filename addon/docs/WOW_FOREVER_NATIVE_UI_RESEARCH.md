@@ -130,7 +130,7 @@ Two kinds of built-in scroll container are used. Both ship in `Blizzard_SharedXM
 
 ## Not yet done
 
-These are left over from the implications above and are deferred:
+These are left over from the implications above and are deferred (all three still open as of 2026-10-20):
 
 - **Native horizontal scroll bars:** an XML template inheriting `HorizontalScrollBarTemplate` with the `MinimalScrollBar` children would drop `Theme.CreateHorizontalScrollBar`'s manual drag math.
 - **Addon compartment:** add `AddonCompartmentFrame` / `## AddonCompartmentFunc` on Forever, keeping LibDBIcon for TBC.

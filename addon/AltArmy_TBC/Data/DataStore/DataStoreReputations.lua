@@ -49,8 +49,8 @@ end
 -- Returns the same tuple shape as the legacy GetFactionInfo(index):
 -- name, description, standingID, bottomValue, topValue, earnedValue, atWarWith, canToggleAtWar,
 -- isHeader, isCollapsed, hasRep, isWatched, isChild, factionID
--- The C_Reputation.GetFactionDataByIndex field names below are inferred from the public retail
--- API shape and not yet verified against a live Forever snapshot.
+-- The C_Reputation.GetFactionDataByIndex field names below are the public retail API's; Forever
+-- characters' standings have been read through them since 2026-09 (Reputation tab, R| export).
 local function API_GetFactionInfo(index)
     if GetFactionInfo then return GetFactionInfo(index) end
     if C_Reputation and C_Reputation.GetFactionDataByIndex then

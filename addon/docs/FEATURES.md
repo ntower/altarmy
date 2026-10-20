@@ -4,12 +4,12 @@ Shipped features in the current codebase. Per-tab detail: [tabs/](tabs/). Archit
 
 ## What the addon does
 
-AltArmy TBC is an account-wide alt management addon for TBC Classic that:
+AltArmy TBC is an account-wide alt management addon for WoW: Forever (the main focus) and TBC Anniversary that:
 
 - Collects and persists character data automatically while you play.
 - Presents cross-character information in tabbed dashboards.
 - Supports item and recipe search across characters, with recipe skill, difficulty and source filters from built-in recipe data (optional guildmate recipes).
-- Shows what each Waylaid Crate costs per point of Merchant's Favor, filled from the auction house or crafted by your characters, what each Craftsman's Writ's order costs to buy or to craft with your characters, and explains alt-army.com's crafting planner (WoW Forever).
+- Shows what each Waylaid Crate costs per point of Merchant's Favor, filled from the auction house or crafted by your characters, and what each Craftsman's Writ's order costs to buy or to craft with your characters (WoW Forever). A Supply Chain view explaining alt-army.com's crafting planner is built but off behind `AltArmy.FeatureFlags.economySupplyChain`.
 - Tracks profession cooldown readiness (on WoW Forever its shared transmute cooldown, Mooncloth, the Salt Shaker, Comprehension's Study and the Legacy talent Dedicated Study), stockpile mailing, and raid/heroic lockouts.
 - Graphs leveling progress over calendar and played time.
 - Optionally shares character cards and recipes with guildmates.
@@ -23,12 +23,12 @@ AltArmy TBC is an account-wide alt management addon for TBC Classic that:
 
 ## Main UI and access
 
-- The main frame is a native Blizzard window (portrait, title bar, close button, rock background), as tall as the character sheet. It can be moved and closed with Escape.
+- The main frame is a native Blizzard window (portrait, title bar, close button, rock background), the character sheet's size at first. It can be moved and closed with Escape, and made taller from the grip at its bottom-right corner (up to twice the stock height; the size is kept); `/altarmy resetsize` restores the stock size. The grip changes the width only with the Debug page's **Window width resize**, until every tab reflows. **Window Scale** (Options → General → Look and Feel, 50% to 200%) scales the whole window.
 - Tabs are icon flyouts on the right edge; hovering one shows its name. The portrait icon and title show the active tab.
-- Open with `/altarmy` or `/alta`.
+- Open with `/altarmy` or `/alta`; `/alta <tab> [view]` opens one tab or sub-view (`/alta economy crates`, `/alta cooldowns dungeons`).
 - Minimap button (left-click toggle, drag to move).
-- The toolbar item/recipe search box is on the Summary tab. Typing in it switches into Search mode. Reputation and Guild use the same toolbar spot for their own filter; Inventory puts its character picker and layout dropdown there. Gear, Economy, Cooldowns and Graphs have no toolbar search. Clicking any side tab leaves Search mode.
-- One toolbar settings button opens the active tab's settings panel (Summary, Gear, Reputation, Cooldowns, Search).
+- The toolbar item/recipe search box is on the Summary tab. Typing in it switches into Search mode. Reputation (faction filter), Guild (character and profession search), Inventory (item search; its character picker and layout dropdown are a controls row at the top of its body) and Economy's Currency view (its filter) use the same toolbar spot for their own box; Economy's Waylaid Crates and Craftsman's Writs views put a Filter dropdown at its right end. Gear, Cooldowns and Graphs have no toolbar search. Clicking any side tab leaves Search mode.
+- One toolbar settings button opens the active tab's settings panel (Summary, Gear, Economy's Currency view, Reputation, Cooldowns, Graphs, Search).
 - `/altarmy networth [all] [scale]` — vendor + Auctionator AH value across characters (Auctionator required).
 
 ## Tabs
@@ -36,15 +36,16 @@ AltArmy TBC is an account-wide alt management addon for TBC Classic that:
 | Tab | Doc |
 |-----|-----|
 | [Summary](tabs/summary.md) | Character overview, totals, missing-data warnings, bank-alt icons |
+| [Economy](tabs/economy.md) | WoW Forever only (the side tab is hidden elsewhere): Currency × character grid; Waylaid Crate costs per Merchant's Favor, filled via the AH or crafting; Craftsman's Writ orders priced to buy or craft; the alt-army.com crafting planner guide (Supply Chain) waits behind a feature flag |
 | [Gear](tabs/gear.md) | Equipment grid, item check, compare panel, upgrade scoring / alerts |
-| [Economy](tabs/economy.md) | Currency × character grid; Waylaid Crate costs per Merchant's Favor, filled via the AH or crafting; Craftsman's Writ orders priced to buy or craft; alt-army.com crafting planner guide (WoW Forever only) |
 | [Inventory](tabs/inventory.md) | One character's bags, bank and mail as slot grids like the stock windows (per-bag blocks or one combined grid; inbox rows or an item grid) |
 | [Reputation](tabs/reputation.md) | Faction matrix, score-sort, optional Zygor guide links |
 | [Cooldowns](tabs/cooldowns.md) | Crafting cooldowns + Raids lockouts, stockpile send / send-all |
 | [Search](tabs/search.md) | Items and recipes (toolbar Search mode) |
 | [Graphs](tabs/graphs.md) | Level progress charts and history imports |
 | [Guild](tabs/guild.md) | Opt-in guild data sharing (conditional tab) |
-| [Options](tabs/options.md) | Options pages (AddOns → AltArmy) + slash commands |
+
+Not a tab: the [Options](tabs/options.md) pages (Interface → AddOns → AltArmy) and the slash commands.
 
 ## Cross-cutting
 
@@ -62,8 +63,6 @@ AltArmy TBC is an account-wide alt management addon for TBC Classic that:
 ### Linked accounts (WoW: Forever only; off on TBC Anniversary until tested there)
 
 Your other WoW accounts (the same Battle.net login) send their characters to this one, which shows them read-only beside yours: Summary ("Online" while that account is on it; never in the totals, missing-data warnings, main star or bank icon), Search (items and recipes, shown and sorted as your own), Cooldowns and raid lockouts, and `/networth` (gold and items, each linked character its own line). Never counted as yours: mail alerts, gear upgrade alerts, guild sharing (a linked account shares itself), the profit export and the website upload. Kept in its own SavedVariable, `AltArmyTBC_LinkedData` (`Data/Link/LinkStore.lua`), checked unit by unit (`LinkValidate.lua`) against a whitelist of what is sent (`LinkDomains.lua`: of level history only each milestone's played times, for the Graphs tab; no auction data, mail text or UI state). Linking and syncing (Options → Sharing → Linked accounts): your other accounts online with Alt Army are listed; Link on one asks the other, which shows a dialog (`UI/LinkAccountDialog.lua`), both showing the same 4-digit code; once accepted, both send each other a manifest of per-domain hashes and ask for what changed (`Data/Link/LinkSession.lua`, `LinkSync.lua`), over Battle.net game data (`LinkTransport.lua`, prefix `AltArmyLink`, chunked by `LinkCodec.lua`); a character's changes (money, bags, gear, recipes, ...) follow 20 s after it first changes, and deleting characters tells linked accounts 20 s after the last deletion; Unlink tells the other account (at once, or when it is next online). Only game accounts on your own Battle.net account are ever answered. Nothing is sent in combat. `/altarmy debug link fake [n]` and `clear` link copies of this account's characters to try the display without a second client. A character saved before the addon stored GUIDs is sent once it logs in again.
-- Per-tab pin/hide (and related sort) settings on major matrix/list tabs.
-
 ### Bank alts
 
 - Per-character bank-alt flag in Options (Characters).
@@ -103,7 +102,7 @@ See [tabs/options.md](tabs/options.md#export-for-the-alt-army-website). Bundles 
 On WoW Forever only, an **Alt Army scan** button sits above the auction house window; `/altarmy scan` does
 the same. Elsewhere (TBC Anniversary) the button, the Auction House options section, the automatic scan and
 the reading of other addons' full scans are all off, whatever the client's API offers
-(`AuctionScan.HasApi` checks `DataStore.IsWowForever` first).
+(`AuctionScan.HasFullApi` and `HasSummaryApi`, which `HasApi` ORs, check `DataStore.IsWowForever` first).
 
 - A **full scan** reads every listing and saves, per item, how many units are listed at each price.
   The website prices crafts from that, so one odd listing no longer decides what an item costs.
@@ -138,7 +137,7 @@ the reading of other addons' full scans are all off, whatever the client's API o
 
 ### Data collection and persistence
 
-Stored under `AltArmyTBC_Data`, `AltArmyTBC_Options`, tab settings tables, `AltArmyTBC_GuildData`, `AltArmyTBC_SharingSettings`, and `AltArmyTBC_AuctionBook` (see [ARCHITECTURE.md](ARCHITECTURE.md)).
+Stored under `AltArmyTBC_Data`, `AltArmyTBC_Options`, tab settings tables, `AltArmyTBC_GuildData`, `AltArmyTBC_SharingSettings`, `AltArmyTBC_AuctionScans`, `AltArmyTBC_AuctionBook` and `AltArmyTBC_LinkedData` (see [ARCHITECTURE.md](ARCHITECTURE.md)).
 
 Core domains include: character basics, containers/bank, equipment, currencies, professions/recipes, cooldowns/specialization, lockouts, reputations, mail, auctions/bids, talents, level history.
 
@@ -152,4 +151,4 @@ When a character learns a recipe with the profession window closed, AltArmy reco
 
 On WoW Forever, AltArmy also reads a character's recipes by itself, so no profession window ever has to be opened. It reads only professions whose recipes are missing or out of date (those the Summary warning points at): about 10 seconds after login, and a few seconds after learning a recipe it couldn't recognize. A recipe it recognizes is stored without a read. Reading only those keeps the profession window's opening sound to when it is needed. Each read opens that profession's window out of sight, with no click, through a link to the character's own profession; the window is closed again once it has been read. Reads wait until the character is out of combat, not typing, and has no window open. Only professions the game lets players link can be read this way: Fishing, Mining, Herbalism, Skinning and the mage's Comprehension still need their window opened. On Forever the Summary warning for an alt's missing recipes in a profession that can be read says only to log in with it. Turn it off under Options > General > Advanced if it gets in the way of another profession addon.
 
-The tables are generated from the game client's data (wago.tools) and open-source server data. A daily GitHub workflow opens a pull request when a new client build or a new release of the server databases changes recipes. See `AltArmy_TBC/Data/DESIGN.md` ("Recipe data").
+The tables are generated from the game client's data (wago.tools) and open-source server data. A daily GitHub workflow (`game-data`, at the monorepo root) regenerates them when a new client build or a new release of the server databases changes them, commits to main and releases the addon; a game patch (a build whose major.minor.patch moved) opens a pull request instead, since the TOC's interface needs a person. See `AltArmy_TBC/Data/DESIGN.md` ("Recipe data").

@@ -6,6 +6,8 @@ This is a **static/source research** pass only (addon changelogs, `.toc` files, 
 
 All integrations listed here are already accessed defensively in AltArmy's own code (nil/existence-checked, feature hidden or degraded when the addon is absent) — see `docs/FEATURES.md` and the per-file references below. This audit is about whether the *other* addon still works on Forever, not about AltArmy's own defensiveness.
 
+Checked 2026-10-20: the integration code is as listed (Auctionator's has grown, see the table), and the live-verification pass suggested above has not been done. The upstream statuses are as of 2026-09-22 and have not been re-checked since; Zygor's launch target is still ahead.
+
 ## Status table
 
 | Addon | AltArmy files | Upstream source | Forever status | API changed? | Last checked | Notes |
@@ -15,7 +17,7 @@ All integrations listed here are already accessed defensively in AltArmy's own c
 | RestedXP (RXPGuides) | `Data/Integrations/RestedXpIntegration.lua`, `RestedXpQuestRewardConflict.lua`, `UI/RestedXpQuestRewardConflictDialog.lua`, `Data/DataStore/DataStoreLevelHistory.lua` | [GitHub](https://github.com/RestedXP/RXPGuides) | Confirmed working (base build) | No | 2026-09-22 | `RXPGuides_TBC.toc` itself not yet on Forever interface |
 | Questie | `Data/DataStore/DataStoreLevelHistory.lua` | [github.com/Questie/Questie](https://github.com/Questie/Questie) | Abandoned (no Forever build yet) | No | 2026-09-22 | |
 | NovaInstanceTracker | `Data/DataStore/DataStoreLevelHistory.lua` | [CurseForge](https://www.curseforge.com/wow/addons/nova-instance-tracker) (closed-source, no public repo) | Confirmed working | Unknown | 2026-09-22 | |
-| Auctionator | `Data/Characters/NetWorth.lua` | [CurseForge](https://www.curseforge.com/wow/addons/auctionator) ([github.com/Auctionator](https://github.com/Auctionator) org now private/404 for the main repo) | Confirmed working | No (best-effort) | 2026-09-22 | |
+| Auctionator | `Data/Characters/NetWorth.lua`, `Data/Integrations/AuctionatorScans.lua`, `AuctionatorSearch.lua` | [CurseForge](https://www.curseforge.com/wow/addons/auctionator) ([github.com/Auctionator](https://github.com/Auctionator) org now private/404 for the main repo) | Confirmed working | No (best-effort) | 2026-09-22 | |
 | Zygor Guides | `Data/Integrations/ZygorIntegration.lua`, `Tabs/TabReputation.lua` | [zygorguides.com](https://zygorguides.com) (closed-source) | Planned, not shipped (targeting 2026-11-04) | Unknown | 2026-09-22 | No Forever build to inspect until launch day |
 
 ## Findings

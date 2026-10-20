@@ -1,13 +1,13 @@
 ## Interface: 20506, 16001
 ## Title: AltArmy
-## Notes: Alt management: character summary, gear and reputation grids, per-character containers, cross-character item search. TBC Classic.
+## Notes: Alt management: character summary, gear and reputation grids, per-character containers, cross-character item search. WoW: Forever and TBC Anniversary.
 ## Version: 2.3.3
 ## Author: Nick Tower
 ## X-Wago-ID: aNDMjY6o
 ## SavedVariables: AltArmyTBC_Options, AltArmyTBC_Data, AltArmyTBC_GearSettings, AltArmyTBC_ReputationSettings, AltArmyTBC_SummarySettings, AltArmyTBC_SearchSettings, AltArmyTBC_GraphSettings, AltArmyTBC_GuildData, AltArmyTBC_SharingSettings, AltArmyTBC_AuctionScans, AltArmyTBC_AuctionBook, AltArmyTBC_LinkedData
 ## OptionalDeps: Auctionator, TacoTip, GearScoreTBCClassic, RXPGuides, RXPGuides_TBC, NovaInstanceTracker, Questie, ZygorGuidesViewerClassicTBCAnniv
 
-# TBC Classic; verify in-game with: /dump select(4, GetBuildInfo())
+# WoW: Forever (16001) and TBC Anniversary (20506); verify in-game with: /dump select(4, GetBuildInfo())
 UI\NativeUI.lua
 UI\Theme.lua
 UI\Text.lua
