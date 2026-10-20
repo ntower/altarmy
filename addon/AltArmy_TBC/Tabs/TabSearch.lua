@@ -675,8 +675,9 @@ local function UpdateNoResultsHint()
     end
 end
 
--- Group overlay: total count (centered in group) + item icon to the right. Children of the
--- ScrollBox's scroll target so they move and clip with the rows they span.
+-- Group overlay: total count + item icon to the right, kept in view while the group is (see
+-- PinGroupOverlays). Children of the ScrollBox's scroll target so they move and clip with the
+-- rows they span.
 local groupOverlayPool = {}
 local function getGroupOverlay(i)
     if not groupOverlayPool[i] then
@@ -1157,15 +1158,17 @@ UpdateStickyHeaders = function()
     UpdateStickyHeaderFade(headerRows, stickyTops, scrollValue)
 end
 
--- Place a Total-column group overlay spanning row frames firstRowFrame..lastRowFrame.
-local function placeGroupOverlay(overlay, firstRowFrame, lastRowFrame, totalColX, totalColW, firstEntry, groupTotal)
+-- Place a Total-column group overlay over the whole group, rows without a frame included,
+-- measured from one of its row frames (rowFrame, showing element rowElement).
+local function placeGroupOverlay(overlay, rowFrame, rowElement, totalColX, totalColW, group)
+    local firstEntry, groupTotal = group.firstEntry, group.total
+    local above = rowElement.top - group.top
     overlay:ClearAllPoints()
-    overlay:SetPoint("TOPLEFT", firstRowFrame, "TOPLEFT", totalColX, 2)
-    overlay:SetPoint("BOTTOMLEFT", lastRowFrame, "BOTTOMLEFT", totalColX, 2)
-    overlay:SetPoint("TOPRIGHT", firstRowFrame, "TOPLEFT", totalColX + totalColW, 2)
-    overlay:SetPoint("BOTTOMRIGHT", lastRowFrame, "BOTTOMLEFT", totalColX + totalColW, 2)
-    overlay.icon:ClearAllPoints()
-    overlay.icon:SetPoint("CENTER", overlay, "RIGHT", -2 - UI.OVERLAY_ICON_SIZE / 2, 0)
+    overlay:SetPoint("TOPLEFT", rowFrame, "TOPLEFT", totalColX, 2 + above)
+    overlay:SetPoint("TOPRIGHT", rowFrame, "TOPLEFT", totalColX + totalColW, 2 + above)
+    overlay:SetHeight(group.bottom - group.top)
+    overlay.group = group
+    overlay.pinnedOffset = nil
     local iconPath = "Interface\\Icons\\INV_Misc_QuestionMark"
     local compatGetItemInfo = AltArmy.DataStore and AltArmy.DataStore.CompatGetItemInfo
     if firstEntry and firstEntry.itemLink and compatGetItemInfo then
@@ -1176,7 +1179,6 @@ local function placeGroupOverlay(overlay, firstRowFrame, lastRowFrame, totalColX
     overlay.icon:Show()
     overlay.total:ClearAllPoints()
     overlay.total:SetPoint("RIGHT", overlay.icon, "LEFT", -3, 0)
-    overlay.total:SetPoint("CENTER", overlay, "CENTER", 0, 0)
     overlay.total:SetWidth(math.max(1, totalColW - UI.OVERLAY_ICON_SIZE - 2))
     overlay.total:SetText(tostring(groupTotal))
     overlay:Show()
@@ -1184,7 +1186,31 @@ end
 
 local function hideUnusedOverlays(pool, usedCount)
     for idx = usedCount + 1, #pool do
-        if pool[idx] then pool[idx]:Hide() end
+        if pool[idx] then
+            pool[idx]:Hide()
+            pool[idx].group = nil
+        end
+    end
+end
+
+-- Slide each shown overlay's icon and total with the scroll: centered on its group while the
+-- group fits the view, else pinned a row's height inside the view's edge, leaving with the group.
+local function PinGroupOverlays()
+    local viewTop, viewBottom = scrollBox:GetTop(), scrollBox:GetBottom()
+    if not viewTop or not viewBottom then return end
+    for _, overlay in ipairs(groupOverlayPool) do
+        local spanTop = overlay.group and overlay:IsShown() and overlay:GetTop()
+        if spanTop then
+            local height = overlay.group.bottom - overlay.group.top
+            local center = AltArmy.SearchListModel.PinnedCenter(
+                0, height, spanTop - viewTop, spanTop - viewBottom, UI.ROW_HEIGHT)
+            local offset = height / 2 - center
+            if offset ~= overlay.pinnedOffset then
+                overlay.pinnedOffset = offset
+                overlay.icon:ClearAllPoints()
+                overlay.icon:SetPoint("CENTER", overlay, "RIGHT", -2 - UI.OVERLAY_ICON_SIZE / 2, offset)
+            end
+        end
     end
 end
 
@@ -1279,8 +1305,8 @@ do
     ScrollUtil.InitScrollBoxListWithScrollBar(scrollBox, searchScrollBar, view)
 end
 
--- Total overlays span the visible frames of each item group; re-place whenever the set of
--- frames changes (frames move with the scroll target, so plain scrolling needs no work).
+-- Total overlays span each item group with a frame in view; re-place whenever the set of
+-- frames changes (frames move with the scroll target, so scrolling only re-pins the content).
 PlaceGroupOverlays = function()
     local totalColX = (colWidths.Item or 280) + (colWidths.Character or 160)
     local totalColW = colWidths.Total or 72
@@ -1288,26 +1314,22 @@ PlaceGroupOverlays = function()
     for _, rowFrame in scrollBox:EnumerateFrames() do
         local element = rowFrame.GetElementData and rowFrame:GetElementData()
         local group = element and element.group
-        if group then
-            local span = spans[group]
-            if not span then
-                span = { first = rowFrame }
-                spans[group] = span
-                order[#order + 1] = group
-            end
-            span.last = rowFrame
+        if group and not spans[group] then
+            spans[group] = { frame = rowFrame, element = element }
+            order[#order + 1] = group
         end
     end
     for i, group in ipairs(order) do
         local span = spans[group]
-        placeGroupOverlay(getGroupOverlay(i), span.first, span.last, totalColX, totalColW,
-            group.firstEntry, group.total)
+        placeGroupOverlay(getGroupOverlay(i), span.frame, span.element, totalColX, totalColW, group)
     end
     hideUnusedOverlays(groupOverlayPool, #order)
+    PinGroupOverlays()
 end
 
 scrollBox:RegisterCallback(BaseScrollBoxEvents.OnScroll, function()
     UpdateStickyHeaders()
+    PinGroupOverlays()
 end, frame)
 scrollBox:RegisterCallback(ScrollBoxListMixin.Event.OnDataRangeChanged, function()
     PlaceGroupOverlays()

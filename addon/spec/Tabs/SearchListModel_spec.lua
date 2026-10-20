@@ -123,4 +123,39 @@ describe("SearchListModel", function()
         assert.are.equal(1, elements[2].group.total)
         assert.is_nil(elements[4].group)
     end)
+    it("gives each element and group its list offset", function()
+        local elements = Model.Build({
+            { id = "items", list = { item(1, "A", 1), item(1, "A", 2), item(2, "B", 1) }, grouped = true },
+            { id = "recipes", list = { { recipeID = 1 } } },
+        }, { headerHeight = 18, headerRowGap = 3, rowHeight = 20, omitFirstHeader = true })
+        assert.are.same({ 0, 20, 40, 60, 81 }, {
+            elements[1].top, elements[2].top, elements[3].top, elements[4].top, elements[5].top,
+        })
+        assert.are.equal(0, elements[1].group.top)
+        assert.are.equal(40, elements[1].group.bottom)
+        assert.are.equal(40, elements[3].group.top)
+        assert.are.equal(60, elements[3].group.bottom)
+    end)
+
+    describe("PinnedCenter", function()
+        -- A 200px group, content 20px tall.
+        it("centers on the group while it is wholly in view", function()
+            assert.are.equal(100, Model.PinnedCenter(0, 200, -50, 300, 20))
+        end)
+
+        it("slides with the scroll, then pins inside the view's top edge", function()
+            assert.are.equal(110, Model.PinnedCenter(0, 200, 100, 300, 20))
+            assert.are.equal(160, Model.PinnedCenter(0, 200, 150, 300, 20))
+        end)
+
+        it("pins inside the view's bottom edge", function()
+            assert.are.equal(70, Model.PinnedCenter(0, 200, -200, 80, 20))
+        end)
+
+        it("leaves the view with the group's last row", function()
+            assert.are.equal(190, Model.PinnedCenter(0, 200, 195, 400, 20))
+            assert.are.equal(190, Model.PinnedCenter(0, 200, 250, 400, 20))
+            assert.are.equal(10, Model.PinnedCenter(0, 200, -400, 5, 20))
+        end)
+    end)
 end)
