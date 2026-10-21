@@ -16,6 +16,13 @@ if not AltArmy then return end
 AltArmy.GuildShareData = AltArmy.GuildShareData or {}
 local GSD = AltArmy.GuildShareData
 
+-- Whether two realms are one (Forever's coalesced realms are: RealmFilter.sameRealm).
+local function sameRealm(a, b)
+    local RF = AltArmy.RealmFilter
+    if RF and RF.sameRealm then return RF.sameRealm(a, b) end
+    return (a or "") == (b or "")
+end
+
 local function now()
     return (time and time()) or 0
 end
@@ -125,7 +132,7 @@ local function ownCharacters(realm)
     end
     if DS.ForEachLinkedCharacter then
         pcall(DS.ForEachLinkedCharacter, DS, function(r, key, char)
-            if r == realm then add(key, char) end
+            if sameRealm(r, realm) then add(key, char) end
         end)
     end
     return byGuid, byName

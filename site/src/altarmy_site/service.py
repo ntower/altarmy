@@ -1944,9 +1944,11 @@ def selection(
 ) -> Selection | None:
     """The saved realm/faction if it still has characters or an auction house, else the group with the
     most characters, else the realm scanned most recently; None if there is none of these."""
-    groups = altarmy.groups(chars)
+    groups = realm_groups(game_version, chars)
     saved = users.get_settings(conn, user_uid, game_version)
     realm, faction = saved.selected_realm or "", saved.selected_faction or ""
+    if any(g.realm == versions.get(game_version).realm_name(realm) for g in groups):
+        realm = versions.get(game_version).realm_name(realm)  # saved before its realm's were grouped
     for g in groups:
         if (g.realm, g.faction) == (realm, faction):
             return Selection(g.realm, g.faction)
@@ -1962,7 +1964,7 @@ def selection(
 def select(conn: Connection, user_uid: str, game_version: str, realm: str, faction: str) -> None:
     """Select a realm/faction that has characters or an auction house (faction "" for one both factions
     share); ValueError otherwise."""
-    groups = altarmy.groups(store.load_characters(conn, user_uid, game_version))
+    groups = realm_groups(game_version, store.load_characters(conn, user_uid, game_version))
     has_group = any((g.realm, g.faction) == (realm, faction) for g in groups)
     if not has_group and not _known_auction_house(conn, game_version, realm, faction):
         raise ValueError(f"no characters or prices on {realm_label(realm, faction)}")
@@ -1984,13 +1986,23 @@ def replace_characters(
     saved = users.get_settings(conn, user_uid, game_version)
     wanted = (saved.selected_realm, saved.selected_faction)
     now = store.load_characters(conn, user_uid, game_version)
-    if not any((g.realm, g.faction) == wanted for g in altarmy.groups(now)):
+    if not any((g.realm, g.faction) == wanted for g in realm_groups(game_version, now)):
         users.update_settings(conn, user_uid, game_version, selected_realm=None, selected_faction=None)
 
 
 def delete_character(conn: Connection, user_uid: str, game_version: str, realm: str, name: str) -> None:
-    """Delete one of the user's characters; FileNotFoundError if there is no such character."""
-    if not store.delete_character(conn, user_uid, game_version, realm, name):
+    """Delete one of the user's characters (on `realm`, or a realm one with it: a group's); FileNotFoundError
+    if there is no such character."""
+    realm_name = versions.get(game_version).realm_name
+    stored = next(
+        (
+            c.realm
+            for c in store.load_characters(conn, user_uid, game_version)
+            if c.name == name and realm_name(c.realm) == realm_name(realm)
+        ),
+        realm,
+    )
+    if not store.delete_character(conn, user_uid, game_version, stored, name):
         raise FileNotFoundError(f"No character {name} on {realm}.")
     bump_data_version(conn, user_uid, game_version)
 
@@ -2002,7 +2014,13 @@ def selected_characters(
     sel = selection(conn, user_uid, game_version, chars)
     if sel is None:
         return None, []
-    return sel, [c for c in chars if (c.realm, c.faction) == (sel.realm, sel.faction)]
+    realm_name = versions.get(game_version).realm_name
+    return sel, [c for c in chars if (realm_name(c.realm), c.faction) == (sel.realm, sel.faction)]
+
+
+def realm_groups(game_version: str, chars: Iterable[Character]) -> list[altarmy.Group]:
+    """The characters' realm/faction groups, coalesced realms together (`GameVersion.realm_name`)."""
+    return altarmy.groups(chars, versions.get(game_version).realm_name)
 
 
 def auction_house_of(conn: Connection, game_version: str, sel: Selection | None) -> int | None:

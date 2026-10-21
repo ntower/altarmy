@@ -220,7 +220,7 @@ def _save_characters(
 ) -> Imported:
     service.replace_characters(conn, user_uid, game_version, chars, keep_holdings, source)
     service.bump_data_version(conn, user_uid, game_version)
-    groups = tuple((g.realm, g.faction, len(g.characters)) for g in altarmy.groups(chars))
+    groups = tuple((g.realm, g.faction, len(g.characters)) for g in service.realm_groups(game_version, chars))
     return Imported("altarmy", characters=len(chars), groups=groups)
 
 
@@ -232,7 +232,7 @@ def ingest_auctionator(
     scanned_at: datetime,
 ) -> Imported:
     realms = auctionator.parse_price_database(data)
-    groups = altarmy.groups(store.load_characters(conn, user_uid, game_version))
+    groups = service.realm_groups(game_version, store.load_characters(conn, user_uid, game_version))
     recorded = []
     for key, item_prices in sorted(realms.items()):
         if not item_prices:

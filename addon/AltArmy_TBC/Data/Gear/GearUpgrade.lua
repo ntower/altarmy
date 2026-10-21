@@ -10,6 +10,13 @@ local DT = AltArmy.DataStoreTalents
 local CC = AltArmy.ClassColor
 local DS = AltArmy.DataStore
 
+-- Whether two realms are one (Forever's coalesced realms are: RealmFilter.sameRealm).
+local function sameRealm(a, b)
+    local RF = AltArmy.RealmFilter
+    if RF and RF.sameRealm then return RF.sameRealm(a, b) end
+    return (a or "") == (b or "")
+end
+
 -- Self-contained (no AltArmy.DataStore dependency) so this module's unit tests,
 -- which stub GetItemInfo directly without loading the DataStore layer, keep working.
 -- See docs/WOW_FOREVER_COMPATIBILITY_RESEARCH.md for why the C_Item fallback exists.
@@ -449,7 +456,7 @@ function GU.GetCompareRealmWarning(entry, currentRealm, isForever)
     if not entry then return nil end
     local realm = entry.realm or ""
     currentRealm = currentRealm or ""
-    if realm == "" or currentRealm == "" or realm == currentRealm then return nil end
+    if realm == "" or currentRealm == "" or sameRealm(realm, currentRealm) then return nil end
     local nameText = formatCompareWarningCharName(entry.name, entry.classFile)
     return {
         kind = "different_realm",
@@ -2170,7 +2177,7 @@ function GU.HasAnyFocusUpgradeOrEventual(list, itemLink, opts)
 end
 
 local function charMatchesRealm(_char, realm, _name, realmFilter, currentRealm)
-    if realmFilter == "currentRealm" and currentRealm and realm ~= currentRealm then
+    if realmFilter == "currentRealm" and currentRealm and not sameRealm(realm, currentRealm) then
         return false
     end
     return true

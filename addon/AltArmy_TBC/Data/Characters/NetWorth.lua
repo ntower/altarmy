@@ -199,7 +199,8 @@ end
 
 local function displayName(realm, name, multiRealm)
     if multiRealm and realm and realm ~= "" then
-        return tostring(name) .. "-" .. tostring(realm)
+        local RF = AltArmy.RealmFilter
+        return tostring(name) .. "-" .. (RF and RF.realmLabel and RF.realmLabel(realm) or tostring(realm))
     end
     return tostring(name or "?")
 end
@@ -270,8 +271,11 @@ function NW.Compute(scaleFactor, opts)
             local key = rowKey(realm, name, entry.linkId)
             local row = byChar[key]
             if not row then
-                if realm and not realmsSeen[realm] then
-                    realmsSeen[realm] = true
+                -- coalesced realms (Forever) are one
+                local seenAs = AltArmy.RealmFilter and AltArmy.RealmFilter.realmGroup
+                    and AltArmy.RealmFilter.realmGroup(realm) or realm
+                if realm and not realmsSeen[seenAs] then
+                    realmsSeen[seenAs] = true
                     realmCount = realmCount + 1
                 end
                 row = { realm = realm, name = name, copper = 0 }

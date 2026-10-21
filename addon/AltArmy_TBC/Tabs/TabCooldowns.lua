@@ -25,6 +25,12 @@ local SEND_TIP_TEXT =
 local CD = AltArmy.CooldownData
 local DS = AltArmy.DataStore
 local RF = AltArmy.RealmFilter
+
+-- Whether two realms are one (Forever's coalesced realms are: RealmFilter.sameRealm).
+local function sameRealm(a, b)
+    if RF and RF.sameRealm then return RF.sameRealm(a, b) end
+    return (a or "") == (b or "")
+end
 local CF = AltArmy.CharacterFilter
 local CS = AltArmy.CharacterSections
 local SP = AltArmy.StockpilePlan
@@ -2437,7 +2443,7 @@ RunSendStockpile = function(ctx)
         return false
     end
     local _, curRealm = GetCurrentIdentity()
-    if ctx.targetRealm ~= curRealm then
+    if not sameRealm(ctx.targetRealm, curRealm) then
         ChatInfo("Can't send stockpile across realms")
         return false
     end
@@ -2971,15 +2977,15 @@ local function FillCooldownListRow(row, rd, now, compose, curName, curRealm, opt
     local key = RowSendKey(rd)
     row.sendKey = key
     local isSelf = (rd.charKeyName == curName) and (rd.realm == curRealm)
-    local sameRealm = (rd.realm == curRealm)
+    local onRealm = sameRealm(rd.realm, curRealm)
     local curFaction = DS.GetCurrentPlayerFaction and DS:GetCurrentPlayerFaction() or ""
     local sameFaction = (rd.faction or "") == "" or curFaction == "" or rd.faction == curFaction
     -- Cooldowns that need no materials (Dedicated Study) have nothing to send.
-    row.sendEligible = (not isSelf) and sameRealm and sameFaction and not rd.noReagents
+    row.sendEligible = (not isSelf) and onRealm and sameFaction and not rd.noReagents
     -- Mail can't reach another realm or faction: a disabled checkbox saying so (its tooltip).
     row.sendBlocked = nil
-    if not isSelf and not rd.noReagents and not (sameRealm and sameFaction) then
-        row.sendBlocked = sameRealm and "factions" or "servers"
+    if not isSelf and not rd.noReagents and not (onRealm and sameFaction) then
+        row.sendBlocked = onRealm and "factions" or "servers"
     end
     if row.sendCheck then
         row.sendCheck:SetAlpha(row.sendBlocked and 0.4 or 1)
@@ -3226,7 +3232,7 @@ RecomputeSendAllocation = function()
         if rd then
             if (rd.charKeyName == curName) and (rd.realm == curRealm) then
                 skip = "self"
-            elseif rd.realm ~= curRealm then
+            elseif not sameRealm(rd.realm, curRealm) then
                 skip = "realm"
             end
         end

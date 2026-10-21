@@ -28,6 +28,13 @@ if not AltArmy then return end
 AltArmy.AuctionBook = AltArmy.AuctionBook or {}
 local B = AltArmy.AuctionBook
 
+-- Whether two realms are one (Forever's coalesced realms are: RealmFilter.sameRealm).
+local function sameRealm(a, b)
+    local RF = AltArmy.RealmFilter
+    if RF and RF.sameRealm then return RF.sameRealm(a, b) end
+    return (a or "") == (b or "")
+end
+
 B.VERSION = 1
 B.MAX_LEVELS = 12 -- price levels kept per item, before the tail
 B.MAX_SCANS = 3 -- scans kept per realm and faction
@@ -151,7 +158,7 @@ function B.Latest(realm, faction)
     if type(log) ~= "table" or type(log.scans) ~= "table" then return nil end
     for i = #log.scans, 1, -1 do
         local s = log.scans[i]
-        if type(s) == "table" and s.realm == realm and s.faction == faction and s.complete then
+        if type(s) == "table" and sameRealm(s.realm, realm) and s.faction == faction and s.complete then
             return s
         end
     end
@@ -164,7 +171,7 @@ function B.LatestSummary(realm, faction)
     if type(log) ~= "table" or type(log.summaries) ~= "table" then return nil end
     for i = #log.summaries, 1, -1 do
         local s = log.summaries[i]
-        if type(s) == "table" and s.realm == realm and s.faction == faction then
+        if type(s) == "table" and sameRealm(s.realm, realm) and s.faction == faction then
             return s
         end
     end
@@ -214,7 +221,7 @@ function B.StoreSummary(scan, now)
     local log = B.GetLog()
     local keep = {}
     for _, s in ipairs(type(log.summaries) == "table" and log.summaries or {}) do
-        if type(s) == "table" and not (s.realm == scan.realm and s.faction == scan.faction)
+        if type(s) == "table" and not (sameRealm(s.realm, scan.realm) and s.faction == scan.faction)
             and now - (s.t or 0) <= B.MAX_AGE then
             keep[#keep + 1] = s
         end

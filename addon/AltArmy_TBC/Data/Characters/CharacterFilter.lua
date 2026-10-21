@@ -385,7 +385,7 @@ function CF.CharacterChoices(list, opts)
         for _, e in ipairs(group) do
             local key = AltArmy.CharKey(e.name, e.realm)
             keys[#keys + 1] = key
-            labels[key] = several and ((e.name or "") .. " — " .. (e.realm or "")) or (e.name or "")
+            labels[key] = several and ((e.name or "") .. " — " .. RF.realmLabel(e.realm)) or (e.name or "")
         end
     end
     return keys, labels, byKey

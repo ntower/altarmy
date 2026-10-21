@@ -4,6 +4,13 @@
 local Nav = {}
 AltArmy.SearchGuildNav = Nav
 
+-- Whether two realms are one (Forever's coalesced realms are: RealmFilter.sameRealm).
+local function sameRealm(a, b)
+    local RF = AltArmy.RealmFilter
+    if RF and RF.sameRealm then return RF.sameRealm(a, b) end
+    return (a or "") == (b or "")
+end
+
 local active = false
 
 function Nav.Begin()
@@ -185,7 +192,7 @@ local function resolveMemberGroup(entry, realm)
         for _, g in ipairs(groups or {}) do
             for _, m in ipairs(g.members or {}) do
                 if m.name == entry.name
-                    and (not realm or not m.realm or m.realm == realm) then
+                    and (not realm or not m.realm or sameRealm(m.realm, realm)) then
                     group = g
                     break
                 end

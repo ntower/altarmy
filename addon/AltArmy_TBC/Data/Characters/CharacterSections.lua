@@ -7,6 +7,17 @@ AltArmy = AltArmy or {}
 AltArmy.CharacterSections = AltArmy.CharacterSections or {}
 local CS = AltArmy.CharacterSections
 
+-- Realms as RealmFilter has them (Forever's coalesced realms are one), the names themselves without it.
+local function group(realm)
+    local RF = AltArmy.RealmFilter
+    return RF and RF.realmGroup and RF.realmGroup(realm) or (realm or "")
+end
+
+local function label(realm)
+    local RF = AltArmy.RealmFilter
+    return RF and RF.realmLabel and RF.realmLabel(realm) or (realm or "")
+end
+
 --- The key a section is saved under (the Summary's collapsed sections): "Realm|Faction".
 function CS.SectionKey(realm, faction)
     return (realm or "") .. "|" .. (faction or "")
@@ -16,28 +27,28 @@ end
 --- "Realm — Faction", or "Realm" when the faction isn't known (a group's name in dropdowns and lists).
 function CS.GroupLabel(realm, faction)
     if faction and faction ~= "" then
-        return (realm or "") .. " — " .. faction
+        return label(realm) .. " — " .. faction
     end
-    return realm or ""
+    return label(realm)
 end
 
 function CS.SectionLabel(realm, faction, count)
-    local label = realm or ""
+    local text = label(realm)
     if faction and faction ~= "" then
-        label = label .. " — " .. faction
+        text = text .. " — " .. faction
     end
-    return label .. " (" .. (count or 0) .. ")"
+    return text .. " (" .. (count or 0) .. ")"
 end
 
 --- Section order: this realm first, other realms A to Z; within a realm the current faction, then the
 --- others A to Z, an unknown faction last.
 local function sectionBefore(a, b, currentRealm, currentFaction)
-    local aHome, bHome = a.realm == currentRealm, b.realm == currentRealm
+    local aHome, bHome = a.group == currentRealm, b.group == currentRealm
     if aHome ~= bHome then
         return aHome
     end
-    if a.realm ~= b.realm then
-        return a.realm < b.realm
+    if a.group ~= b.group then
+        return a.group < b.group
     end
     local function rank(s)
         if s.faction == "" then return 2 end
@@ -51,23 +62,24 @@ local function sectionBefore(a, b, currentRealm, currentFaction)
     return a.faction < b.faction
 end
 
---- `list` split by realm and faction, in section order: { { realm, faction, entries }, ... }, each section's
---- entries in `list`'s order (the Summary's sections, the pin and hide dropdowns' groups).
+--- `list` split by realm and faction, in section order: { { realm, group, faction, entries }, ... }, each
+--- section's entries in `list`'s order (the Summary's sections, the pin and hide dropdowns' groups). Coalesced
+--- realms are one section: `group` is theirs (RealmFilter.realmGroup), `realm` its first character's.
 function CS.Group(list, currentRealm, currentFaction)
     local sections, byKey = {}, {}
     for i = 1, #(list or {}) do
         local e = list[i]
-        local realm, faction = e.realm or "", e.faction or ""
-        local key = CS.SectionKey(realm, faction)
+        local realmGroup, faction = group(e.realm), e.faction or ""
+        local key = CS.SectionKey(realmGroup, faction)
         local s = byKey[key]
         if not s then
-            s = { realm = realm, faction = faction, entries = {} }
+            s = { realm = e.realm or "", group = realmGroup, faction = faction, entries = {} }
             byKey[key] = s
             sections[#sections + 1] = s
         end
         s.entries[#s.entries + 1] = e
     end
-    currentRealm = currentRealm or ""
+    currentRealm = group(currentRealm)
     table.sort(sections, function(a, b)
         return sectionBefore(a, b, currentRealm, currentFaction)
     end)
@@ -90,7 +102,7 @@ function CS.BuildElements(list, opts)
     local collapsed = opts.collapsed or {}
     for _, s in ipairs(CS.Group(list, opts.currentRealm, opts.currentFaction)) do
         local n = #s.entries
-        local key = CS.SectionKey(s.realm, s.faction)
+        local key = CS.SectionKey(s.group, s.faction)
         local folded = collapsed[key] == true
         elements[#elements + 1] = {
             kind = "header",

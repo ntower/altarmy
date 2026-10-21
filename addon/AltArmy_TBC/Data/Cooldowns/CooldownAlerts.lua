@@ -46,7 +46,8 @@ local function formatAlertBody(r, showAllRealms)
     local namePart = classColorWrap(r.name, r.classFile)
     local msg = string.format("%s cooldown ready — %s", recipe, namePart)
     if showAllRealms and r.realm and r.realm ~= "" then
-        msg = msg .. " (" .. r.realm .. ")"
+        local RF = AltArmy.RealmFilter
+        msg = msg .. " (" .. (RF and RF.realmLabel and RF.realmLabel(r.realm) or r.realm) .. ")"
     end
     return msg
 end

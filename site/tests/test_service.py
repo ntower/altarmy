@@ -465,6 +465,39 @@ def test_another_accounts_upload_keeps_the_selected_realm(conn: Connection) -> N
     assert service.selected_characters(conn, ME, FOREVER)[0] == Selection("Classic Beta PvE", "Horde")
 
 
+def test_characters_on_coalesced_realms_are_one_group_priced_by_its_fixed_realm(conn: Connection) -> None:
+    linked = [
+        Character("CAMWOW US2 Realm 3 PvE", "Frells Wrath", "Horde", "DRUID", 4, ()),
+        Character("CAMWOW US2 Realm 5 PvE", "Frell Emental", "Horde", "SHAMAN", 4, ()),
+        Character("CAMWOW EU4 Realm 1 PvE", "Ariel Mist", "Alliance", "PRIEST", 1, ()),
+    ]
+    service.replace_characters(conn, ME, FOREVER, linked[:2], source="acct-a")
+    service.replace_characters(conn, ME, FOREVER, linked[2:], source="acct-b")
+    loaded = store.load_characters(conn, ME, FOREVER)
+    assert [(g.realm, g.faction, len(g.characters)) for g in service.realm_groups(FOREVER, loaded)] == [
+        ("Americas Normal", "Horde", 2),
+        ("Europe Normal", "Alliance", 1),
+    ]
+    sel, selected = service.selected_characters(conn, ME, FOREVER)
+    assert sel == Selection("Americas Normal", "Horde")
+    assert sorted(c.name for c in selected) == ["Frell Emental", "Frells Wrath"]
+    assert service.selected_auction_house(conn, ME, FOREVER) == prices.find_auction_house(
+        conn, FOREVER, "Americas Normal", "Horde"
+    )
+    service.select(conn, ME, FOREVER, "Europe Normal", "Alliance")
+    assert [c.name for c in service.selected_characters(conn, ME, FOREVER)[1]] == ["Ariel Mist"]
+    service.delete_character(conn, ME, FOREVER, "Americas Normal", "Frells Wrath")  # by its group's realm
+    assert "Frells Wrath" not in [c.name for c in store.load_characters(conn, ME, FOREVER)]
+
+
+def test_a_selection_saved_under_a_coalesced_realms_own_name_finds_its_group(conn: Connection) -> None:
+    mine = [Character("CAMWOW US2 Realm 3 PvE", "Frells Wrath", "Horde", "DRUID", 4, ())]
+    store.save_characters(conn, ME, FOREVER, mine)
+    realm = "CAMWOW US2 Realm 3 PvE"
+    users.update_settings(conn, ME, FOREVER, selected_realm=realm, selected_faction="Horde")
+    assert service.selection(conn, ME, FOREVER, mine) == Selection("Americas Normal", "Horde")
+
+
 def test_delete_characters(conn: Connection) -> None:
     service.replace_characters(conn, ME, FOREVER, chars())
     service.delete_character(conn, ME, FOREVER, "Classic Beta PvE", "Tailor Guy")

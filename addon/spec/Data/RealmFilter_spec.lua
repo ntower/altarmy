@@ -210,4 +210,63 @@ describe("RealmFilter", function()
       assert.are.equal("A", out[1].name)
     end)
   end)
+  describe("Forever's coalesced realms", function()
+    local US3 = "CAMWOW US2 Realm 3 PvE"
+    local US5 = "CAMWOW US2 Realm 5 PvE"
+    local EU1 = "CAMWOW EU4 Realm 1 PvE"
+    local EU4PVP = "CAMWOW EU4 Realm 4 PvP"
+
+    before_each(function()
+      AltArmy.DataStore = { IsWowForever = true }
+    end)
+    after_each(function()
+      AltArmy.DataStore = nil
+    end)
+
+    it("groups realms of one cluster, region and ruleset", function()
+      assert.are.equal("CAMWOW US2 PvE", RF.realmGroup(US3))
+      assert.are.equal(RF.realmGroup(US3), RF.realmGroup(US5))
+      assert.is_true(RF.sameRealm(US3, US5))
+    end)
+
+    it("keeps another region or ruleset apart", function()
+      assert.is_false(RF.sameRealm(US3, EU1))
+      assert.is_false(RF.sameRealm(EU1, EU4PVP))
+    end)
+
+    it("leaves a name of another shape as it is", function()
+      assert.are.equal("Classic Beta PvE", RF.realmGroup("Classic Beta PvE"))
+      assert.is_false(RF.sameRealm("Classic Beta PvE", "Classic Beta PvP 2"))
+      assert.are.equal("", RF.realmGroup(nil))
+    end)
+
+    it("labels a group without its cluster", function()
+      assert.are.equal("US2 PvE", RF.realmLabel(US3))
+      assert.are.equal("EU4 PvP", RF.realmLabel(EU4PVP))
+      assert.are.equal("Classic Beta PvE", RF.realmLabel("Classic Beta PvE"))
+    end)
+
+    it("compares names exactly outside Forever", function()
+      AltArmy.DataStore.IsWowForever = false
+      assert.are.equal(US3, RF.realmGroup(US3))
+      assert.is_false(RF.sameRealm(US3, US5))
+      assert.are.equal(US3, RF.realmLabel(US3))
+    end)
+
+    it("shows a coalesced realm's characters as this realm's", function()
+      local off = { otherFaction = false, otherRealms = false, linked = true }
+      assert.is_true(RF.inScope({ realm = US3, linkId = "x" }, "Horde", off, US5, "Horde"))
+      assert.is_false(RF.inScope({ realm = EU1 }, "Horde", off, US5, "Horde"))
+      assert.are.equal(1, #RF.filterListByRealm({ { realm = US3 }, { realm = EU1 } }, "currentRealm", US5))
+    end)
+
+    it("counts coalesced realms as one realm", function()
+      assert.is_false(RF.hasMultipleRealms({ { realm = US3 }, { realm = US5 } }))
+      assert.is_true(RF.hasMultipleRealms({ { realm = US3 }, { realm = EU1 } }))
+    end)
+
+    it("names the group in a realm suffix", function()
+      assert.are.equal("A-US2 PvE", RF.formatCharacterDisplayName("A", US3, true))
+    end)
+  end)
 end)

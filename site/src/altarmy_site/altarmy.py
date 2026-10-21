@@ -27,7 +27,7 @@ uploader's characters.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -96,12 +96,14 @@ class Group:
     characters: tuple[Character, ...]
 
 
-def groups(chars: Iterable[Character]) -> list[Group]:
-    """Realm/faction groups sorted by realm then faction. Characters without a faction are left out."""
+def groups(chars: Iterable[Character], realm_of: Callable[[str], str] = str) -> list[Group]:
+    """Realm/faction groups sorted by realm then faction, a group's realm being `realm_of` its characters'
+    (`GameVersion.realm_name`: Forever's coalesced realms are one). Characters without a faction are left
+    out."""
     by_key: dict[tuple[str, str], list[Character]] = {}
     for c in chars:
         if c.faction:
-            by_key.setdefault((c.realm, c.faction), []).append(c)
+            by_key.setdefault((realm_of(c.realm), c.faction), []).append(c)
     return [Group(realm, faction, tuple(cs)) for (realm, faction), cs in sorted(by_key.items())]
 
 

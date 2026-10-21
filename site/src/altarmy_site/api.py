@@ -1164,7 +1164,7 @@ def _characters(state: AppState, conn: Connection, user: auth.User) -> Character
                     for c in g.characters
                 ],
             )
-            for g in altarmy.groups(chars)
+            for g in service.realm_groups(state.key, chars)
         ],
         selection=_selection_model(sel),
         imported_at=db.timestamp_text(imported.imported_at),

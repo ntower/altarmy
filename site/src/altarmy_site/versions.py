@@ -1,12 +1,14 @@
 """The game versions the app supports: TBC Anniversary and WoW: Forever.
 
 Alt Army runs on both clients and writes the same `AltArmy_TBC.lua` on each; only the WoW flavor folder
-(`_anniversary_`, `_classic_beta_`) tells them apart. Every version shares one database, keyed by `key`.
+(`_anniversary_`, `_forever_` or the beta's `_classic_beta_`) tells them apart. Every version shares one
+database, keyed by `key`.
 """
 
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -45,11 +47,47 @@ class RealmSpec:
     rows `db.register_versions` creates. A realm name in an upload is this realm when it is `name` or one
     of `aliases` (`canonical_realm`), the names Blizzard and the client give it."""
 
-    key: str  # normal, pvp, rp, hardcore: stable, for paths
+    key: str  # americas-normal, europe-pvp, ...: stable, for paths
     label: str
     name: str  # the auction houses' realm
     aliases: tuple[str, ...] = ()
     open: bool = True  # False until the realm opens (Hardcore, a couple of months after launch)
+    region: str = ""  # a `REGIONS` key, whose realm names it takes (`GameVersion.coalesced_realms`)
+    ruleset: str = ""  # a `RULESETS` key
+
+
+# WoW: Forever's mega-server names its realms "<cluster> <region><n> Realm <n> <ruleset>" ("CAMWOW US2 Realm 3
+# PvE"); every realm of a region and ruleset is one (the client says coalesced: party, mail, auction house)
+COALESCED_REALM = re.compile(r"^(?P<group>.*?(?P<region>[A-Za-z]+)\d*)\s+Realm\s+\d+\s+(?P<ruleset>\S+)$")
+# (key, label, the region codes realm names use): US and EU seen; Asia's codes are a guess
+REGIONS = (
+    ("americas", "Americas", ("US",)),
+    ("europe", "Europe", ("EU",)),
+    ("asia", "Asia", ("KR", "TW", "CN", "AS")),
+)
+# (key, label, the words realm names end in, open): PvE is Normal; RP's and Hardcore's words are a guess
+RULESETS = (
+    ("normal", "Normal", ("PvE", "Normal"), True),
+    ("pvp", "PvP", ("PvP",), True),
+    ("rp", "RP", ("RP", "RPPvE", "Roleplay"), True),
+    ("hardcore", "Hardcore", ("Hardcore", "HC"), False),
+)
+
+
+def regional_realms() -> tuple[RealmSpec, ...]:
+    """A fixed realm per region and ruleset ("Americas Normal"), the regions in `REGIONS`' order."""
+    return tuple(
+        RealmSpec(
+            f"{region}-{ruleset}",
+            f"{rlabel} {slabel}",
+            f"{rlabel} {slabel}",
+            open=is_open,
+            region=region,
+            ruleset=ruleset,
+        )
+        for region, rlabel, _ in REGIONS
+        for ruleset, slabel, _, is_open in RULESETS
+    )
 
 
 FACTIONS = ("Alliance", "Horde")  # each fixed realm's auction houses; the neutral one is left out
@@ -98,6 +136,7 @@ class GameVersion:
     snapshot_gap: int = 4500  # seconds: an hour and a quarter, so a late snapshot still follows
     # the fixed realms, whose auction houses always exist (empty: realms come from uploads, as on TBC)
     realms: tuple[RealmSpec, ...] = ()
+    coalesced_realms: bool = False  # realm names are `COALESCED_REALM`'s, one realm per region and ruleset
 
     def ah_deposit(self, vendor_price: int, units: int, stack: int = 1, hours: int = 24) -> int:
         """What posting `units` in auctions of `stack` for `hours` costs: per auction `ah_deposit_rate`
@@ -111,17 +150,32 @@ class GameVersion:
         return full * one(stack) + (one(rest) if rest else 0)
 
     def canonical_realm(self, name: str) -> RealmSpec | None:
-        """The fixed realm a realm name stands for (its name or an alias, ignoring case and spaces)."""
+        """The fixed realm a realm name stands for (its name or an alias, ignoring case and spaces; with
+        `coalesced_realms`, a `COALESCED_REALM` name's region and ruleset)."""
         wanted = _squash(name)
         for spec in self.realms:
             if wanted in {_squash(n) for n in (spec.name, *spec.aliases)}:
                 return spec
+        coalesced = self._coalesced(name)
+        if coalesced is not None:
+            region, ruleset = _region_of(coalesced["region"]), _ruleset_of(coalesced["ruleset"])
+            for spec in self.realms:
+                if (spec.region, spec.ruleset) == (region, ruleset) and region and ruleset:
+                    return spec
         return None
 
     def realm_name(self, name: str) -> str:
-        """The auction houses' realm for a realm name: the fixed realm's, else the name as it is."""
+        """The realm a realm name is one with, which characters are grouped by and whose auction houses
+        price them: the fixed realm's name; else, for a coalesced realm of no fixed one, its group
+        ("CAMWOW US2 PvE": the name without "Realm <n>"); else the name as it is."""
         spec = self.canonical_realm(name)
-        return name if spec is None else spec.name
+        if spec is not None:
+            return spec.name
+        coalesced = self._coalesced(name)
+        return name if coalesced is None else f"{coalesced['group']} {coalesced['ruleset']}"
+
+    def _coalesced(self, name: str) -> re.Match[str] | None:
+        return COALESCED_REALM.match(name.strip()) if self.coalesced_realms else None
 
     @property
     def buckets(self) -> dict[str, tuple[int, int]]:
@@ -190,7 +244,7 @@ VERSIONS: dict[str, GameVersion] = {
         key="forever",
         label="WoW: Forever",
         wago_product="wow_classic_beta",
-        flavor_folders=("_classic_beta_",),
+        flavor_folders=("_forever_", "_classic_beta_"),
         data_dir=DATA_DIR / "forever",
         interface=16001,
         max_level=60,
@@ -200,13 +254,8 @@ VERSIONS: dict[str, GameVersion] = {
         retail_bags=True,
         ah_min_deposit=100,
         reputation_discounts=((6, 10), (7, 10), (8, 10)),  # vanilla's: 10% from Honored, no more after
-        # The launch realms' own names go in their aliases on launch day
-        realms=(
-            RealmSpec("normal", "Normal", "Normal"),
-            RealmSpec("pvp", "PvP", "PvP"),
-            RealmSpec("rp", "RP", "RP"),
-            RealmSpec("hardcore", "Hardcore", "Hardcore", open=False),
-        ),
+        realms=regional_realms(),
+        coalesced_realms=True,
     ),
     "tbc": GameVersion(
         key="tbc",
@@ -237,3 +286,11 @@ def version_of_build(build: str) -> GameVersionKey:
 
 def _squash(name: str) -> str:
     return "".join(name.split()).lower()
+
+
+def _region_of(code: str) -> str:
+    return next((key for key, _, codes in REGIONS if code.upper() in codes), "")
+
+
+def _ruleset_of(word: str) -> str:
+    return next((key for key, _, words, _ in RULESETS if _squash(word) in {_squash(w) for w in words}), "")

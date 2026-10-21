@@ -321,15 +321,21 @@ def test_each_fixed_realm_has_an_alliance_and_a_horde_house(conn: Connection) ->
     t = schema.auction_houses
     houses = conn.execute(select(t.c.realm, t.c.faction).where(t.c.game_version == FOREVER_KEY)).all()
     assert {(r.realm, r.faction) for r in houses} == {
-        (realm, faction) for realm in ("Normal", "PvP", "RP", "Hardcore") for faction in ("Alliance", "Horde")
+        (f"{region} {ruleset}", faction)
+        for region in ("Americas", "Europe", "Asia")
+        for ruleset in ("Normal", "PvP", "RP", "Hardcore")
+        for faction in ("Alliance", "Horde")
     }
 
 
 def test_a_realm_name_is_a_fixed_realm_by_name_or_alias() -> None:
-    version = replace(FOREVER, realms=(versions.RealmSpec("pvp", "PvP", "PvP", aliases=("Nightslayer",)),))
+    pvp = versions.RealmSpec("pvp", "PvP", "PvP", aliases=("Nightslayer",), region="americas", ruleset="pvp")
+    version = replace(FOREVER, realms=(pvp,))
     assert version.realm_name("night slayer") == "PvP"
     assert version.realm_name("PVP") == "PvP"
     assert version.realm_name("Classic Beta PvE") == "Classic Beta PvE"  # not a fixed realm: as it is
+    assert version.realm_name("CAMWOW US2 Realm 3 PvP") == "PvP"  # a coalesced realm: its region's ruleset
+    assert version.realm_name("CAMWOW EU4 Realm 3 PvP") == "CAMWOW EU4 PvP"  # no fixed realm of its region
     assert version.canonical_realm("Elsewhere") is None
 
 
@@ -338,11 +344,11 @@ def test_coverage_lists_the_fixed_houses_first(conn: Connection) -> None:
     record(conn, scanned_house, snap(T0, auction(1, ORE, unit=64)))
     got = prices.coverage(conn, FOREVER_KEY, at(T0 + HOUR))
     assert [(c.realm, c.faction, c.realm_key) for c in got][:3] == [
-        ("Normal", "Alliance", "normal"),
-        ("Normal", "Horde", "normal"),
-        ("PvP", "Alliance", "pvp"),
+        ("Americas Normal", "Alliance", "americas-normal"),
+        ("Americas Normal", "Horde", "americas-normal"),
+        ("Americas PvP", "Alliance", "americas-pvp"),
     ]
-    hardcore = next(c for c in got if c.realm == "Hardcore")
+    hardcore = next(c for c in got if c.realm == "Americas Hardcore")
     assert not hardcore.open
     beta = got[-1]
     assert (beta.realm, beta.realm_key, beta.feed, beta.launch) == ("Classic Beta PvE", None, True, True)
@@ -356,6 +362,12 @@ def test_an_addon_scan_under_a_fixed_realms_other_name_lands_on_its_house(
     scan = book.Scan(T0, "Doomhowl", "Horde", 1, 0, "own", {ORE: (book.Level(70, 2, 1),)})
     (got,) = uploads._record_books(conn, ME, FOREVER_KEY, [scan], at(T0 + 60))
     assert got.auction_house_id == prices.find_auction_house(conn, FOREVER_KEY, "Normal", "Horde")
+
+
+def test_an_addon_scan_on_a_coalesced_realm_lands_on_its_regions_house(conn: Connection) -> None:
+    scan = book.Scan(T0, "CAMWOW US2 Realm 3 PvE", "Horde", 1, 0, "own", {ORE: (book.Level(70, 2, 1),)})
+    (got,) = uploads._record_books(conn, ME, FOREVER_KEY, [scan], at(T0 + 60))
+    assert got.auction_house_id == prices.find_auction_house(conn, FOREVER_KEY, "Americas Normal", "Horde")
 
 
 # --- the local loader ---------------------------------------------------------------------------------

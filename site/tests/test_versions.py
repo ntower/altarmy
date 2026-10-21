@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from altarmy_site import engine, gamedata, versions, wowfiles
+from altarmy_site import engine, gamedata, versions, watch, wowfiles
 from altarmy_site.engine import Item, Market, Recipe
 from altarmy_site.versions import VERSIONS
 
@@ -45,7 +45,7 @@ def test_each_version_has_its_own_files() -> None:
     assert forever.vendor_csv == Path("data/forever/vendor_items.csv")
     assert forever.cities_dir == Path("data/forever/cities")
     assert tbc.flavor_folders == ("_anniversary_",)
-    assert forever.flavor_folders == ("_classic_beta_",)
+    assert forever.flavor_folders == ("_forever_", "_classic_beta_")
     assert (tbc.interface, forever.interface) == (20506, 16001)
 
 
@@ -88,3 +88,42 @@ def test_an_auctions_deposit_is_at_least_forevers_minimum() -> None:
     assert forever.ah_deposit(10, 45, stack=20) == 120 + 120 + 100  # two full stacks and the 5 left
     assert forever.ah_deposit(0, 1) == 100  # nothing a vendor pays still costs the minimum
     assert versions.VERSIONS["tbc"].ah_deposit(10, 3) == 3 * 6  # no minimum there
+
+
+# Forever's live realms: "<cluster> <region><n> Realm <n> <ruleset>", coalesced by region and ruleset
+US3, US5 = "CAMWOW US2 Realm 3 PvE", "CAMWOW US2 Realm 5 PvE"
+
+
+def test_a_forever_realm_is_its_regions_fixed_realm_of_its_ruleset() -> None:
+    forever = VERSIONS["forever"]
+    assert forever.realm_name(US3) == forever.realm_name(US5) == "Americas Normal"
+    assert forever.realm_name("CAMWOW EU4 Realm 1 PvE") == "Europe Normal"
+    assert forever.realm_name("CAMWOW EU4 Realm 4 PvP") == "Europe PvP"
+    spec = forever.canonical_realm(US3)
+    assert spec is not None
+    assert (spec.key, spec.region, spec.ruleset) == ("americas-normal", "americas", "normal")
+    assert forever.realm_name("Americas Normal") == "Americas Normal"  # the fixed realm's own name
+
+
+def test_a_forever_realm_of_an_unknown_region_or_ruleset_is_its_coalesced_group() -> None:
+    forever = VERSIONS["forever"]
+    assert forever.canonical_realm("CAMWOW ZZ1 Realm 2 PvE") is None
+    assert forever.realm_name("CAMWOW ZZ1 Realm 2 PvE") == forever.realm_name("CAMWOW ZZ1 Realm 7 PvE")
+    assert forever.realm_name("CAMWOW ZZ1 Realm 2 PvE") == "CAMWOW ZZ1 PvE"
+    assert forever.realm_name("CAMWOW US2 Realm 2 Arena") == "CAMWOW US2 Arena"
+    assert forever.realm_name("Classic Beta PvE") == "Classic Beta PvE"  # another shape: as it is
+
+
+def test_every_region_has_each_ruleset_and_tbc_realms_stay_as_they_are() -> None:
+    forever = VERSIONS["forever"]
+    assert {(s.region, s.ruleset) for s in forever.realms} == {
+        (r, s) for r in ("americas", "europe", "asia") for s in ("normal", "pvp", "rp", "hardcore")
+    }
+    assert not any(s.open for s in forever.realms if s.ruleset == "hardcore")
+    assert VERSIONS["tbc"].realm_name("CAMWOW US2 Realm 3 PvE") == "CAMWOW US2 Realm 3 PvE"
+
+
+def test_the_live_forever_client_folder_is_watched() -> None:
+    assert VERSIONS["forever"].flavor_folders[0] == "_forever_"
+    saved = Path("World of Warcraft/_forever_/WTF/Account/A/SavedVariables/AltArmy_TBC.lua")
+    assert watch.version_of(saved) == "forever"
