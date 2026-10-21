@@ -27,7 +27,7 @@ describe("OnboardingDialogQueue", function()
         ODQ._ResetForTests()
     end)
 
-    it("shows only one provider at a time", function()
+    it("shows at most one dialog a session", function()
         local order = {}
         ODQ.Register({
             id = "first",
@@ -48,7 +48,30 @@ describe("OnboardingDialogQueue", function()
             end,
         })
         ODQ.Process()
-        assert.are.same({ "show-first", "show-second" }, order)
+        assert.are.same({ "show-first" }, order)
+
+        ODQ.Process()
+        ODQ.RequestProcess()
+        assert.are.same({ "show-first" }, order)
+    end)
+
+    it("shows a provider that wants to prompt later in the session when none showed yet", function()
+        local ready = false
+        local shown = 0
+        ODQ.Register({
+            id = "later",
+            priority = 1,
+            shouldPrompt = function() return ready end,
+            show = function(onDismiss)
+                shown = shown + 1
+                onDismiss()
+            end,
+        })
+        ODQ.Process()
+        assert.are.equal(0, shown)
+        ready = true
+        ODQ.Process()
+        assert.are.equal(1, shown)
     end)
 
     it("skips providers where shouldPrompt is false", function()
@@ -113,7 +136,7 @@ describe("OnboardingDialogQueue", function()
             end,
         })
         ODQ.Process()
-        assert.are.same({ "early", "late" }, order)
+        assert.are.same({ "early" }, order)
     end)
 
     it("SuppressForSession blocks later providers from showing this session", function()

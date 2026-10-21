@@ -1,7 +1,8 @@
 -- AltArmy TBC — Options > Sharing > Linked accounts: your other WoW accounts (the same Battle.net login).
--- Lists each link (online or not: its characters, when it last synced, Sync now and Unlink) and each other
+-- Lists each link (online or not: its characters, when it last synced, Rename, Sync now and Unlink; the client
+-- doesn't tell an addon a game account's name, so a link is named after its character until renamed) and each other
 -- account of yours online with Alt Army that isn't linked (Link). Shown while linked accounts are on
--- (Debug.IsLinkedAccountsEnabled: WoW: Forever only, for now). Rows come from LinkTransport.View (LinkSession.View).
+-- (Debug.IsLinkedAccountsEnabled). Rows come from LinkTransport.View (LinkSession.View).
 
 if not AltArmy then return end
 
@@ -49,8 +50,18 @@ for i = 1, MAX_ROWS do
     row.state:SetJustifyH("LEFT")
     row.state:SetTextColor(0.75, 0.75, 0.75, 1)
     row.state:SetWordWrap(false)
+    row.edit = CreateFrame("EditBox", nil, row)
+    row.edit:SetSize(160, 20)
+    row.edit:SetPoint("LEFT", row, "LEFT", 0, 0)
+    row.edit:SetFontObject(Theme.FONTS.body)
+    row.edit:SetAutoFocus(false)
+    row.edit:SetTextInsets(6, 6, 0, 0)
+    row.edit:SetMaxLetters(AltArmy.LinkStore and AltArmy.LinkStore.NAME_MAX or 32)
+    if Theme.ApplyInputTextures then Theme.ApplyInputTextures(row.edit) end
+    row.edit:Hide()
     row.second = button(row, "Unlink", 80)
     row.first = button(row, "Sync now", 90)
+    row.rename = button(row, "Rename", 80)
     row:Hide()
     rows[i] = row
 end
@@ -67,24 +78,35 @@ local function ago(t)
 end
 
 local unlinkArmedAt = {}
+local renaming -- the account whose name is being edited, if any
 
 -- The buttons shown sit at the row's right edge; the state text fills what is left (a hidden button keeps
 -- no room).
 local function layoutRow(row)
-    row.second:ClearAllPoints()
-    row.first:ClearAllPoints()
     row.state:ClearAllPoints()
-    row.state:SetPoint("LEFT", row.name, "RIGHT", 8, 0)
+    row.state:SetPoint("LEFT", row.edit:IsShown() and row.edit or row.name, "RIGHT", 8, 0)
     local right, rightPoint, gap = row, "RIGHT", 0
-    if row.second:IsShown() then
-        row.second:SetPoint("RIGHT", right, rightPoint, -gap, 0)
-        right, rightPoint, gap = row.second, "LEFT", 6
-    end
-    if row.first:IsShown() then
-        row.first:SetPoint("RIGHT", right, rightPoint, -gap, 0)
-        right, rightPoint, gap = row.first, "LEFT", 6
+    for _, b in ipairs({ row.second, row.first, row.rename }) do
+        b:ClearAllPoints()
+        if b:IsShown() then
+            b:SetPoint("RIGHT", right, rightPoint, -gap, 0)
+            right, rightPoint, gap = b, "LEFT", 6
+        end
     end
     row.state:SetPoint("RIGHT", right, rightPoint, -(gap > 0 and 8 or 0), 0)
+end
+
+local LO = {}
+AltArmy.LinkedAccountsOptions = LO
+
+local function stopRenaming(save, row)
+    local acct = renaming
+    renaming = nil
+    if save and acct and AltArmy.LinkStore then
+        AltArmy.LinkStore.SetName(acct, row.edit:GetText())
+    end
+    row.edit:ClearFocus()
+    LO.Refresh()
 end
 
 local function fill(row, e)
@@ -93,7 +115,30 @@ local function fill(row, e)
         or ((e.label or "?") .. (e.realm and ("|cff808080 - " .. e.realm .. "|r") or "")))
     row.first:SetScript("OnClick", nil)
     row.second:SetScript("OnClick", nil)
+    row.rename:SetScript("OnClick", nil)
+    local editing = e.linked and renaming == e.acct
+    if editing and not row.edit:IsShown() then
+        row.edit:SetText(e.label or "")
+        row.edit:Show()
+        row.edit:SetFocus()
+        row.edit:HighlightText()
+    elseif not editing then
+        row.edit:Hide()
+    end
+    row.name:SetShown(not editing)
+    row.edit:SetScript("OnEnterPressed", function() stopRenaming(true, row) end)
+    row.edit:SetScript("OnEscapePressed", function() stopRenaming(false, row) end)
+    row.rename:SetShown(e.linked)
     if e.linked then
+        row.rename:SetText(editing and "Save" or "Rename")
+        row.rename:SetScript("OnClick", function()
+            if editing then
+                stopRenaming(true, row)
+            else
+                renaming = e.acct
+                LO.Refresh()
+            end
+        end)
         local state
         if e.suspended then
             state = "Paused: " .. tostring(e.suspended)
@@ -145,9 +190,6 @@ local function fill(row, e)
     end
 end
 
-local LO = {}
-AltArmy.LinkedAccountsOptions = LO
-
 function LO.Refresh()
     local T = AltArmy.LinkTransport
     local on = T and T.IsEnabled() or false
@@ -178,6 +220,7 @@ if panel.pageSharing then
         if T and T.IsEnabled() then
             T.Discover()
         end
+        renaming = nil
         LO.Refresh()
     end)
 end

@@ -5,7 +5,7 @@
 -- this Battle.net account's game accounts (LinkDiscovery, asked of the client, cached CACHE_MINE seconds),
 -- or if any of its arguments is a secret value. Nothing is sent during combat or chat lockdown (it waits,
 -- in order), and a whole message that arrives in combat is read once combat ends. Off unless
--- Debug.IsLinkedAccountsEnabled() (WoW: Forever only, for now).
+-- Debug.IsLinkedAccountsEnabled().
 -- luacheck: read globals C_ChatInfo ChatThrottleLib C_BattleNet WOW_PROJECT_ID C_EventUtils
 
 if not AltArmy then return end
@@ -107,6 +107,9 @@ local function refreshUi()
         end
         if AltArmy.RefreshSummary then
             AltArmy.RefreshSummary() -- who is online on a linked account
+        end
+        if AltArmy.LinkAccountsOnboarding and AltArmy.LinkAccountsOnboarding.Check then
+            AltArmy.LinkAccountsOnboarding.Check() -- an account of ours not linked yet: offer it once
         end
     end
     if C_Timer and C_Timer.After then

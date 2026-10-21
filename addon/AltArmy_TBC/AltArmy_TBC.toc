@@ -163,6 +163,7 @@ UI\RestedXpQuestRewardConflictDialog.lua
 UI\Options.lua
 UI\LinkAccountDialog.lua
 UI\LinkedAccountsOptions.lua
+UI\LinkAccountsOnboarding.lua
 UI\QuestRewardIndicators.lua
 UI\GearUpgradeOptions.lua
 UI\ProfitExportDialog.lua

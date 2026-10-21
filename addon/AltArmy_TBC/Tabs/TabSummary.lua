@@ -1114,14 +1114,12 @@ Update = function()
         summaryHeaderFade.PinBelow(pinnedSection)
     end
 
-    -- Totals row: Level, Money, Played only; ours alone (a linked account's gold isn't ours)
+    -- Totals row: Level, Money, Played only; every character listed, linked accounts' too when shown
     local totalLevel, totalMoney, totalPlayed = 0, 0, 0
     for _, entry in ipairs(list) do
-        if not entry.linkId then
-            totalLevel = totalLevel + (tonumber(entry.level) or 0)
-            totalMoney = totalMoney + (tonumber(entry.money) or 0)
-            totalPlayed = totalPlayed + (tonumber(entry.played) or 0)
-        end
+        totalLevel = totalLevel + (tonumber(entry.level) or 0)
+        totalMoney = totalMoney + (tonumber(entry.money) or 0)
+        totalPlayed = totalPlayed + (tonumber(entry.played) or 0)
     end
     for _, colName in ipairs(columnOrder) do
         local cell = totalsRow.cells[colName]

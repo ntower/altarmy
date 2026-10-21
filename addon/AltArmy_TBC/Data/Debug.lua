@@ -161,11 +161,10 @@ function D.IsGuildShareEnabled()
     return true
 end
 
---- Linked accounts (Data/Link/LinkTransport.lua: sync with your other WoW accounts over Battle.net) run on
---- WoW: Forever, where they were tried in game; not yet on TBC Anniversary (untested there).
+--- Linked accounts (Data/Link/LinkTransport.lua: sync with your other WoW accounts over Battle.net) are shipped
+--- on, on WoW: Forever and TBC Anniversary. Call sites and tests may still stub this for flag-off paths.
 function D.IsLinkedAccountsEnabled()
-    local DS = AltArmy.DataStore
-    return DS ~= nil and DS.IsWowForever == true
+    return true
 end
 
 --- Verbose guild-share traffic logging. Standalone (does NOT require master enabled).

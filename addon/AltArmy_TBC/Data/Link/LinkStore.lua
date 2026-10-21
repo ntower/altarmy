@@ -2,8 +2,9 @@
 -- Owns the SavedVariable AltArmyTBC_LinkedData, apart from AltArmyTBC_Data so nothing that reads our own
 -- characters (guild sharing, mail alerts, the profit export, the website's upload) ever sees a linked one:
 --   version = 1
---   links[accountId]    = { kind = "own", label, confirmed, linkedAt, lastSyncAt, wowProjectID, interface,
---                           addonVersion, suspended (why, or nil) }
+--   links[accountId]    = { kind = "own", label (its character when linked), name (the player's own, or nil),
+--                           confirmed, linkedAt, lastSyncAt, wowProjectID, interface, addonVersion,
+--                           suspended (why, or nil) }
 --   declined[accountId] = when we said no
 --   pendingUnlinks[accountId] = when we unlinked, until that account hears of it
 --   accounts[accountId] = { Characters = { [realm] = { [guid] = char } }, meta = { CurrencyMeta, ... },
@@ -301,10 +302,24 @@ function S.LinkOf(char)
     return char and linkOf[char] or nil
 end
 
---- A link's name for the UI: its label, else "Linked account".
+S.NAME_MAX = 32
+
+--- A link's name for the UI: the name the player gave it, else its label, else "Linked account".
 function S.Label(id)
     local link = S.Ensure().links[id]
-    return link and link.label or "Linked account"
+    return link and (link.name or link.label) or "Linked account"
+end
+
+--- Name the link `id` (Options' Rename): trimmed, at most NAME_MAX characters; blank goes back to its label.
+function S.SetName(id, name)
+    local link = S.Ensure().links[id]
+    if not link then
+        return false
+    end
+    name = type(name) == "string" and name:match("^%s*(.-)%s*$") or ""
+    link.name = name ~= "" and name:sub(1, S.NAME_MAX) or nil
+    changed()
+    return true
 end
 
 --- When we last received anything from `id`.

@@ -1,4 +1,5 @@
--- AltArmy TBC — Sequential onboarding dialog queue.
+-- AltArmy TBC — Onboarding dialog queue: at most one onboarding dialog a session, the first (by priority)
+-- whose provider wants to prompt.
 -- luacheck: globals C_Timer CreateFrame
 
 if not AltArmy then return end
@@ -9,7 +10,6 @@ local ODQ = AltArmy.OnboardingDialogQueue
 local providers = {}
 local showing = false
 local processScheduled = false
-local nextIndex = 1
 local suppressedForSession = false
 
 local function sortProviders()
@@ -43,28 +43,18 @@ end
 function ODQ.Process()
     if showing or suppressedForSession then return end
     sortProviders()
-    if #providers == 0 then
-        nextIndex = 1
-        return
-    end
-    for i = nextIndex, #providers do
+    for i = 1, #providers do
         local provider = providers[i]
         local should = provider.shouldPrompt and provider.shouldPrompt() or false
         if should and provider.show then
             showing = true
+            suppressedForSession = true -- one onboarding dialog a session: the others wait for the next login
             provider.show(function()
                 showing = false
-                nextIndex = i + 1
-                if nextIndex > #providers then
-                    nextIndex = 1
-                else
-                    ODQ.Process()
-                end
             end)
             return
         end
     end
-    nextIndex = 1
 end
 
 function ODQ.RequestProcess()
@@ -73,12 +63,10 @@ function ODQ.RequestProcess()
     if C_Timer and C_Timer.After then
         C_Timer.After(0, function()
             processScheduled = false
-            nextIndex = 1
             ODQ.Process()
         end)
     else
         processScheduled = false
-        nextIndex = 1
         ODQ.Process()
     end
 end
@@ -87,7 +75,6 @@ function ODQ._ResetForTests()
     providers = {}
     showing = false
     processScheduled = false
-    nextIndex = 1
     suppressedForSession = false
 end
 

@@ -1,5 +1,5 @@
--- AltArmy TBC — "Link with your other account?": shown when another of your WoW accounts (the same
--- Battle.net login) asks to link (LinkSession's LREQ). Both clients show the same 4-digit code. Accept keeps
+-- AltArmy TBC — "<Character> (<Realm>) wants to link accounts": shown when another of your WoW accounts (the same
+-- Battle.net login) asks to link (LinkSession's LREQ). Both clients show the same 4-digit pairing code. Accept keeps
 -- the link and starts the sync; Not now (or closing) turns it down. Waits for the end of combat to open.
 
 if not AltArmy then return end
@@ -60,8 +60,9 @@ bodyText:SetPoint("RIGHT", bodyInner, "RIGHT", 0, 0)
 bodyText:SetJustifyH("LEFT")
 bodyText:SetWordWrap(true)
 bodyText:SetTextColor(0.75, 0.75, 0.75, 1)
-bodyText:SetText("Each account will send full data about its characters to the other. You will be able to view "
-    .. "the full list of characters from either account. You can unlink later in Options > Sharing")
+bodyText:SetText("If you accept, both accounts will be able to see full data about the other. This includes all"
+    .. " characters, their gold, play time, professions, items, cooldowns, etc. You can use filters to hide or"
+    .. " show linked characters. You can unlink later in Options > Sharing")
 
 local codeText = bodyInner:CreateFontString(nil, "ARTWORK", Theme.FONTS.headline)
 codeText:SetPoint("TOP", bodyText, "BOTTOM", 0, -12)
@@ -69,13 +70,15 @@ codeText:SetTextColor(1, 0.82, 0, 1)
 
 local btnYes = CreateFrame("Button", nil, bodyInner, "UIPanelButtonTemplate")
 btnYes:SetSize(120, 24)
-btnYes:SetPoint("BOTTOMRIGHT", bodyInner, "BOTTOM", -6, 4)
+btnYes:SetPoint("TOP", codeText, "BOTTOM", 0, -14)
+btnYes:SetPoint("RIGHT", bodyInner, "CENTER", -6, 0)
 btnYes:SetText("Link")
 Theme.SkinButton(btnYes)
 
 local btnNo = CreateFrame("Button", nil, bodyInner, "UIPanelButtonTemplate")
 btnNo:SetSize(120, 24)
-btnNo:SetPoint("BOTTOMLEFT", bodyInner, "BOTTOM", 6, 4)
+btnNo:SetPoint("TOP", codeText, "BOTTOM", 0, -14)
+btnNo:SetPoint("LEFT", bodyInner, "CENTER", 6, 0)
 btnNo:SetText("Not now")
 Theme.SkinButton(btnNo)
 
@@ -100,12 +103,22 @@ btnYes:SetScript("OnClick", function() answer(true) end)
 btnNo:SetScript("OnClick", function() answer(false) end)
 closeBtn:SetScript("OnClick", function() answer(false) end)
 
+--- Grow/shrink the dialog so the buttons (last element) sit inside the body panel.
+local function fitDialogHeight()
+    local top, bottom = dialog:GetTop(), btnYes:GetBottom()
+    if not (top and bottom) then return end
+    dialog:SetHeight(math.ceil((top - bottom) + Theme.TAB_CONTENT_PADDING + CONTENT_INSET))
+end
+
 local function present()
     if not current then return end
     local where = current.realm and (" (" .. current.realm .. ")") or ""
-    headline:SetText("Link with your other account, " .. (current.name or "?") .. where .. "?")
-    codeText:SetText("Code: " .. (current.code or "") .. "  (the other window shows the same)")
+    headline:SetText((current.name or "?") .. where .. " wants to link accounts")
+    codeText:SetText("Pairing Code: " .. (current.code or ""))
     dialog:Show()
+    fitDialogHeight()
+    -- Wrapped text heights can settle a frame after Show.
+    if C_Timer and C_Timer.After then C_Timer.After(0, fitDialogHeight) end
 end
 
 AltArmy.LinkAccountDialog = AltArmy.LinkAccountDialog or {}

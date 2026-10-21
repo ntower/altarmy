@@ -326,11 +326,10 @@ describe("AltArmy.Debug", function()
             assert.is_true(D.IsLinkedAccountsEnabled())
         end)
 
-        it("is off on TBC Anniversary, even with debug on", function()
+        it("is on for TBC Anniversary, whether or not debug is", function()
             AltArmy.DataStore = { IsWowForever = false }
-            D.SetEnabled(true)
-            assert.is_false(D.IsLinkedAccountsEnabled())
             D.SetEnabled(false)
+            assert.is_true(D.IsLinkedAccountsEnabled())
         end)
     end)
 end)

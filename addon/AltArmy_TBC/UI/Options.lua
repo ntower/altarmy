@@ -2491,6 +2491,15 @@ SlashCmdList.ALTARMY = function(msg)
         end
         return
     end
+    if lower == "debug linkonboard" then
+        local LAO = AltArmy and AltArmy.LinkAccountsOnboarding
+        if LAO and LAO.ShowDebug then
+            LAO.ShowDebug()
+        elseif AltArmy.Debug and AltArmy.Debug.NotifyChat then
+            AltArmy.Debug.NotifyChat("Link accounts onboarding dialog is unavailable.")
+        end
+        return
+    end
     if lower == "debug rxpquestconflict" then
         local dialog = AltArmy and AltArmy.RestedXpQuestRewardConflictDialog
         if dialog and dialog.ShowDebug then
