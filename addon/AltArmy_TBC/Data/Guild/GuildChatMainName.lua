@@ -149,9 +149,12 @@ function GCM.TransformOnlineOffline(message, getMain, getMainClass, getLabel, co
         return before .. " " .. prefix .. after
     end
     -- offline: "Name has gone offline." → "Name [Main] has gone offline."
-    local rest = message:match("^[^%s]+%s+(.+)$")
+    -- Forever names carry a surname ("First Surname"), so split after the whole
+    -- captured name rather than the first word.
+    local fullName = message:match(offlinePattern())
+    local rest = message:sub(#fullName + 1):match("^%s+(.+)$")
     if not rest then return message end
-    return name .. " " .. prefix .. rest
+    return fullName .. " " .. prefix .. rest
 end
 
 --- Shared GuildShareData resolvers used by both chat and system-message filters.

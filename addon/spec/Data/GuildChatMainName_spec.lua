@@ -469,6 +469,41 @@ describe("GuildChatMainName", function()
       assert.are.equal("Allystie [SomethingElse] has gone offline.", out)
     end)
 
+    it("keeps a Forever surname before the brackets on offline, not after", function()
+      local out = GCM.TransformOnlineOffline(
+        "Lizardbait Guttermoss has gone offline.",
+        mains({ ["Lizardbait Guttermoss"] = "Drubbles" }),
+        nil, nil, false)
+      assert.are.equal("Lizardbait Guttermoss [Drubbles] has gone offline.", out)
+    end)
+
+    it("puts a whole preferred name with a surname inside the brackets on offline", function()
+      local out = GCM.TransformOnlineOffline(
+        "Lizardbait Guttermoss has gone offline.",
+        mains({ ["Lizardbait Guttermoss"] = "Drubbles" }),
+        nil,
+        function() return "Drubbles Guttermoss" end,
+        false)
+      assert.are.equal("Lizardbait Guttermoss [Drubbles Guttermoss] has gone offline.", out)
+    end)
+
+    it("keeps a Forever surname before the brackets on online", function()
+      local out = GCM.TransformOnlineOffline(
+        "|Hplayer:Lizardbait Guttermoss|h[Lizardbait Guttermoss]|h has come online.",
+        mains({ ["Lizardbait Guttermoss"] = "Drubbles" }),
+        nil, nil, false)
+      assert.are.equal(
+        "|Hplayer:Lizardbait Guttermoss|h[Lizardbait Guttermoss]|h [Drubbles] has come online.", out)
+    end)
+
+    it("keeps the realm suffix when splitting the offline message", function()
+      local out = GCM.TransformOnlineOffline(
+        "Allystie-Dreamscythe has gone offline.",
+        mains({ Allystie = "Treebus" }),
+        nil, nil, false)
+      assert.are.equal("Allystie-Dreamscythe [Treebus] has gone offline.", out)
+    end)
+
     it("leaves online/offline unchanged when the character is unknown", function()
       assert.are.equal(ONLINE, GCM.TransformOnlineOffline(ONLINE, mains({})))
     end)
