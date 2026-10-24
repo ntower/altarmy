@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { UploadResult } from '../api/client'
 import { characters, status } from '../test/status'
-import { GUEST, mockApi, renderWithProviders } from '../test/utils'
+import { ADMIN, GUEST, mockApi, renderWithProviders } from '../test/utils'
 import { navigate } from '../lib/router'
 import { SYNC_DOWNLOAD } from './SyncCard'
 import { ProfitPage } from './Profit'
@@ -117,6 +117,19 @@ describe('ProfitPage', () => {
     act(() => navigate('/profit/gold'))
     await waitFor(() => expect(window.location.pathname).toBe('/profit'))
     expect(paths(fetch, '/api/rank')).toEqual([])
+  })
+
+  it('an admin can make gold while it is switched off', async () => {
+    features.makeGold = false
+    mockApi({ '/api/status': status(), '/api/characters': characters, '/api/rank': noResults })
+    renderWithProviders(<ProfitPage />, ADMIN)
+    const aims = await screen.findByRole('group', { name: "What's your goal?" })
+    expect(within(aims).getByRole('button', { name: 'Make gold' })).toBeEnabled()
+    expect(within(aims).queryByText('Coming soon')).not.toBeInTheDocument()
+
+    act(() => navigate('/profit/gold'))
+    await new Promise((r) => setTimeout(r, 50))
+    expect(window.location.pathname).toBe('/profit/gold')
   })
 
   it('without the strategy pages, a strategy path goes back to the gold list, and an old one to its filter', async () => {

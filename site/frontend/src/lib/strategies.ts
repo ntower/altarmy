@@ -1,6 +1,6 @@
 import type { Exit, RankKind } from '../api/queries'
 import type { RankResult } from '../api/client'
-import { PROCESSING, VENDOR_RUNS, WHAT_I_HOLD } from './features'
+import type { Features } from './useFeatures'
 import type { GoldStrategy } from './profitRoute'
 import { ALL_EXITS } from './setup'
 
@@ -16,8 +16,8 @@ export type StrategySpec = {
   blurb: string
   /** what the player does */
   errand: string
-  /** whether it is offered yet */
-  live: boolean
+  /** the flag that offers it, if any (an admin gets every one) */
+  feature?: keyof Features
 }
 
 export const GOLD_STRATEGIES: readonly StrategySpec[] = [
@@ -26,33 +26,33 @@ export const GOLD_STRATEGIES: readonly StrategySpec[] = [
     title: 'Craft and sell',
     blurb: 'Make what your characters know; post it, vendor it or disenchant it, whichever pays.',
     errand: "You'll buy reagents, craft, then post or vendor",
-    live: true,
   },
   {
     key: 'process',
     title: 'Process trade goods',
     blurb: 'Smelt, tan or weave, or sell the raw goods: whichever pays after the cut.',
     errand: "You'll buy or gather raw goods, process them, then post",
-    live: PROCESSING,
+    feature: 'processing',
   },
   {
     key: 'vendor',
     title: 'Vendor runs',
     blurb: 'Buy what is listed under what a vendor pays, or buy from vendors what the auction house pays more for.',
     errand: "You'll buy on the auction house or from vendors, then sell the other way",
-    live: VENDOR_RUNS,
+    feature: 'vendorRuns',
   },
   {
     key: 'held',
     title: 'What I hold',
     blurb: "What your characters' bags and banks hold, and what each thing is worth: vendor it, post it or keep it.",
     errand: "You'll clear out your bags and bank",
-    live: WHAT_I_HOLD,
+    feature: 'whatIHold',
   },
 ]
 
-/** The strategies offered now. */
-export const liveStrategies = (): StrategySpec[] => GOLD_STRATEGIES.filter((s) => s.live)
+/** The strategies offered now, with these flags (`useFeatures`). */
+export const liveStrategies = (features: Features): StrategySpec[] =>
+  GOLD_STRATEGIES.filter((s) => !s.feature || features[s.feature])
 
 /** Craft and sell's one filter: every way to sell, or only one of them (`?exit=`). */
 export const SELL_VIA = ['all', 'vendor', 'ah', 'disenchant'] as const

@@ -3,6 +3,7 @@ import { useTrack } from '../api/queries'
 import { linkProps, navigate } from '../lib/router'
 import type { GoldStrategy } from '../lib/profitRoute'
 import { liveStrategies } from '../lib/strategies'
+import { useFeatures } from '../lib/useFeatures'
 import cards from './Cards.module.css'
 
 /**
@@ -11,6 +12,7 @@ import cards from './Cards.module.css'
  */
 export function StrategyPicker() {
   const track = useTrack()
+  const features = useFeatures()
   const pick = (key: GoldStrategy) => {
     track('strategy_chosen', { strategy: key })
     navigate(`/profit/gold/${key}`)
@@ -21,7 +23,7 @@ export function StrategyPicker() {
         How do you want to make gold?
       </Title>
       <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-        {liveStrategies().map((s) => (
+        {liveStrategies(features).map((s) => (
           <UnstyledButton key={s.key} className={cards.card} onClick={() => pick(s.key)} aria-label={s.title} p="md">
             <Stack gap={4}>
               <Text fw={600}>{s.title}</Text>
@@ -45,7 +47,7 @@ export function StrategyPicker() {
 
 /** Above each way to make gold: back to the question, and the other ways a click away (when there are others). */
 export function StrategyBar({ current }: { current: GoldStrategy }) {
-  const live = liveStrategies()
+  const live = liveStrategies(useFeatures())
   return (
     <Group justify="space-between" gap="sm" wrap="wrap">
       <Anchor size="sm" {...linkProps('/profit/gold')}>

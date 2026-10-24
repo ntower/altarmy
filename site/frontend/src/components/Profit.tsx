@@ -8,13 +8,13 @@ import type { CharacterGroup, Characters, UploadResult } from '../api/client'
 import { useCharacters, useTrack } from '../api/queries'
 import { CharacterList } from './CharacterList'
 import { age, parseUtc } from '../lib/age'
-import { MAKE_GOLD, STRATEGY_PICKER } from '../lib/features'
 import { realmLabel } from '../lib/realms'
 import { parseProfitPath, profitPath } from '../lib/profitRoute'
 import { liveStrategies } from '../lib/strategies'
 import { EASE, LAYOUT } from '../lib/motion'
 import { linkProps, navigate, previousRoute, usePath } from '../lib/router'
 import { useSession } from '../lib/session'
+import { useFeatures } from '../lib/useFeatures'
 import { setupSchema, storePresets, type Aim, type Setup as SetupAnswers } from '../lib/setup'
 import { useStoredState } from '../lib/storage'
 import { Hero } from './Hero'
@@ -36,7 +36,7 @@ const NOT_BROWSED = { browsed: false }
 const NO_GROUPS: readonly CharacterGroup[] = []
 const storedSetup = setupSchema.nullable()
 /** The aims switched off by a feature flag, each with what its card says. */
-const unavailableAims = (): Partial<Record<Aim, string>> => (MAKE_GOLD ? {} : { gold: 'Coming soon' })
+const unavailableAims = (makeGold: boolean): Partial<Record<Aim, string>> => (makeGold ? {} : { gold: 'Coming soon' })
 /** Alt Army Sync counts as set up while it has uploaded anything within this many days. */
 const AUTO_IMPORT_DAYS = 30
 
@@ -202,6 +202,7 @@ function Strip({
  */
 export function ProfitPage() {
   const { uid } = useSession()
+  const features = useFeatures()
   const view = parseProfitPath(usePath())
   const characters = useCharacters()
   const track = useTrack()
@@ -225,12 +226,14 @@ export function ProfitPage() {
   // Past the start (a path under /profit), the visitor has started whatever they did before.
   // A path under /profit that means nothing is the start, as is making gold while it is switched off: shown as the
   // start at once, so nothing under it mounts (and asks for a ranking) before the redirect below.
-  const unknown = view === null || (view.kind === 'gold' && !MAKE_GOLD)
+  const unknown = view === null || (view.kind === 'gold' && !features.makeGold)
   // A path kept for old links goes to its page; a way to make gold that isn't offered, back to the question.
   const elsewhere =
     view?.kind === 'moved'
       ? view.to
-      : view?.kind === 'gold' && view.strategy && !(STRATEGY_PICKER && liveStrategies().some((s) => s.key === view.strategy))
+      : view?.kind === 'gold' &&
+          view.strategy &&
+          !(features.strategyPicker && liveStrategies(features).some((s) => s.key === view.strategy))
         ? '/profit/gold'
         : null
   const atStart = view?.kind === 'start' || unknown
@@ -369,7 +372,7 @@ export function ProfitPage() {
                 style={{ scrollMarginTop: 16 }}
               >
                 {atStart ? (
-                  <AimQuestion current={lastSetup} unavailable={unavailableAims()} onPick={pickAim} />
+                  <AimQuestion current={lastSetup} unavailable={unavailableAims(features.makeGold)} onPick={pickAim} />
                 ) : (
                   <SearchTab
                     characters={charactersArea}

@@ -2,7 +2,7 @@ import { Fragment, useState, type ReactNode } from 'react'
 import { Button, Group, List, Radio, Stack, Text, Title, UnstyledButton } from '@mantine/core'
 import { motion } from 'motion/react'
 import { useMaxSkill } from '../api/queries'
-import { MAKE_GOLD } from '../lib/features'
+import { useFeatures } from '../lib/useFeatures'
 import {
   AIMS,
   aimSchema,
@@ -198,6 +198,7 @@ function StepCards({
 }) {
   // The profession whose card is open to pick characters.
   const [choosing, setChoosing] = useState<string | null>(null)
+  const { makeGold } = useFeatures()
   const current: string | undefined = setup?.[step]
   const options: {
     card: Card<string>
@@ -219,7 +220,7 @@ function StepCards({
     return (
       <Text size="sm" c="dimmed">
         None of your characters on this realm has a profession yet. Pick another realm
-        {MAKE_GOLD ? ', or make gold instead.' : '.'}
+        {makeGold ? ', or make gold instead.' : '.'}
       </Text>
     )
   }

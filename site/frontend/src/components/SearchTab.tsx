@@ -12,12 +12,12 @@ import {
 } from '../api/queries'
 import { hypotheticalPath, parseProfitPath, resolveHypothetical, resolveRun, runPath } from '../lib/profitRoute'
 import { fromKey, realmOptions, toKey } from '../lib/realms'
-import { STRATEGY_PICKER } from '../lib/features'
 import { navigate, usePath } from '../lib/router'
 import { StrategyBar, StrategyPicker } from './StrategyPicker'
 import { VendorRuns } from './VendorRuns'
 import { WhatIHold } from './WhatIHold'
 import { useSession } from '../lib/session'
+import { useFeatures } from '../lib/useFeatures'
 import {
   CLIMBER_NAME,
   hasEnchanter,
@@ -73,6 +73,7 @@ export function SearchTab({
   onUploadCharacters?: () => void
 }) {
   const { uid } = useSession()
+  const { strategyPicker } = useFeatures()
   const path = usePath()
   const view = parseProfitPath(path)
   const status = useStatus()
@@ -228,7 +229,7 @@ export function SearchTab({
   // the character nobody uploaded (a hypothetical climb).
   const browsing = group === undefined && hypothetical === null
   // A way to make gold with its own page (`STRATEGY_PICKER`): the strategy bar over its search.
-  const strategy = STRATEGY_PICKER && view?.kind === 'gold' ? view.strategy : undefined
+  const strategy = strategyPicker && view?.kind === 'gold' ? view.strategy : undefined
   const noEnchanter = !!selection && group !== undefined && !hasEnchanter(group)
   // The selection's auction house and its newest scan; undefined while the coverage is still loading.
   const house = coverage.data?.find((c) => c.auction_house_id === status.data.auction_house_id)
@@ -290,7 +291,7 @@ export function SearchTab({
         <Group justify="center" py="xl">
           <Loader aria-label="Switching realm" />
         </Group>
-      ) : selection && setup.aim === 'gold' && STRATEGY_PICKER && view?.kind === 'gold' && !view.strategy ? (
+      ) : selection && setup.aim === 'gold' && strategyPicker && view?.kind === 'gold' && !view.strategy ? (
         <StrategyPicker />
       ) : selection ? (
         <>

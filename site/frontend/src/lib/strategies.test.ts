@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { robeResult } from '../test/results'
 import { parseProfitPath, profitPath } from './profitRoute'
+import { featuresFor } from './useFeatures'
 import { byGroup, byProcessGroup, liveStrategies, parseSellVia, sellViaExits, sellViaKinds } from './strategies'
 
 describe('strategies', () => {
   it('offers every strategy built', () => {
-    expect(liveStrategies().map((s) => s.key)).toEqual(['craft', 'process', 'vendor', 'held'])
+    expect(liveStrategies(featuresFor(false)).map((s) => s.key)).toEqual(['craft', 'process', 'vendor', 'held'])
   })
 
   it('shows processing results in their groups, those of none last', () => {
