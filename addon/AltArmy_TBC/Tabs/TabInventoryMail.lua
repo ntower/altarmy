@@ -32,12 +32,13 @@ local UI = {
     STATUS_HEIGHT = 20,
     FOOTER_RIGHT_MARGIN = AltArmy.WINDOW_GRIP_INSET or 16, -- clear of the window's resize grip
     FALLBACK_WIDTH = 600,
-    -- Sums to 626 at the stock window size (the list viewport's width; see Tabs/TabEconomy.lua). Items,
-    -- Money and Expires are fixed; Subject and From share what a wider window adds (FitColumns, through
-    -- Data/ColumnFit.lua). colWidths holds the fitted widths, stockWidths the stock ones.
+    -- Sums to 626 at the stock window size (the list viewport's width; see Tabs/TabEconomy.lua). Money and
+    -- Expires are fixed; Items, Subject and From share what a wider window adds (FitColumns, through
+    -- Data/ColumnFit.lua), Items in whole icons so more attachments fit a line (IconsPerLine).
+    -- colWidths holds the fitted widths, stockWidths the stock ones.
     colWidths = { items = 204, subject = 152, sender = 110, money = 100, expires = 60 },
     stockWidths = { items = 204, subject = 152, sender = 110, money = 100, expires = 60 },
-    stretchShare = { subject = 0.6, sender = 0.4 },
+    stretchShare = { items = 0.5, subject = 0.3, sender = 0.2 },
     colKeys = { "items", "subject", "sender", "money", "expires" },
     colLabels = { items = "Items", subject = "Subject", sender = "From", money = "Money", expires = "Expires" },
     colJustify = { items = "LEFT", subject = "LEFT", sender = "LEFT", money = "LEFT", expires = "LEFT" },
@@ -86,7 +87,18 @@ end
 --- whatever the list has beyond the stock total (never under it).
 local function FitColumns(width)
     local fitted = ColumnFit.Fit(UI.stockWidths, UI.stretchShare, width)
+    -- Items grows by whole icons; what is left of its share goes to Subject.
+    local pitch = UI.ICON + UI.ICON_GAP
+    local itemsExtra = fitted.items - UI.stockWidths.items
+    local whole = math.floor(itemsExtra / pitch) * pitch
+    fitted.subject = fitted.subject + (itemsExtra - whole)
+    fitted.items = UI.stockWidths.items + whole
     for key, w in pairs(fitted) do UI.colWidths[key] = w end
+end
+
+--- Attachment icons a line holds at the Items column's fitted width (6 at the stock width).
+local function IconsPerLine()
+    return math.max(UI.ICONS_PER_LINE, math.floor(UI.colWidths.items / (UI.ICON + UI.ICON_GAP)))
 end
 
 --- Header labels with the sort arrow on the sorted column.
@@ -284,7 +296,7 @@ local function LayoutRows(messages, width)
         local row = PoolRow()
         state.rows[#state.rows + 1] = row
         row.message = msg
-        local perLine = UI.ICONS_PER_LINE
+        local perLine = IconsPerLine()
         local lines = math.max(1, math.ceil(#msg.items / perLine))
         local height = math.max(UI.ROW_HEIGHT, lines * (UI.ICON + UI.ICON_GAP) + UI.ROW_PAD * 2)
         row:SetHeight(height)

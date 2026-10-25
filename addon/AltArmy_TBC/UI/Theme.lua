@@ -3550,6 +3550,13 @@ function Theme.CreateSingleSelectDropdown(opts)
         closePopup()
     end
 
+    --- A new width for the button, and the popup's least width (the popup still grows for long labels).
+    function api:SetWidth(w)
+        width = w
+        btn:SetWidth(w)
+        popup:SetWidth(math.max(popup:GetWidth() or 0, w))
+    end
+
     btn:SetScript("OnClick", function()
         if not enabled or not btn:IsEnabled() then return end
         local show = not popup:IsShown()

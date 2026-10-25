@@ -243,18 +243,33 @@ function IL.MessageMark(msg)
 end
 
 --- Inbox messages from char.Mails (scanned) then char.MailCache (predicted from sends and returns),
---- grouped by mailIndex (mail v2); a row without one is a message of its own. A message:
+--- grouped by mailIndex (mail v2). Rows without one (saved before v2) were written one message at a
+--- time, so a run of them with the same sender, subject, returned flag, save time and expiry is one
+--- message. A message:
 --- { index, sender, subject, returned, predicted, money, daysLeft (remaining now, like DS:GetMailInfo),
 ---   items = { { itemID, count, link, icon }, ... } }, in inbox order.
 function IL.MailMessages(char, now)
     now = now or 0
     local messages = {}
+    local function legacyKey(row)
+        return table.concat({ tostring(row.sender), tostring(row.subject), tostring(row.returned and true),
+            tostring(row.lastCheck), tostring(row.daysLeft) }, "\31")
+    end
     local function consume(rows, predicted)
         local byIndex = {}
+        local legacy, legacyMsg = nil, nil -- the previous row's key and message, when it had no mailIndex
         for _, row in ipairs(rows or {}) do
             if type(row) == "table" then
                 local idx = row.mailIndex
-                local msg = idx ~= nil and byIndex[idx] or nil
+                local msg
+                if idx ~= nil then
+                    msg = byIndex[idx]
+                    legacy, legacyMsg = nil, nil
+                else
+                    local key = legacyKey(row)
+                    if key == legacy then msg = legacyMsg end
+                    legacy = key
+                end
                 if not msg then
                     msg = {
                         index = idx,
@@ -269,6 +284,7 @@ function IL.MailMessages(char, now)
                     messages[#messages + 1] = msg
                     if idx ~= nil then byIndex[idx] = msg end
                 end
+                if idx == nil then legacyMsg = msg end
                 if type(row.money) == "number" and row.money > 0 then
                     msg.money = msg.money + row.money
                 end

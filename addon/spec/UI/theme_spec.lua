@@ -777,6 +777,16 @@ describe("AltArmy.Theme", function()
             assert.are.equal("Current realm", dd.label._text)
         end)
 
+        it("SetWidth resizes the trigger button", function()
+            local dd = Theme.CreateSingleSelectDropdown({
+                parent = makeStubFrame(),
+                width = 183,
+                entries = { { id = "a", label = "A" } },
+            })
+            dd:SetWidth(240)
+            assert.are.equal(240, dd.button:GetWidth())
+        end)
+
         it("calls onSelect and closes popup when an item is chosen", function()
             local parent = makeStubFrame()
             local selected = "chat"

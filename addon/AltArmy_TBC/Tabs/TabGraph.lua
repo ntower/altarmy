@@ -1646,6 +1646,7 @@ local function ApplyRightColumnLayout()
             SELECTOR_WIDTH = fitted.column
             optionsPanel:SetWidth(SELECTOR_WIDTH)
             selectorPanel:SetWidth(SELECTOR_WIDTH)
+            metricDropdown:SetWidth(SELECTOR_WIDTH - 12) -- across the options panel, as at the stock width
             local scrollW = selectorScroll:GetWidth()
             if scrollW and scrollW > 0 then selectorChild:SetWidth(scrollW) end
         end

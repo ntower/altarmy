@@ -328,6 +328,24 @@ describe("InventoryLayout", function()
             assert.are.equal(8, m[1].daysLeft)
         end)
 
+        it("groups v1 rows (no mailIndex) written together for one message", function()
+            local function row(itemID, subject, lastCheck)
+                return { itemID = itemID, count = 3, sender = "Bank", subject = subject, money = 0,
+                    lastCheck = lastCheck, daysLeft = 30, returned = false }
+            end
+            local m = IL.MailMessages({ MailCache = {
+                row(1, "Gems", 500), row(2, "Gems", 500), row(3, "Gems", 500),
+                row(4, "Gems", 600), -- the same subject sent again later: another message
+                row(5, "Ore", 600),
+                { mailIndex = -1, itemID = 6, count = 1, sender = "Bank", subject = "Ore", money = 0,
+                    lastCheck = 600, daysLeft = 30, returned = false },
+            } }, 600)
+            assert.are.equal(4, #m)
+            assert.are.same({ 3, 1, 1, 1 }, { #m[1].items, #m[2].items, #m[3].items, #m[4].items })
+            assert.is_nil(m[1].index)
+            assert.are.equal(-1, m[4].index)
+        end)
+
         it("is empty without mail", function()
             assert.are.same({}, IL.MailMessages(nil, 0))
             assert.are.same({}, IL.MailMessages({ Mails = {} }, 0))
