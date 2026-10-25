@@ -15,7 +15,7 @@ local ZI = AltArmy.ZygorIntegration
 local PAD = 4
 local SECTION_INSET = Theme.TAB_SECTION_INSET
 local SECTION_GAP = Theme.SECTION_GAP
-local FACTION_LABEL_WIDTH = 120
+local FACTION_LABEL_WIDTH = 125
 local REP_ROW_HEIGHT = 47
 local REP_BAR_HEIGHT = 20
 local REP_STANDING_ROW_HEIGHT = 14
@@ -275,7 +275,7 @@ headerBg:SetPoint("BOTTOMLEFT", fixedHeaderRow, "BOTTOMLEFT", 0, HEADER_BG_BOTTO
 headerBg:SetPoint("BOTTOMRIGHT", fixedHeaderRow, "BOTTOMRIGHT", 0, HEADER_BG_BOTTOM_INSET)
 headerBg:SetPoint("TOPLEFT", fixedHeaderRow, "TOPLEFT", 0, HEADER_BG_OVERHANG)
 headerBg:SetPoint("TOPRIGHT", fixedHeaderRow, "TOPRIGHT", 0, HEADER_BG_OVERHANG)
-Theme.StyleGridHeader(headerBg)
+Theme.StyleGridHeader(headerBg, tabContentPanel)
 fixedHeaderRow:EnableMouse(true)
 
 -- Grid corner: score-sort controls (the faction filter moved to the toolbar row).

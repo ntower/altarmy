@@ -229,7 +229,7 @@ do
     bg:SetPoint("BOTTOMRIGHT", W.headerRow, "BOTTOMRIGHT", 0, UI.HEADER_BG_BOTTOM_INSET)
     bg:SetPoint("TOPLEFT", W.headerRow, "TOPLEFT", 0, UI.HEADER_BG_OVERHANG)
     bg:SetPoint("TOPRIGHT", W.headerRow, "TOPRIGHT", 0, UI.HEADER_BG_OVERHANG)
-    Theme.StyleGridHeader(bg)
+    Theme.StyleGridHeader(bg, panel)
 end
 
 W.corner = CreateFrame("Frame", nil, W.headerRow)

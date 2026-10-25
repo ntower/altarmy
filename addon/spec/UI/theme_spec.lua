@@ -1518,6 +1518,50 @@ describe("AltArmy.Theme", function()
             assert.is_nil(tex._color)
         end)
 
+        -- A region laid out at (left, top) with a size, as WoW reports it (y grows upwards).
+        local function placeRegion(region, left, top, w, h)
+            function region:GetLeft() return left end
+            function region:GetTop() return top end
+            function region:GetWidth() return w end
+            function region:GetHeight() return h end
+            function region:SetHorizTile(on) self._horizTile = on end
+            function region:SetVertTile(on) self._vertTile = on end
+            return region
+        end
+
+        it("tiles a pinned header in register with the panel it sits on", function()
+            local panel = makeStubFrame()
+            panel.altArmyNativeTier = "content"
+            panel.altArmyNativeBg = placeRegion(makeStubTexture(), 100, 500, 512, 384)
+            local headerRow = makeStubFrame()
+            local tex = placeRegion(makeStubTexture(), 110, 490, 256, 32)
+            function tex:GetParent() return headerRow end
+
+            Theme.StyleGridHeader(tex, panel)
+
+            assert.are.equal(Theme.NATIVE_TIERS.content.bg, tex._texture)
+            local T = Theme.NATIVE_BG_TILE
+            assert.are.same({ 10 / T, 266 / T, 10 / T, 42 / T }, tex._texCoord)
+            assert.is_false(tex._horizTile)
+            -- The panel's own background now tiles by the same explicit coords, from its corner.
+            assert.are.same({ 0, 512 / T, 0, 384 / T }, panel.altArmyNativeBg._texCoord)
+            assert.is_function(panel._scripts.OnSizeChanged)
+            assert.is_function(headerRow._scripts.OnSizeChanged)
+        end)
+
+        it("falls back to free tiling without a panel", function()
+            local tex = placeRegion(makeStubTexture(), 0, 0, 10, 10)
+            Theme.StyleGridHeader(tex)
+            assert.is_true(tex._horizTile)
+            assert.is_nil(tex._texCoord)
+        end)
+
+        it("paints no label column background, so the page's one background shows", function()
+            local column = makeStubFrame()
+            assert.is_nil(Theme.ApplyGridLabelColumnBackground(column))
+            assert.are.equal(0, #column._textures)
+        end)
+
         it("tints pinned-header fades as a neutral shadow", function()
             local viewport = makeStubFrame()
             local header = makeStubFrame()

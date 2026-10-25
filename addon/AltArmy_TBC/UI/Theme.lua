@@ -298,6 +298,9 @@ function Theme.ApplyNativeChrome(frame, tier)
         frame.Center:SetVertexColor(c[1], c[2], c[3], c[4])
     end
     frame.altArmyNativeTier = tier
+    if frame.altArmyBgInRegister and Theme._RetileInRegister then
+        Theme._RetileInRegister(frame) -- textures tiled in register keep lining up after a re-skin
+    end
     return true
 end
 
@@ -1162,12 +1165,80 @@ end
 Theme.NATIVE_SCROLL_SHADOW = { 0, 0, 0, 0.55 }
 
 --- Opaque fill for pinned grid headers / label columns (must hide rows scrolling beneath).
-function Theme.StyleGridHeader(texture)
+--- One tile of a native background, in UI units: textures tiled in register (Theme.TileInRegister)
+--- repeat every this many units, so a texture over a panel continues the panel's own pattern.
+Theme.NATIVE_BG_TILE = 256
+
+local function TileCoords(texture, origin)
+    local w, h = texture:GetWidth(), texture:GetHeight()
+    if not w or not h or w <= 0 or h <= 0 then return end
+    local dx, dy = 0, 0
+    if texture ~= origin then
+        local ol, ot = origin:GetLeft(), origin:GetTop()
+        local l, t = texture:GetLeft(), texture:GetTop()
+        if not (ol and ot and l and t) then return end -- not laid out yet; retried on size or show
+        dx, dy = l - ol, ot - t
+    end
+    local tile = Theme.NATIVE_BG_TILE
+    if texture.SetHorizTile then texture:SetHorizTile(false) end
+    if texture.SetVertTile then texture:SetVertTile(false) end
+    texture:SetTexCoord(dx / tile, (dx + w) / tile, dy / tile, (dy + h) / tile)
+end
+
+local function RetileInRegister(panel)
+    local origin = panel.altArmyNativeBg
+    local textures = panel.altArmyBgInRegister
+    if not origin or not textures then return end
+    for i = 1, #textures do
+        TileCoords(textures[i], origin)
+    end
+end
+
+Theme._RetileInRegister = RetileInRegister
+
+--- Tile `texture` (already set to the panel's background file, REPEAT wrap) so its pattern lines up
+--- with `panel`'s native background, as if the panel's background showed through it: no seam where one
+--- meets the other. The panel's own background then tiles by explicit coords too. Returns false when
+--- the panel has no native background.
+function Theme.TileInRegister(texture, panel)
+    if not texture or not panel or not panel.altArmyNativeBg then return false end
+    local textures = panel.altArmyBgInRegister
+    if not textures then
+        textures = { panel.altArmyNativeBg }
+        panel.altArmyBgInRegister = textures
+        local function retile() RetileInRegister(panel) end
+        panel:HookScript("OnSizeChanged", retile)
+        panel:HookScript("OnShow", retile)
+    end
+    local known = false
+    for i = 1, #textures do
+        if textures[i] == texture then known = true end
+    end
+    if not known then
+        textures[#textures + 1] = texture
+        local owner = texture.GetParent and texture:GetParent()
+        if owner and owner ~= panel and owner.HookScript then
+            local function retile() TileCoords(texture, panel.altArmyNativeBg) end
+            owner:HookScript("OnSizeChanged", retile)
+            owner:HookScript("OnShow", retile)
+        end
+    end
+    RetileInRegister(panel)
+    return true
+end
+
+--- Fill a pinned grid header. Pass the content panel it sits on as `panel`: with native chrome the
+--- header then continues the panel's background seamlessly (Theme.TileInRegister).
+function Theme.StyleGridHeader(texture, panel)
     if not texture then return end
     if nativeChromeAvailable() then
-        texture:SetTexture(Theme.NATIVE_TIERS.section.bg, "REPEAT", "REPEAT")
-        if texture.SetHorizTile then texture:SetHorizTile(true) end
-        if texture.SetVertTile then texture:SetVertTile(true) end
+        local bg = panel and panel.altArmyNativeBg and panel.altArmyNativeTier
+            and Theme.NATIVE_TIERS[panel.altArmyNativeTier].bg
+        texture:SetTexture(bg or Theme.NATIVE_TIERS.section.bg, "REPEAT", "REPEAT")
+        if not (bg and Theme.TileInRegister(texture, panel)) then
+            if texture.SetHorizTile then texture:SetHorizTile(true) end
+            if texture.SetVertTile then texture:SetVertTile(true) end
+        end
         return
     end
     local hdr = C.gridHeaderBg
@@ -1260,8 +1331,14 @@ function Theme.SetSortHeaderLabel(label, baseLabel, isSorted, ascending)
 end
 
 --- Opaque gridHeaderBg fill for a pinned row/column label area (Gear slots, Reputation factions).
+--- With native chrome it paints nothing: nothing scrolls under the label column, and its own texture
+--- would meet the panel's (or the pinned header's) in a visible seam, so the page's one background shows.
 function Theme.ApplyGridLabelColumnBackground(frame)
     if not frame then return nil end
+    if nativeChromeAvailable() then
+        if frame.altArmyLabelColBg then frame.altArmyLabelColBg:Hide() end
+        return nil
+    end
     if not frame.altArmyLabelColBg then
         local bg = frame:CreateTexture(nil, "BACKGROUND")
         bg:SetAllPoints(frame)
@@ -3131,6 +3208,22 @@ function Theme.CreateDropdownMenuItem(parent, opts)
     end
 
     return btn
+end
+
+--- Widen a popup of CreateDropdownMenuItem rows so the widest label fits untruncated,
+--- never narrower than `minWidth`. Call after the items are created.
+function Theme.FitDropdownPopupWidth(popup, items, minWidth)
+    local insets = Theme.GetDropdownPopupInsets()
+    local widest = 0
+    for i = 1, #items do
+        local item = items[i]
+        local w = item.label and item.label.GetStringWidth and item.label:GetStringWidth() or 0
+        local labelLeft = item.altArmyRadioCheck and 20 or 4
+        w = w + labelLeft + 4 + 4 -- label's left inset, right inset, and a little air
+        if w > widest then widest = w end
+    end
+    local need = math.ceil(insets.left + widest + insets.right)
+    popup:SetWidth(math.max(minWidth or 0, need))
 end
 
 Theme._openSingleSelectDropdowns = Theme._openSingleSelectDropdowns or {}

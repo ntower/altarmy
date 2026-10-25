@@ -165,7 +165,7 @@ local FOCUS_GRID_BOTTOM_PAD = 2
 
 -- Gear settings persistence (AltArmyTBC_GearSettings)
 local DEFAULT_SCORE_PROVIDER = "level"
-local SLOT_LABEL_WIDTH = 120
+local SLOT_LABEL_WIDTH = 125
 local SCORE_SORT_BTN_GAP = 2
 local SCORE_ROW_LAYOUT_TRIM = 4
 local SCORE_ROW_HEADER_BOTTOM_INSET = 6
@@ -1358,7 +1358,7 @@ headerBg:SetPoint("BOTTOMLEFT", fixedHeaderRow, "BOTTOMLEFT", 0, HEADER_BG_BOTTO
 headerBg:SetPoint("BOTTOMRIGHT", fixedHeaderRow, "BOTTOMRIGHT", 0, HEADER_BG_BOTTOM_INSET)
 headerBg:SetPoint("TOPLEFT", fixedHeaderRow, "TOPLEFT", 0, HEADER_BG_OVERHANG)
 headerBg:SetPoint("TOPRIGHT", fixedHeaderRow, "TOPRIGHT", 0, HEADER_BG_OVERHANG)
-Theme.StyleGridHeader(headerBg)
+Theme.StyleGridHeader(headerBg, gearMainSection)
 fixedHeaderRow:EnableMouse(true)
 local headerCornerColumn = CreateFrame("Frame", nil, fixedHeaderRow)
 headerCornerColumn:SetPoint("TOPLEFT", fixedHeaderRow, "TOPLEFT", 0, 0)
@@ -1613,6 +1613,7 @@ function GearTab.RebuildScoreProviderDropdown()
         b.providerId = provider.id
         scoreProviderDropdownButtons[idx] = b
     end
+    Theme.FitDropdownPopupWidth(scoreProviderDropdown, scoreProviderDropdownButtons, SCORE_PROVIDER_DROPDOWN_WIDTH)
 end
 
 scoreProviderBtn:SetScript("OnClick", function()

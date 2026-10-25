@@ -281,6 +281,9 @@ function SSR.CreateCornerControls(parent, opts)
             b.providerId = provider.id
             dropdownButtons[idx] = b
         end
+        if Theme.FitDropdownPopupWidth then
+            Theme.FitDropdownPopupWidth(dropdown, dropdownButtons, dropdownWidth)
+        end
     end
 
     local function updateSortButton()
