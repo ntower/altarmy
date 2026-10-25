@@ -21,6 +21,7 @@ UI\GuildCrest.lua
 UI\TopTabs.lua
 Core.lua
 Data\CharKey.lua
+Data\ColumnFit.lua
 Data\Characters\CharacterFilter.lua
 Data\Characters\BankAlt.lua
 Data\Characters\BankAltDetect.lua

@@ -27,6 +27,8 @@ See levels, rest XP, money, played time, and last online at a glance; pin/hide c
 
 Click headers to sort ascending/descending.
 
+A wider window widens Name by all of the extra, so the grid always fills the list; the other columns keep their width and the headers keep their short labels ("Lvl", "Online").
+
 ## Character visibility
 
 - Pin and hide via the Summary settings' Pin individual characters and Hide individual characters dropdowns.

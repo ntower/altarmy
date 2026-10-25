@@ -54,6 +54,12 @@ local FALLBACK = {
     [19] = PAPERDOLL .. "Tabard",
 }
 
+-- Classes whose ranged slot holds a relic: their character pane shows the relic art there
+-- (PaperDollItemSlotButton_OnLoad's UnitHasRelicSlot), which GetInventorySlotInfo doesn't give.
+local RANGED_SLOT = 18
+local RELIC_TEXTURE = PAPERDOLL .. "Relic"
+local RELIC_CLASSES = { PALADIN = true, SHAMAN = true, DRUID = true }
+
 local cache = {}
 
 function ESA.ResetCache()
@@ -61,9 +67,13 @@ function ESA.ResetCache()
 end
 
 --- The empty-slot texture path for an inventory slot id (1-19), nil for any other.
-function ESA.TextureFor(invSlot)
+--- classFile (e.g. "DRUID") picks the relic art for the ranged slot of the classes that have one.
+function ESA.TextureFor(invSlot, classFile)
     local name = invSlot and SLOT_NAMES[invSlot]
     if not name then return nil end
+    if invSlot == RANGED_SLOT and type(classFile) == "string" and RELIC_CLASSES[classFile:upper()] then
+        return RELIC_TEXTURE
+    end
     local hit = cache[invSlot]
     if hit then return hit end
     local tex

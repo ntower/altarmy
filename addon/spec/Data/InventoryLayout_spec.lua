@@ -444,6 +444,46 @@ describe("InventoryLayout", function()
             assert.are.same({ 1, 0, 0 }, { z.columns, z.rows, z.height })
         end)
 
+        -- A block of 5 columns is 5 x 37 + 4 x 5 = 205 wide, of 6 columns 247.
+        it("BlockArrangement puts three 5-column bags in the stock width", function()
+            local a = IL.BlockArrangement(626, 37, 5, 5)
+            assert.are.same({ 3, 5, 205 }, { a.perRow, a.columns, a.blockWidth })
+            assert.are.equal(5, a.gap) -- 3 x 205 + 2 x 5 = 625: no room to spare
+        end)
+
+        it("BlockArrangement spreads the extra width between the bags until 6 columns fit", function()
+            local a = IL.BlockArrangement(700, 37, 5, 5) -- 3 x 247 + 2 x 5 = 751 does not fit
+            assert.are.same({ 3, 5 }, { a.perRow, a.columns })
+            assert.are.equal(5 + math.floor((700 - 625) / 2), a.gap)
+        end)
+
+        it("BlockArrangement switches to three 6-column bags once they fit, at the smallest gap", function()
+            local a = IL.BlockArrangement(751, 37, 5, 5)
+            assert.are.same({ 3, 6, 247, 5 }, { a.perRow, a.columns, a.blockWidth, a.gap })
+            local wider = IL.BlockArrangement(800, 37, 5, 5)
+            assert.are.same({ 3, 6 }, { wider.perRow, wider.columns })
+            assert.are.equal(5 + math.floor((800 - 751) / 2), wider.gap)
+        end)
+
+        it("BlockArrangement switches to four 5-column bags once they fit", function()
+            local a = IL.BlockArrangement(835, 37, 5, 5) -- 4 x 205 + 3 x 5
+            assert.are.same({ 4, 5, 5 }, { a.perRow, a.columns, a.gap })
+            local b = IL.BlockArrangement(834, 37, 5, 5)
+            assert.are.same({ 3, 6 }, { b.perRow, b.columns })
+        end)
+
+        it("BlockArrangement treats a width that is not a real number as no room", function()
+            for _, w in ipairs({ math.huge, -math.huge, 0 / 0 }) do
+                local a = IL.BlockArrangement(w, 37, 5, 5)
+                assert.are.same({ 1, 5, 5 }, { a.perRow, a.columns, a.gap })
+            end
+        end)
+
+        it("BlockArrangement keeps one 5-column bag a row when nothing wider fits", function()
+            local a = IL.BlockArrangement(100, 37, 5, 5)
+            assert.are.same({ 1, 5, 5 }, { a.perRow, a.columns, a.gap })
+        end)
+
         it("ColumnsForWidth fits whole columns and clamps", function()
             assert.are.equal(10, IL.ColumnsForWidth(626, 37, 5, 10))
             assert.are.equal(15, IL.ColumnsForWidth(626, 37, 5)) -- 15 x 37 + 14 x 5 = 625

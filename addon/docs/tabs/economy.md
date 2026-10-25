@@ -16,7 +16,7 @@ Four sub-views (three while Supply Chain is behind its feature flag), switched w
 
 ### Currency
 
-A grid of currencies (rows) × characters (columns), like the Reputation tab, with columns half again as wide. Its top tab uses the Character window's own Currency side-tab icon (`INV_SideTab_Currency_c60`).
+A grid of currencies (rows) × characters (columns), like the Reputation tab, with columns half again as wide. A wider window shows more character columns and widens the currency name column a little, up to 220 px. Its top tab uses the Character window's own Currency side-tab icon (`INV_SideTab_Currency_c60`).
 
 - **Rows:** **Gold** first, above every header: each character's money in gold, silver and copper. When that is too wide for the column, copper is left out, then silver (hover the cell for the full amount). Then every currency any shown character has, grouped under the same headers and in the same order as the Character window's Currency tab. Each currency row has its icon; hovering it shows the game's currency tooltip.
 - **Cells:** how much of that currency the character has, e.g. "1,500". A grey 0 means none. A dash means Alt Army hasn't recorded that character's currencies yet (log in on it once). Hovering a cell shows the amount and, for capped currencies, the cap.
@@ -32,7 +32,7 @@ A grid of currencies (rows) × characters (columns), like the Reputation tab, wi
 
 A Waylaid Crate is filled with **any one** of the bundles its label lists (for example Apprentice Ore takes 20 Copper Ore or 20 Tin Ore), then turned in for Merchant's Favor and some gold back. The table lists every Waylaid Crate the game has (all 30 shipments and the unread crate), priced from the newest Alt Army scan of the current realm and faction's auction house: a full scan or a summary scan, whichever is newer.
 
-Laid out like the Craftsman's Writs view, with the same column widths:
+Laid out like the Craftsman's Writs view, with the same column widths. A wider window gives the crate column most of the extra and the four money columns a little each, so their copper and silver stop dropping:
 
 | Column | Meaning |
 |--------|---------|

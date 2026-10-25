@@ -23,7 +23,7 @@ AltArmy TBC is an account-wide alt management addon for WoW: Forever (the main f
 
 ## Main UI and access
 
-- The main frame is a native Blizzard window (portrait, title bar, close button, rock background), the character sheet's size at first. It can be moved and closed with Escape, and made taller from the grip at its bottom-right corner (up to twice the stock height; the size is kept); `/altarmy resetsize` restores the stock size. The grip changes the width only with the Debug page's **Window width resize**, until every tab reflows. **Window Scale** (Options → General → Look and Feel, 50% to 200%) scales the whole window.
+- The main frame is a native Blizzard window (portrait, title bar, close button, rock background), the character sheet's size at first. It can be moved and closed with Escape, and resized from the grip at its bottom-right corner (up to 1.5 times as wide and twice as tall; the size is kept, and the window shrinks to fit when the game window becomes smaller). Every tab follows the width: text columns that get cut off widen, and the character grids show more characters. `/altarmy resetsize` restores the stock size. **Window Scale** (Options → General → Look and Feel, 50% to 200%) scales the whole window.
 - Tabs are icon flyouts on the right edge; hovering one shows its name. The portrait icon and title show the active tab.
 - Open with `/altarmy` or `/alta`; `/alta <tab> [view]` opens one tab or sub-view (`/alta economy crates`, `/alta cooldowns dungeons`).
 - Minimap button (left-click toggle, drag to move).

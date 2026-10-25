@@ -35,6 +35,18 @@ describe("EmptySlotArt", function()
     assert.are.equal("Interface\\Paperdoll\\UI-PaperDoll-Slot-Ranged", ESA.TextureFor(18))
   end)
 
+  it("shows the relic art in the ranged slot of paladins, shamans and druids", function()
+    _G.GetInventorySlotInfo = function(slotName)
+      return 0, "Interface\\Paperdoll\\UI-PaperDoll-Slot-" .. slotName:gsub("Slot$", "")
+    end
+    for _, classFile in ipairs({ "PALADIN", "SHAMAN", "druid" }) do
+      assert.are.equal("Interface\\Paperdoll\\UI-PaperDoll-Slot-Relic", ESA.TextureFor(18, classFile))
+    end
+    assert.are.equal("Interface\\Paperdoll\\UI-PaperDoll-Slot-Ranged", ESA.TextureFor(18, "HUNTER"))
+    assert.are.equal("Interface\\Paperdoll\\UI-PaperDoll-Slot-Ranged", ESA.TextureFor(18))
+    assert.are.equal("Interface\\Paperdoll\\UI-PaperDoll-Slot-Head", ESA.TextureFor(1, "DRUID"))
+  end)
+
   it("falls back when the API gives no texture", function()
     _G.GetInventorySlotInfo = function() return 2 end
     assert.are.equal("Interface\\Paperdoll\\UI-PaperDoll-Slot-Neck", ESA.TextureFor(2))

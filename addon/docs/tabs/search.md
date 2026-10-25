@@ -10,7 +10,7 @@ Locate items in bags, bank, and mail snapshots; find known recipes; filter recip
 
 - The toolbar search box is shown on the Summary tab (and stays while in Search mode); typing switches into Search mode.
 - There is no side tab for Search. In Search mode the tab the search started from (Summary) stays highlighted, and clicking any side tab clears the query and leaves Search. Closing Search settings with an empty search box also returns to that tab.
-- A native **Filter** dropdown (the Professions-window style) appears left of the search box once it has at least one character; the search box keeps a fixed width. Its menu has **Items**, **Recipes** and **Guild recipes** checkboxes (Guild recipes only when a character on the realm is in a guild; greyed out while Recipes is off), then **Advanced** (silver gear icon), which opens the Search settings side panel. The toolbar settings button also opens Search settings and is highlighted while recipe filters are active ("Filters Active", shown left of the Filter button).
+- A native **Filter** dropdown (the Professions-window style) appears left of the search box once it has at least one character; the search box is 360 px wide at the stock window and grows by half of what a wider window adds, up to 520 px. Its menu has **Items**, **Recipes** and **Guild recipes** checkboxes (Guild recipes only when a character on the realm is in a guild; greyed out while Recipes is off), then **Advanced** (silver gear icon), which opens the Search settings side panel. The toolbar settings button also opens Search settings and is highlighted while recipe filters are active ("Filters Active", shown left of the Filter button).
 
 ## Results
 

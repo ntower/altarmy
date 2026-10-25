@@ -8,7 +8,11 @@ local Core = AltArmy.GraphCore
 local Logic = AltArmy.GraphLogic
 local Theme = AltArmy.Theme
 
+-- The right column's (options and Compare) fitted width: a wider window gives it a little of what the tab
+-- gains, up to its cap, so long names and realm dividers stop truncating; the plot takes the rest
+-- (ApplyRightColumnLayout, Data/ColumnFit.lua). stockTab: the tab frame's width at the stock window.
 local SELECTOR_WIDTH = 195
+local SELECTOR_FIT = { stock = 195, flex = 0.15, cap = 260, stockTab = 654 }
 local SCROLL_GUTTER = Theme.VerticalScrollBarGutter()
 local SECTION_GAP = Theme.SECTION_GAP
 local ROW_HEIGHT = 20
@@ -687,7 +691,8 @@ local selectorScrollBinding = Theme.CreateVerticalScrollBinding(selectorScroll, 
     step = ROW_HEIGHT * 2,
 })
 local selectorScrollBar = selectorScrollBinding.bar
-Theme.AnchorVerticalScrollBar(selectorScrollBar, selectorPanel, selectorScroll)
+Theme.AnchorVerticalScrollBar(selectorScrollBar, selectorPanel, selectorScroll,
+        { bottomInset = AltArmy.WINDOW_GRIP_INSET }) -- clear of the window's grip
 
 local function UpdateSelectorScrollbar()
     selectorScrollBinding.UpdateRange()
@@ -741,7 +746,8 @@ local function UpdateSelectorLayout(hasCompareSection)
         selectorScroll:SetPoint("TOPLEFT", selectorPanel, "TOPLEFT", 4, -8)
         selectorScroll:SetPoint("BOTTOMRIGHT", selectorPanel, "BOTTOMRIGHT", -SCROLL_GUTTER, 4)
     end
-    Theme.AnchorVerticalScrollBar(selectorScrollBar, selectorPanel, selectorScroll)
+    Theme.AnchorVerticalScrollBar(selectorScrollBar, selectorPanel, selectorScroll,
+        { bottomInset = AltArmy.WINDOW_GRIP_INSET }) -- clear of the window's grip
 end
 
 local function PositionListRow(row, yOffset)
@@ -1632,9 +1638,23 @@ end
 local function ApplyRightColumnLayout()
     local shown = optionsPanel:IsShown()
     selectorPanel:SetShown(shown)
+    local CF = AltArmy.ColumnFit
+    if CF then
+        local fitted = CF.Fit({ column = SELECTOR_FIT.stock, plot = SELECTOR_FIT.stockTab - SELECTOR_FIT.stock },
+            { column = SELECTOR_FIT.flex }, frame:GetWidth(), { column = SELECTOR_FIT.cap })
+        if fitted.column ~= SELECTOR_WIDTH then
+            SELECTOR_WIDTH = fitted.column
+            optionsPanel:SetWidth(SELECTOR_WIDTH)
+            selectorPanel:SetWidth(SELECTOR_WIDTH)
+            local scrollW = selectorScroll:GetWidth()
+            if scrollW and scrollW > 0 then selectorChild:SetWidth(scrollW) end
+        end
+    end
     graphFrame:SetPoint("RIGHT", frame, "RIGHT", shown and (-SELECTOR_WIDTH - SECTION_GAP) or 0, 0)
 end
 ApplyRightColumnLayout()
+-- The right column follows the tab's width (the window's resize grip); the plot's own size change redraws it.
+frame:HookScript("OnSizeChanged", ApplyRightColumnLayout)
 
 function frame:IsGraphSettingsShown()
     return optionsPanel:IsShown()

@@ -15,7 +15,7 @@ See who is playing which alts in the guild, open their shared professions/recipe
 
 - Header: guild name / tabard. The character/profession search sits in the main toolbar row, in the spot Summary uses for item search.
 - The Guild side tab and the window portrait show your guild crest (`UI/GuildCrest.lua`). If you have no guild, they show the tabard icon.
-- Scroll list: one row per main (preferred name, character count, last online); expand for characters (class-colored name, level, primary professions).
+- Scroll list: one row per main (preferred name, character count, last online); expand for characters (class-colored name, level, primary professions). A wider window widens the name column (up to 100 px more); the count and professions take the rest.
 - Recipe detail: back + character title (Whisper on the same line, right side), recipe search in the main toolbar row's search slot, profession tabs, sortable recipe list with a skill column (required skill colored by difficulty at the guildmate's skill), sorted by required skill by default. On WoW Forever the profession tabs are spellbook-style icon tabs in the toolbar row (same spot as the Gear / Cooldowns sub-view tabs), showing the profession spell icon the native profession window uses with the name in the tooltip and no skill level; other clients show text buttons with the skill level below the title line.
 - Footer / settings for sharing preferences, notes wizard, pin-style UI prefs.
 

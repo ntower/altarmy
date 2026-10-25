@@ -31,7 +31,6 @@ describe("AltArmy.Debug", function()
         assert.is_false(AltArmyTBC_Options.debug.itemComparison)
         assert.is_false(AltArmyTBC_Options.debug.itemStats)
         assert.is_false(D.IsShowZygorMissingGuides())
-        assert.is_false(D.IsWindowWidthResizeEnabled())
         assert.is_false(D.IsShowUnannouncedCooldowns())
     end)
 
@@ -204,24 +203,12 @@ describe("AltArmy.Debug", function()
         assert.is_false(D.IsShowUnannouncedCooldowns())
     end)
 
-    it("IsWindowWidthResizeEnabled is standalone and calls the window's resize hook", function()
-        local applied = {}
-        AltArmy.ApplyWindowResize = function() applied[#applied + 1] = D.IsWindowWidthResizeEnabled() end
-        assert.is_false(D.IsEnabled())
-        D.SetWindowWidthResizeEnabled(true)
-        assert.is_true(D.IsWindowWidthResizeEnabled())
-        assert.is_true(AltArmyTBC_Options.debug.windowWidthResize)
-        D.SetWindowWidthResizeEnabled(false)
-        assert.is_false(D.IsWindowWidthResizeEnabled())
-        assert.are.same({ true, false }, applied)
-        AltArmy.ApplyWindowResize = nil
-    end)
-
-    it("Ensure drops the legacy windowResize key", function()
-        _G.AltArmyTBC_Options = { debug = { windowResize = true } }
+    it("Ensure drops the legacy windowResize and windowWidthResize keys", function()
+        _G.AltArmyTBC_Options = { debug = { windowResize = true, windowWidthResize = true } }
         D.Ensure()
         assert.is_nil(AltArmyTBC_Options.debug.windowResize)
-        assert.is_false(D.IsWindowWidthResizeEnabled())
+        assert.is_nil(AltArmyTBC_Options.debug.windowWidthResize)
+        assert.is_nil(D.IsWindowWidthResizeEnabled)
     end)
 
     it("AppendComparePanelDump keeps only the newest MAX_COMPARE_PANEL_DUMPS entries", function()

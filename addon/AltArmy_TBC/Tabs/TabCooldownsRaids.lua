@@ -21,12 +21,16 @@ local parent = frame.RaidsView
 local inner = Theme.CreatePanelInnerContent(parent)
 
 local UI = {
-    -- Match TabCooldowns crafting list total (230+190+44+128 = 592).
+    -- 592 at the stock window, near the Crafting list's 588. colWidths holds the fitted widths: a wider window
+    -- gives Instance and Character (the text that gets cut off) what the list gains, Time stays put
+    -- (FitColumns, Data/ColumnFit.lua).
     colWidths = {
         character = 190,
         instance = 274,
         time = 128,
     },
+    stockWidths = { character = 190, instance = 274, time = 128 },
+    flex = { instance = 0.6, character = 0.4 },
     sortKeys = { "instance", "character", "time" },
     sortLabels = {
         character = "Character",
@@ -194,6 +198,7 @@ local viewport = Theme.CreateVerticalScrollViewport({
     wheelStep = ROW_HEIGHT * 3,
     enableMouseWheel = true,
     childWidth = TotalColWidth(),
+    scrollBarBottomInset = AltArmy.WINDOW_GRIP_INSET, -- the bar's end stays clear of the window's grip
 })
 
 local scroll = viewport.scroll
@@ -293,8 +298,45 @@ local function PoolRow()
     return row
 end
 
+--- The header's buttons and every pooled row's cells at the current column widths.
+local function PlaceCells()
+    local hx = 0
+    for _, sk in ipairs(UI.sortKeys) do
+        local btn = UI.headerButtons[sk]
+        btn:ClearAllPoints()
+        btn:SetPoint("TOPLEFT", headerRow, "TOPLEFT", hx, 0)
+        btn:SetSize(UI.colWidths[sk], HEADER_HEIGHT)
+        hx = hx + UI.colWidths[sk]
+    end
+    local function place(row)
+        row.timeCell:SetWidth(UI.colWidths.time)
+        row.instanceCell:SetWidth(UI.colWidths.instance)
+    end
+    for _, row in ipairs(UI.rowPool) do place(row) end
+    for _, row in ipairs(UI.activeRows) do place(row) end
+end
+
+--- Fit the columns to the list's width (what it has beyond the stock total goes to the flex columns; a
+--- narrower list keeps the stock widths and scrolls sideways) and lay the list out again when one moved.
+local function FitColumns(width)
+    local Fit = AltArmy.ColumnFit
+    if not Fit then return end
+    local fitted = Fit.Fit(UI.stockWidths, UI.flex, width)
+    local changed = false
+    for sk, w in pairs(fitted) do
+        if UI.colWidths[sk] ~= w then
+            UI.colWidths[sk] = w
+            changed = true
+        end
+    end
+    if not changed then return end
+    headerRow:SetWidth(TotalColWidth())
+    PlaceCells()
+end
+
 local function RefreshRaidsList()
     ReleaseRows()
+    FitColumns(scroll:GetWidth())
     EnsureSortFromSaved()
     UpdateHeaderSortIndicators()
 
@@ -353,6 +395,11 @@ local function RefreshRaidsList()
 end
 
 frame.RefreshRaidsList = RefreshRaidsList
+
+-- The columns follow the list's width (the window's resize grip).
+scroll:HookScript("OnSizeChanged", function()
+    if parent:IsVisible() then RefreshRaidsList() end
+end)
 
 -- Refresh when lockout data arrives while the Raids view is visible.
 if not frame._lockoutUpdateWatcher then

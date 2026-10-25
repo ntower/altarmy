@@ -19,22 +19,38 @@ SC.SETTINGS_FIRST_COLUMN_SHRINK = 199
 SC.SETTINGS_CHARACTER_COLUMN_SHRINK = 22
 
 local DEFAULT_COL_WIDTH = 80
---- Floor for the Item/Recipe column when it is fitted to the list viewport.
+--- Floor for the Item/Recipe column when it is fitted to the list viewport with the settings closed.
 SC.MIN_FIRST_COLUMN_WIDTH = 200
+--- A wider viewport than the table's stock total: the Character column takes this share of the extra
+--- (realm and location suffixes get cut off), up to MAX_CHARACTER_WIDTH, and the Item/Recipe column the rest.
+SC.CHARACTER_FLEX = 1 / 3
+SC.MAX_CHARACTER_WIDTH = 300
 
---- Closed settings with a known viewport width: size firstCol so the table fills it exactly
---- (no horizontal scroll). Other columns keep their widths.
-local function FitFirstColumn(widths, firstCol, fitWidth)
+local function SumWidths(widths)
+    local total = 0
+    for _, w in pairs(widths) do
+        total = total + w
+    end
+    return total
+end
+
+--- With a known viewport width: size the columns so the table fills it exactly (no horizontal scroll
+--- unless it is narrower than the minimums). Character grows by CHARACTER_FLEX of what the viewport has
+--- beyond the stock total; firstCol takes what is left, never under minFirst.
+local function FitColumns(widths, firstCol, fitWidth, minFirst)
     if not fitWidth or fitWidth <= 0 then
         return widths
     end
+    local extra = math.max(0, fitWidth - SumWidths(widths))
+    widths.Character = math.min(SC.MAX_CHARACTER_WIDTH,
+        widths.Character + math.floor(extra * SC.CHARACTER_FLEX))
     local others = 0
     for name, w in pairs(widths) do
         if name ~= firstCol then
             others = others + w
         end
     end
-    widths[firstCol] = math.max(SC.MIN_FIRST_COLUMN_WIDTH, math.floor(fitWidth - others))
+    widths[firstCol] = math.max(minFirst, math.floor(fitWidth - others))
     return widths
 end
 
@@ -46,27 +62,31 @@ local function CopyWidths(widths)
     return out
 end
 
---- fitWidth (optional, settings closed only): list viewport width to fill with the Item column.
+--- The open-settings stock widths: the first column and Character shrunk, the last column as it is.
+local function SettingsWidths(widths, firstCol)
+    local out = CopyWidths(widths)
+    out[firstCol] = widths[firstCol] - SC.SETTINGS_FIRST_COLUMN_SHRINK
+    out.Character = widths.Character - SC.SETTINGS_CHARACTER_COLUMN_SHRINK
+    return out
+end
+
+--- fitWidth (optional): the list viewport's width to fill. Settings closed: from the stock widths, the first
+--- column never under MIN_FIRST_COLUMN_WIDTH; open: from the open-settings widths, the first column never
+--- under its open-settings stock width (so the stock open layout still fits its viewport).
 function SC.GetItemColumnWidths(settingsOpen, fitWidth)
     if not settingsOpen then
-        return FitFirstColumn(CopyWidths(SC.ITEM_COLUMN_WIDTHS), "Item", fitWidth)
+        return FitColumns(CopyWidths(SC.ITEM_COLUMN_WIDTHS), "Item", fitWidth, SC.MIN_FIRST_COLUMN_WIDTH)
     end
-    return {
-        Item = SC.ITEM_COLUMN_WIDTHS.Item - SC.SETTINGS_FIRST_COLUMN_SHRINK,
-        Character = SC.ITEM_COLUMN_WIDTHS.Character - SC.SETTINGS_CHARACTER_COLUMN_SHRINK,
-        Total = SC.ITEM_COLUMN_WIDTHS.Total,
-    }
+    local widths = SettingsWidths(SC.ITEM_COLUMN_WIDTHS, "Item")
+    return FitColumns(widths, "Item", fitWidth, widths.Item)
 end
 
 function SC.GetRecipeColumnWidths(settingsOpen, fitWidth)
     if not settingsOpen then
-        return FitFirstColumn(CopyWidths(SC.RECIPE_COLUMN_WIDTHS), "Recipe", fitWidth)
+        return FitColumns(CopyWidths(SC.RECIPE_COLUMN_WIDTHS), "Recipe", fitWidth, SC.MIN_FIRST_COLUMN_WIDTH)
     end
-    return {
-        Recipe = SC.RECIPE_COLUMN_WIDTHS.Recipe - SC.SETTINGS_FIRST_COLUMN_SHRINK,
-        Character = SC.RECIPE_COLUMN_WIDTHS.Character - SC.SETTINGS_CHARACTER_COLUMN_SHRINK,
-        Skill = SC.RECIPE_COLUMN_WIDTHS.Skill,
-    }
+    local widths = SettingsWidths(SC.RECIPE_COLUMN_WIDTHS, "Recipe")
+    return FitColumns(widths, "Recipe", fitWidth, widths.Recipe)
 end
 
 --- Sum of column widths for a table layout.
@@ -96,9 +116,9 @@ function SC.AreResultColumnsAligned()
 end
 
 --- Item and recipe result columns share the same horizontal positions for a layout mode.
-function SC.AreResultColumnsAlignedForSettings(settingsOpen)
-    local itemWidths = SC.GetItemColumnWidths(settingsOpen)
-    local recipeWidths = SC.GetRecipeColumnWidths(settingsOpen)
+function SC.AreResultColumnsAlignedForSettings(settingsOpen, fitWidth)
+    local itemWidths = SC.GetItemColumnWidths(settingsOpen, fitWidth)
+    local recipeWidths = SC.GetRecipeColumnWidths(settingsOpen, fitWidth)
     local pairs = {
         { "Item", "Recipe" },
         { "Character", "Character" },
@@ -129,16 +149,10 @@ function SC.GetRecipeTableWidth(settingsOpen)
 end
 
 function SC.GetResultsTableWidth(settingsOpen, fitWidth)
-    if not settingsOpen and fitWidth then
+    if fitWidth or settingsOpen then
         return math.max(
-            SC.GetTableWidth(SC.ITEM_COLUMN_ORDER, SC.GetItemColumnWidths(false, fitWidth)),
-            SC.GetTableWidth(SC.RECIPE_COLUMN_ORDER, SC.GetRecipeColumnWidths(false, fitWidth))
-        )
-    end
-    if settingsOpen then
-        return math.max(
-            SC.GetTableWidth(SC.ITEM_COLUMN_ORDER, SC.GetItemColumnWidths(true)),
-            SC.GetTableWidth(SC.RECIPE_COLUMN_ORDER, SC.GetRecipeColumnWidths(true))
+            SC.GetTableWidth(SC.ITEM_COLUMN_ORDER, SC.GetItemColumnWidths(settingsOpen, fitWidth)),
+            SC.GetTableWidth(SC.RECIPE_COLUMN_ORDER, SC.GetRecipeColumnWidths(settingsOpen, fitWidth))
         )
     end
     return math.max(SC.GetItemTableWidth(), SC.GetRecipeTableWidth())

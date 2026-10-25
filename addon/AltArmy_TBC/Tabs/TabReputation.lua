@@ -15,7 +15,11 @@ local ZI = AltArmy.ZygorIntegration
 local PAD = 4
 local SECTION_INSET = Theme.TAB_SECTION_INSET
 local SECTION_GAP = Theme.SECTION_GAP
-local FACTION_LABEL_WIDTH = 125
+local FACTION_LABEL_WIDTH = 125 -- the fitted width; the stock one and how it grows are in LABEL_FIT
+-- A wider window gives the faction label column (names get cut off) a quarter of what the grid viewport
+-- gains, up to its cap; the character columns stay COLUMN_WIDTH and more of them show (FitFactionLabelColumn,
+-- Data/ColumnFit.lua). stockView: the grid viewport's width at the stock window.
+local LABEL_FIT = { stock = 125, flex = 0.25, cap = 200, stockView = 626 }
 local REP_ROW_HEIGHT = 47
 local REP_BAR_HEIGHT = 20
 local REP_STANDING_ROW_HEIGHT = 14
@@ -43,7 +47,6 @@ local COLUMN_WIDTH = 75
 local REP_BAR_FULL_WIDTH = COLUMN_WIDTH - 12
 local HORIZONTAL_SCROLL_BAR_HEIGHT = 20
 local MIN_SCROLL_CHILD_WIDTH = 400
-local GRID_SPLIT_FRACTION = 0.6
 
 local function GetReputationSettings()
     AltArmyTBC_ReputationSettings = AltArmyTBC_ReputationSettings or {}
@@ -988,11 +991,28 @@ local function BuildPopulateCtx(list)
     }
 end
 
+--- The faction label column at the grid viewport's width (LABEL_FIT): the header corner, the label column
+--- and the grid's left edge move together when it changes; the rows and names follow in RefreshGrid.
+local function FitFactionLabelColumn(viewWidth)
+    local CF = AltArmy.ColumnFit
+    if not CF then return end
+    local fitted = CF.Fit({ label = LABEL_FIT.stock, grid = LABEL_FIT.stockView - LABEL_FIT.stock },
+        { label = LABEL_FIT.flex }, viewWidth, { label = LABEL_FIT.cap })
+    if fitted.label == FACTION_LABEL_WIDTH then return end
+    FACTION_LABEL_WIDTH = fitted.label
+    headerCornerFrame:SetWidth(FACTION_LABEL_WIDTH)
+    factionHeaderContainer:SetWidth(FACTION_LABEL_WIDTH)
+    horizontalScroll:ClearAllPoints()
+    horizontalScroll:SetPoint("TOPLEFT", verticalScrollChild, "TOPLEFT", FACTION_LABEL_WIDTH, -GetHeaderHeight())
+    horizontalScroll:SetPoint("BOTTOMRIGHT", verticalScrollChild, "BOTTOMRIGHT", 0, 0)
+end
+
 function frame:RefreshGrid(_self)
     if not AltArmy.Characters then return end
     if AltArmy.Characters.InvalidateView then
         AltArmy.Characters:InvalidateView()
     end
+    FitFactionLabelColumn(verticalScroll and verticalScroll:GetWidth() or 0)
     if AltArmy.Characters.Sort then
         AltArmy.Characters:Sort(false, "level")
     end
@@ -1112,8 +1132,8 @@ local function ApplySettingsPanelLayout()
     local w = frame:GetWidth()
     if w <= 0 then return end
     settingsPanel:ClearAllPoints()
-    settingsPanel:SetPoint("TOPLEFT", frame, "TOPLEFT", w * GRID_SPLIT_FRACTION + SECTION_GAP, -SECTION_INSET)
-    settingsPanel:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", w * GRID_SPLIT_FRACTION + SECTION_GAP, SECTION_INSET)
+    settingsPanel:SetPoint("TOPLEFT", frame, "TOPLEFT", Theme.SettingsPanelLeft(w), -SECTION_INSET)
+    settingsPanel:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", Theme.SettingsPanelLeft(w), SECTION_INSET)
     settingsPanel:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -SECTION_INSET, -SECTION_INSET)
     settingsPanel:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -SECTION_INSET, SECTION_INSET)
 end
@@ -1180,6 +1200,8 @@ function frame:ToggleReputationSettings(_self)
     frame:RefreshGrid()
 end
 
+-- The grid follows the window's width (the resize grip): the settings panel keeps its share, and the
+-- refresh fits the label column and shows as many character columns as the viewport holds.
 frame:SetScript("OnSizeChanged", function()
     if settingsPanel and settingsPanel:IsShown() then
         ApplySettingsPanelLayout()
@@ -1189,6 +1211,8 @@ frame:SetScript("OnSizeChanged", function()
         rightPanel:ClearAllPoints()
         rightPanel:SetPoint("TOPLEFT", tabContentInner, "TOPLEFT", 0, 0)
         rightPanel:SetPoint("BOTTOMRIGHT", tabContentInner, "BOTTOMRIGHT", 0, 0)
+    end
+    if frame:IsVisible() then
         frame:RefreshGrid()
     end
 end)

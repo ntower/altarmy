@@ -8,7 +8,7 @@ Know which crafts are ready, whether mats are on hand, mail stockpile reagents f
 
 ## Settings panel
 
-The toolbar's settings button opens a panel on the right of the tab, 40% of its width, as on the Summary, Gear and Reputation tabs. Both views narrow to the rest and scroll sideways (a bar under the list) once their columns no longer fit. Everything is saved in `AltArmyTBC_Options.cooldowns`.
+The toolbar's settings button opens a panel on the right of the tab, of a fixed width (40% of the tab at the stock window size), as on the Summary, Gear and Reputation tabs. Both views narrow to the rest and scroll sideways (a bar under the list) once their columns no longer fit. Everything is saved in `AltArmyTBC_Options.cooldowns`.
 
 - **Realm filter**: the same choices as the Summary's (this realm and faction always; this realm's other faction, other realms, linked accounts), but the tab's own. It applies to both views and to the alerts. Other realms' names carry their realm. The first filter starts from the Summary's, which the tab followed until it had its own.
 - **Group characters** (on by default, Crafting only): a heading per realm and faction, this realm and faction first, as the Summary's sections. Each section is sorted by the column sort. Clicking a heading folds its section away or back (remembered in `collapsedGroups`). Folded rows aren't offered to Send Materials. Names then leave out the realm, which the heading gives.
@@ -27,7 +27,7 @@ You switch between them with spellbook-style tabs that hang above the panel in t
 
 ### Crafting
 
-Columns: recipe/category, character, mats availability, time remaining. Sortable by recipe, character, mats, and time. Live refresh while the tab is open.
+Columns: recipe/category, character, mats availability, time remaining. Sortable by recipe, character, mats, and time. Live refresh while the tab is open. A wider window widens Recipe and Character equally; Mats, Time and Send keep their width.
 
 Alchemy transmutes and enchanting spheres share one cooldown per group, so the list shows **one row per character** for each group. By default (**Auto**) that row uses the recipe they last crafted if they still know it, otherwise Primal Might then Arcanite (transmutes; Arcanite then Legionite on WoW Forever) or Void Sphere then Prismatic Sphere.
 
@@ -58,6 +58,7 @@ Tooltips: reagent counts, craftability, character-specific material context (bag
 
 - Per-character heroic and raid lockouts (instance name, difficulty, time remaining / Ready).
 - Sort by instance, character, or time (default: soonest reset first).
+- A wider window widens Instance and Character; Time keeps its width.
 - When there are no lockouts, the table is replaced by centered text: “Your dungeon lockouts will appear here”
 - Lists **active** lockouts only (no “available now / unlocked” planner yet — see [FEATURE_IDEAS.md](../FEATURE_IDEAS.md)).
 

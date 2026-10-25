@@ -14,7 +14,8 @@ local IL = AltArmy.InventoryLayout
 local ISB = AltArmy.ItemSlotButton
 local SD = AltArmy.SummaryData
 local PendingIcons = AltArmy.PendingItemIcons
-if not (DS and Theme and IO and IL and ISB and SD and PendingIcons) then return end
+local ColumnFit = AltArmy.ColumnFit
+if not (DS and Theme and IO and IL and ISB and SD and PendingIcons and ColumnFit) then return end
 
 local panel = frame.MailView
 
@@ -32,9 +33,10 @@ local UI = {
     FOOTER_RIGHT_MARGIN = AltArmy.WINDOW_GRIP_INSET or 16, -- clear of the window's resize grip
     FALLBACK_WIDTH = 600,
     -- Sums to 626 at the stock window size (the list viewport's width; see Tabs/TabEconomy.lua). Items,
-    -- Money and Expires are fixed; Subject and From share what a wider window adds (FitColumns).
+    -- Money and Expires are fixed; Subject and From share what a wider window adds (FitColumns, through
+    -- Data/ColumnFit.lua). colWidths holds the fitted widths, stockWidths the stock ones.
     colWidths = { items = 204, subject = 152, sender = 110, money = 100, expires = 60 },
-    minWidths = { subject = 152, sender = 110 },
+    stockWidths = { items = 204, subject = 152, sender = 110, money = 100, expires = 60 },
     stretchShare = { subject = 0.6, sender = 0.4 },
     colKeys = { "items", "subject", "sender", "money", "expires" },
     colLabels = { items = "Items", subject = "Subject", sender = "From", money = "Money", expires = "Expires" },
@@ -80,13 +82,11 @@ local function PlaceCells(container, cells)
     container:SetWidth(x)
 end
 
---- Fit the columns to the list's width: Subject and From grow from their minimums by their share of
---- whatever is left beside the fixed columns.
+--- Fit the columns to the list's width: Subject and From grow from their stock widths by their share of
+--- whatever the list has beyond the stock total (never under it).
 local function FitColumns(width)
-    local fixed = UI.colWidths.items + UI.colWidths.money + UI.colWidths.expires
-    local extra = math.max(0, width - fixed - UI.minWidths.subject - UI.minWidths.sender)
-    UI.colWidths.subject = UI.minWidths.subject + math.floor(extra * UI.stretchShare.subject)
-    UI.colWidths.sender = UI.minWidths.sender + math.floor(extra * UI.stretchShare.sender)
+    local fitted = ColumnFit.Fit(UI.stockWidths, UI.stretchShare, width)
+    for key, w in pairs(fitted) do UI.colWidths[key] = w end
 end
 
 --- Header labels with the sort arrow on the sorted column.

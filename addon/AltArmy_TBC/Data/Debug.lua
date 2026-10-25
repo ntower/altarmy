@@ -46,9 +46,9 @@ function D.Ensure()
     if d.showZygorMissingGuides == nil then
         d.showZygorMissingGuides = false
     end
-    if d.windowWidthResize == nil then
-        d.windowWidthResize = false
-    end
+    -- Legacy SavedVariables key from when the grip changed the width only with a debug option (every tab
+    -- reflows to the width now); no longer read.
+    d.windowWidthResize = nil
     if d.showUnannouncedCooldowns == nil then
         d.showUnannouncedCooldowns = false
     end
@@ -195,22 +195,6 @@ end
 function D.SetShowZygorMissingGuides(on)
     D.Ensure()
     AltArmyTBC_Options.debug.showZygorMissingGuides = on == true
-end
-
---- When true, the main window's bottom-right resize grip changes the width as well as the height.
---- Off by default until every tab reflows to the width (only Inventory does). Standalone flag (does
---- not require master debug on).
-function D.IsWindowWidthResizeEnabled()
-    D.Ensure()
-    return AltArmyTBC_Options.debug.windowWidthResize == true
-end
-
-function D.SetWindowWidthResizeEnabled(on)
-    D.Ensure()
-    AltArmyTBC_Options.debug.windowWidthResize = on == true
-    if AltArmy.ApplyWindowResize then
-        AltArmy.ApplyWindowResize()
-    end
 end
 
 --- When true, the Cooldowns tab lists cooldowns that are in WoW Forever's game data but not announced yet

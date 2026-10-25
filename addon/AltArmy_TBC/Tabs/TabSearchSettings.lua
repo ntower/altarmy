@@ -27,7 +27,7 @@ function AltArmy.TabSearchSettings.Install(frame, UI)
         if w <= 0 then
             return
         end
-        local settingsLeft = w * UI.GRID_SPLIT_FRACTION + UI.SECTION_GAP + UI.SEARCH_SETTINGS_WIDTH_TRIM
+        local settingsLeft = Theme.SettingsPanelLeft(w, UI.SEARCH_SETTINGS_WIDTH_TRIM)
         settingsPanel:ClearAllPoints()
         settingsPanel:SetPoint("TOPLEFT", frame, "TOPLEFT", settingsLeft, -UI.SECTION_INSET)
         settingsPanel:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", settingsLeft, UI.SECTION_INSET)

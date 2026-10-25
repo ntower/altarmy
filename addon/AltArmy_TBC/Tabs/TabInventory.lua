@@ -307,6 +307,9 @@ frame.ViewTabs = VIEW.tabs -- `/alta <tab> <view>` opens only the views that hav
 frame:SetScript("OnShow", function()
     if picker then picker:Update() end
     SetActiveInventoryView(state.activeView)
+    -- On the window's first show its size (the saved one) is applied in the same frame, and a view laid out
+    -- now can read a width not resolved yet: draw it again next frame, once the layout has settled.
+    ScheduleRefresh()
 end)
 
 -- Closing the main window forgets the pick, the view and the search: the next opening starts on the

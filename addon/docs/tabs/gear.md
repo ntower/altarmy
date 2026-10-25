@@ -15,7 +15,7 @@ Two sub-views, switched with spellbook-style tabs that hang above the panel in t
 
 **Grid** — rows = equipment slots; columns = characters. Side settings: the character filters
 (Realm, Level and Class filter, Pin and Hide individual characters, see
-[Realm filtering](../FEATURES.md#realm-filtering-and-character-visibility)); sort, icon size and spacing.
+[Realm filtering](../FEATURES.md#realm-filtering-and-character-visibility)); sort. A wider window shows more character columns; the columns keep their width.
 
 The grid lists the characters the Gear settings' filters allow: opposite-faction alts only when
 "This realm, opposite faction" is ticked. The compare panel lists only characters of the
@@ -34,7 +34,6 @@ still on the drop prompt returns to Grid; a focused item stays in Upgrade Check.
 - Hover tooltips on equipped items; shift-click inserts item links into chat.
 - An empty slot shows the game's own empty-slot art (the character pane's grey silhouette for that slot, `Data/Gear/EmptySlotArt.lua`), dimmed and without a quality glow; it has no tooltip.
 - Character ordering: primary/secondary sort, Pin individual characters (Current character first), Hide individual characters.
-- Appearance: icon size (small/medium/large), spacing (compact/normal/comfortable).
 - Score-sort row: sort columns by character level, average item level, time played, or gear score (TacoTip / GearScoreTBCClassic when loaded).
 
 ## Item check (“who can use this”)

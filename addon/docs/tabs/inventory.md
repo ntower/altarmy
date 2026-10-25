@@ -17,7 +17,7 @@ See what a character is carrying, has banked or has waiting in the mailbox, slot
 
 Two layouts each:
 
-- **Per bag** (default): the backpack, then each equipped bag as its own block headed by the bag's icon, name and used / total slots, then the keyring (only when it holds a key); the bank as its main grid, then each bank bag. Every block is drawn five wide, the main bank and keyring included. Hovering a header shows the bag item's tooltip.
+- **Per bag** (default): the backpack, then each equipped bag as its own block headed by the bag's icon, name and used / total slots, then the keyring (only when it holds a key); the bank as its main grid, then each bank bag. Every block is drawn alike, the main bank and keyring included: as many blocks a row and as many columns each (five or six) as show the most slot columns a row (`InventoryLayout.BlockArrangement`). A wider window first spreads the blocks apart, then switches from three five-wide blocks to three six-wide ones, then to four five-wide ones. Hovering a header shows the bag item's tooltip.
 - **Combined bags**: a bag bar of the bags' icons, then every slot in one grid as wide as the window fits. Hovering a bag on the bar lights its slots with retail's blue bag glow.
 
 Empty slots are drawn as empty slot art. A slot's tooltip is the item's, plus which bag and slot it is in. Shift-click links the item to chat, Ctrl-click previews it in the Dressing Room (as on Gear and Search). The Bags footer shows used / total slots per group with an icon each: bags (backpack and bags), the reagent bag (WoW Forever's bag 5) and the keyring (only when it holds a key), each only when the character has it; the Bank footer shows one used / total for the whole bank.

@@ -45,8 +45,15 @@ local UI = {
     NOTES_ACTION_BTN_GAP = 4,
     NOTES_COL_GAP = 8,
     GRAY = "|cff808080",
-    -- Second column (group character count, character professions) shares one left edge.
+    -- Second column (group character count, character professions) shares one left edge. SECOND_COLUMN is
+    -- the fitted edge: a wider window gives the name column (main and character names get cut off) a share
+    -- of what the list gains, up to its cap (fitSecondColumn, Data/ColumnFit.lua); the professions, anchored
+    -- to the right, keep the rest. LIST_STOCK_WIDTH is the list's width at the stock window.
     SECOND_COLUMN = 220,
+    SECOND_COLUMN_STOCK = 220,
+    SECOND_COLUMN_FLEX = 0.35,
+    SECOND_COLUMN_CAP = 320,
+    LIST_STOCK_WIDTH = 618,
     NAME_COLUMN_GAP = 8,
     -- Third column on main rows: most recent last-online across the group's characters.
     LAST_ONLINE_COLUMN_WIDTH = 72,
@@ -1482,6 +1489,7 @@ ME.notesViewport = Theme.CreateVerticalScrollViewport({
     valueStep = 24,
     scrollBarWidth = ME.notesScrollBarOpts.width,
     scrollBarGap = ME.notesScrollBarOpts.gap,
+    scrollBarBottomInset = AltArmy.WINDOW_GRIP_INSET, -- the bar's end stays clear of the window's grip
 })
 ME.notesMembersList = ME.notesViewport.child
 
@@ -4377,6 +4385,31 @@ local function ensureGuildRosterIncludesOffline()
     end
 end
 
+--- The name column's right edge at the list's width (UI.SECOND_COLUMN_FLEX): the header's Name button and
+--- every pooled row's name follow it, then applyListColumnLayout moves the second column after it.
+local function fitSecondColumn(width)
+    local CF = AltArmy.ColumnFit
+    if not CF then return end
+    local fitted = CF.Fit({ name = UI.SECOND_COLUMN_STOCK, rest = UI.LIST_STOCK_WIDTH - UI.SECOND_COLUMN_STOCK },
+        { name = UI.SECOND_COLUMN_FLEX }, width, { name = UI.SECOND_COLUMN_CAP })
+    if fitted.name == UI.SECOND_COLUMN then return end
+    UI.SECOND_COLUMN = fitted.name
+    local nameRight = UI.SECOND_COLUMN - UI.NAME_COLUMN_GAP
+    local nameBtn = listHeaderButtons.name
+    if nameBtn then
+        nameBtn:SetPoint("RIGHT", listColHeader, "LEFT", nameRight, 0)
+    end
+    for i = 1, #mainRowPool do
+        local row = mainRowPool[i]
+        if row and row.nameFS then row.nameFS:SetPoint("RIGHT", row, "LEFT", nameRight, 0) end
+    end
+    for i = 1, #charRowPool do
+        local row = charRowPool[i]
+        if row and row.nameFS then row.nameFS:SetPoint("RIGHT", row, "LEFT", nameRight, 0) end
+    end
+    applyListColumnLayout()
+end
+
 local function layoutList(groups, query, rosterByName, forceHoverMain)
     suppressMainRowHoverEvents = true
     hideGuildPickerRowsFrom(1)
@@ -4384,6 +4417,7 @@ local function layoutList(groups, query, rosterByName, forceHoverMain)
     local charIndex = 0
     local y = 0
     local width = math.max(1, (scrollChild:GetWidth() or listViewport:GetWidth() or 1))
+    fitSecondColumn(width)
     local activeQuery = GTD.NormalizeSearchQuery(query)
     rosterByName = rosterByName or {}
     local lastOnlineOpts = nil

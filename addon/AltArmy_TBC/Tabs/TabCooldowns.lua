@@ -261,6 +261,7 @@ local RefreshList -- forward-declared; header buttons call this after sort chang
 local ShowRecipeTooltip -- spell + reagent counts; used by rows and recipe picker
 local ComputeMaxCraftsWithAttachmentCap -- forward-declared; used by send flow
 local ApplyColumnWidths -- forward-declared; column animation + refresh
+local FittedWidths, FitColumnsToViewport -- forward-declared; the columns at the list's width (a wider window)
 local SyncSendCheckFade -- forward-declared; checkbox fade with Select All
 local UpdateSendBarMode -- forward-declared; mailbox / compose UI
 local RecomputeSendAllocation -- forward-declared; preview mats + Send enablement
@@ -887,7 +888,8 @@ sendBar.countLabel:Hide()
 
 sendBar.sendBtn = CreateFrame("Button", nil, tipRow, "UIPanelButtonTemplate")
 sendBar.sendBtn:SetSize(70, 20)
-sendBar.sendBtn:SetPoint("RIGHT", tipRow, "RIGHT", 0, 0)
+-- clear of the window's resize grip in the corner
+sendBar.sendBtn:SetPoint("RIGHT", tipRow, "RIGHT", -(AltArmy.WINDOW_GRIP_INSET or 16), 0)
 sendBar.sendBtn:SetText("Send")
 Theme.SkinButton(sendBar.sendBtn)
 sendBar.sendBtn:Hide()
@@ -1008,6 +1010,33 @@ ApplyColumnWidths = function(widths)
     end
 end
 
+-- A wider window: Recipe and Character (the text that gets cut off) share what the list has beyond the
+-- stock total; Mats, Time and Send stay put (Data/ColumnFit.lua). The idle and compose tables are both
+-- fitted at the list's width, so the compose animation runs between fitted ends.
+local COL_FLEX = { Category = 0.5, Character = 0.5 }
+FittedWidths = function(stock)
+    local Fit = AltArmy.ColumnFit
+    if not Fit then return CopyWidths(stock) end
+    return Fit.Fit(stock, COL_FLEX, scroll:GetWidth())
+end
+
+--- Fit the current mode's columns to the list's width and lay the list out again when one moved. Not
+--- during the compose animation: its end applies its own target, and the next refresh fits again.
+FitColumnsToViewport = function()
+    if sendBar.animating then return end
+    local target = FittedWidths(sendBar.mode == "compose" and COMPOSE_COL_WIDTHS or IDLE_COL_WIDTHS)
+    for key, w in pairs(target) do
+        if math.abs((colWidths[key] or 0) - w) > 0.5 then
+            ApplyColumnWidths(target)
+            return
+        end
+    end
+end
+
+scroll:HookScript("OnSizeChanged", function()
+    if tabContentPanel:IsVisible() then FitColumnsToViewport() end
+end)
+
 SyncSendCheckFade = function(alpha)
     alpha = tonumber(alpha) or 0
     if alpha < 0 then alpha = 0 end
@@ -1069,7 +1098,7 @@ end
 
 local function StartColumnAnim(toWidths, toHeaderOffset)
     sendBar.animFrom = CopyWidths(colWidths)
-    sendBar.animTo = CopyWidths(toWidths)
+    sendBar.animTo = FittedWidths(toWidths)
     sendBar.animFromHeader = sendBar.headerOffset or 0
     sendBar.animToHeader = tonumber(toHeaderOffset) or sendBar.animFromHeader
     sendBar.animElapsed = 0
@@ -3114,6 +3143,7 @@ RefreshList = function()
         ReleaseRows()
     end
 
+    FitColumnsToViewport()
     local totalH = math.max(1, #elements) * ROW_HEIGHT
     scrollChild:SetSize(totalColWidth, totalH)
 
@@ -3426,7 +3456,6 @@ frame.SetCooldownsView = SetActiveCooldownsView
 -- AltArmyTBC_Options.cooldowns (CD.EnsureCooldownOptions). The toolbar's settings button toggles it
 -- (UI/MainTabs.lua: ToggleCooldownSettings / IsCooldownSettingsShown).
 do
-    local SPLIT = 0.6 -- the other tabs' GRID_SPLIT_FRACTION
     local GAP = Theme.SECTION_GAP or 4
 
     local panel = CreateFrame("Frame", nil, frame, "BackdropTemplate")
@@ -3438,7 +3467,7 @@ do
         local w = frame:GetWidth()
         if not w or w <= 0 then return end
         panel:ClearAllPoints()
-        panel:SetPoint("TOPLEFT", frame, "TOPLEFT", w * SPLIT + GAP, -SECTION_INSET)
+        panel:SetPoint("TOPLEFT", frame, "TOPLEFT", Theme.SettingsPanelLeft(w), -SECTION_INSET)
         panel:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -SECTION_INSET, SECTION_INSET)
     end
 

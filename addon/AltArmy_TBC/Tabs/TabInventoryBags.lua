@@ -210,14 +210,15 @@ local function FillHeader(h, block, x, y, width, parent)
     h.count:SetText(string.format("%d / %s%d", block.used, block.sizeIsEstimate and "~" or "", block.numSlots))
 end
 
---- "blocks": each bag as its own block, flowing left to right then down.
+--- "blocks": each bag as its own block, left to right then down, as many a row and as many columns each as
+--- IL.BlockArrangement fits the width; the room left over goes between the bags.
 local function LayoutBlocks(view, blocks, width)
+    local arr = IL.BlockArrangement(width, UI.SLOT, UI.GAP, UI.BLOCK_GAP_X)
+    local columns = arr.columns
+    local blockWidth = math.max(arr.blockWidth, UI.MIN_BLOCK_WIDTH)
     local x, y, rowHeight = 0, 0, 0
-    for _, block in ipairs(blocks) do
-        local columns = IL.CONST.BLOCK_COLUMNS
-        local m = IL.GridMetrics(block.numSlots, UI.SLOT, UI.GAP, columns)
-        local blockWidth = math.max(m.width, UI.MIN_BLOCK_WIDTH)
-        if x > 0 and x + blockWidth > width then
+    for i, block in ipairs(blocks) do
+        if i > 1 and (i - 1) % arr.perRow == 0 then
             x = 0
             y = y + rowHeight + UI.BLOCK_GAP_Y
             rowHeight = 0
@@ -235,7 +236,7 @@ local function LayoutBlocks(view, blocks, width)
         end
         local total = UI.HEADER_HEIGHT + UI.HEADER_GAP + height
         if total > rowHeight then rowHeight = total end
-        x = x + blockWidth + UI.BLOCK_GAP_X
+        x = x + blockWidth + arr.gap
     end
     return y + rowHeight
 end
@@ -360,8 +361,9 @@ local function CreateContainerView(panel, kind)
                 pick and pick.coloredName or "this character"))
             return
         end
+        -- Not laid out yet (no width, or an infinite or NaN one): the fallback; the tab redraws next frame.
         local width = view.viewport.scroll:GetWidth()
-        if not width or width <= 0 then width = UI.FALLBACK_WIDTH end
+        if not width or width ~= width or width <= 0 or width == math.huge then width = UI.FALLBACK_WIDTH end
         local height
         if IO.GetLayout(IO.EnsureOptions(), kind) == "combined" then
             height = LayoutCombined(view, blocks, width)

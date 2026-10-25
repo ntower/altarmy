@@ -25,6 +25,11 @@ local TOTALS_ROW_HEIGHT = 20
 local PAD = 4
 local WARNING_COL_WIDTH = 20
 local NAME_COL_BASE_WIDTH = 204 -- +55 vs original 149 to fill 670px frame content width
+-- A wider window: Name (the text that gets cut off, more so with a realm suffix and the status icons)
+-- takes everything the list viewport has beyond the stock 625 (Data/ColumnFit.lua), so the grid always
+-- fills the list; the other columns stay put, and the header abbreviations ("Lvl", "Online") too.
+local ColumnFit = AltArmy.ColumnFit
+local FLEX_COLUMNS = { Name = 1 }
 
 local SD = AltArmy.SummaryData
 local Theme = AltArmy.Theme
@@ -339,10 +344,13 @@ for _, colName in ipairs(columnOrder) do
     x = x + w
 end
 
+-- The stock widths; columns[*].Width holds the fitted ones (FitSummaryColumns) and totalColWidth their sum.
+local stockColWidths = {}
 local totalColWidth = 0
 for _, colName in ipairs(columnOrder) do
     local col = columns[colName]
-    totalColWidth = totalColWidth + (col and col.Width or 100)
+    stockColWidths[colName] = col and col.Width or 100
+    totalColWidth = totalColWidth + stockColWidths[colName]
 end
 
 -- Totals row (fixed at bottom of list area; reparented to horizontalScrollChild below)
@@ -439,16 +447,14 @@ local horizontalScrollApi = Theme.CreateHorizontalScrollBar(tabContentInner, {
 local horizontalScrollBar = horizontalScrollApi.bar
 
 -- Summary settings panel (right 40% when visible; same layout as Gear tab)
-local SUMMARY_SETTINGS_SPLIT = 0.6
 local summarySettingsPanel = CreateFrame("Frame", nil, frame, "BackdropTemplate")
 Theme.ApplyBackdrop(summarySettingsPanel, "section")
 local function ApplySummarySettingsPanelLayout()
     local w = frame:GetWidth()
     if w <= 0 then return end
     summarySettingsPanel:ClearAllPoints()
-    summarySettingsPanel:SetPoint("TOPLEFT", frame, "TOPLEFT", w * SUMMARY_SETTINGS_SPLIT + SECTION_GAP, -SECTION_INSET)
-    summarySettingsPanel:SetPoint(
-        "BOTTOMLEFT", frame, "BOTTOMLEFT", w * SUMMARY_SETTINGS_SPLIT + SECTION_GAP, SECTION_INSET)
+    summarySettingsPanel:SetPoint("TOPLEFT", frame, "TOPLEFT", Theme.SettingsPanelLeft(w), -SECTION_INSET)
+    summarySettingsPanel:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", Theme.SettingsPanelLeft(w), SECTION_INSET)
     summarySettingsPanel:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -SECTION_INSET, -SECTION_INSET)
     summarySettingsPanel:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -SECTION_INSET, SECTION_INSET)
 end
@@ -514,7 +520,8 @@ local function ApplySummaryListLayout()
     horizontalScrollBar:ClearAllPoints()
     horizontalScrollBar:SetPoint("BOTTOMLEFT", tabContentInner, "BOTTOMLEFT", PAD, -4)
     horizontalScrollBar:SetPoint("BOTTOMRIGHT", listViewport, "BOTTOMRIGHT", 0, -4)
-    Theme.AnchorVerticalScrollBar(scrollBar, tabContentPanel, listViewport, { gap = 0 })
+    Theme.AnchorVerticalScrollBar(scrollBar, tabContentPanel, listViewport,
+        { gap = 0, bottomInset = AltArmy.WINDOW_GRIP_INSET }) -- the bar's end stays clear of the window's grip
 end
 
 local summaryDeferredUpdatePending = false
@@ -884,6 +891,82 @@ local function UpdateRestXpCell(rowFrame, entry, inset)
     if arrow then arrow:SetShown(icon == "wellRested") end
 end
 
+--- Lay the header buttons, the totals row's cells and every pooled row's cells out at the current column
+--- widths (columns[*].Width). The Name cell's own left edge is set per update (the status icons before it).
+local function PlaceSummaryCells()
+    local cx = 0
+    for _, colName in ipairs(columnOrder) do
+        local w = columns[colName].Width
+        local hb = headerButtons[colName]
+        if hb then
+            hb:ClearAllPoints()
+            hb:SetPoint("LEFT", headerRow, "LEFT", cx, 0)
+            hb:SetSize(w, HEADER_HEIGHT)
+        end
+        local tc = totalsRow.cells[colName]
+        if tc then
+            tc:ClearAllPoints()
+            tc:SetPoint("LEFT", totalsRow, "LEFT", cx, 0)
+            tc:SetWidth(w)
+        end
+        for i = 1, ROW_POOL_SIZE do
+            local row = rowPool[i]
+            local cell = row and row.cells[colName]
+            if cell then
+                if colName == "Name" then
+                    row.nameIcon:ClearAllPoints()
+                    row.nameIcon:SetPoint("LEFT", row, "LEFT", cx, 0)
+                    row.nameIconFallback:ClearAllPoints()
+                    row.nameIconFallback:SetPoint("LEFT", row, "LEFT", cx, 0)
+                    row.nameOverlay:SetWidth(w)
+                else
+                    cell:ClearAllPoints()
+                    cell:SetPoint("LEFT", row, "LEFT", cx, 0)
+                    if colName == "Warning" then
+                        cell:SetSize(w, ROW_HEIGHT)
+                    else
+                        cell:SetWidth(w)
+                    end
+                    if colName == "RestXP" then
+                        row.restCellWidth = w
+                        if row.restHit then
+                            row.restHit:ClearAllPoints()
+                            row.restHit:SetPoint("LEFT", row, "LEFT", cx, 0)
+                        end
+                    end
+                end
+            end
+        end
+        cx = cx + w
+    end
+end
+
+--- Fit the columns to the list viewport's width (the flex columns take what it has beyond the stock
+--- total; a narrower viewport, the settings panel open, keeps the stock widths and scrolls sideways).
+--- Returns true when a width changed and everything was laid out again.
+local function FitSummaryColumns(viewWidth)
+    local fitted = ColumnFit.Fit(stockColWidths, FLEX_COLUMNS, viewWidth)
+    local changed = false
+    for _, colName in ipairs(columnOrder) do
+        if columns[colName].Width ~= fitted[colName] then
+            columns[colName].Width = fitted[colName]
+            changed = true
+        end
+    end
+    if not changed then return false end
+    totalColWidth = ColumnFit.Total(columnOrder, fitted)
+    horizontalScrollChild:SetWidth(totalColWidth)
+    totalsRow:SetWidth(totalColWidth)
+    for i = 1, ROW_POOL_SIZE do
+        if rowPool[i] then rowPool[i]:SetWidth(totalColWidth) end
+    end
+    for _, h in ipairs(sectionHeaders.pool) do
+        h:SetWidth(totalColWidth)
+    end
+    PlaceSummaryCells()
+    return true
+end
+
 --- Update visible rows from the character list using current vertical scrollbar position.
 Update = function()
     local rawList = AltArmy.Characters and AltArmy.Characters.GetList and AltArmy.Characters:GetList() or {}
@@ -923,7 +1006,9 @@ Update = function()
     local numItems = #elements
     local restInset = AnyRestXpIcon(list) and REST_TEXT_INSET or 0
 
-    -- Horizontal scroll need drives list viewport height (totals row sits lower when bar hidden).
+    -- The columns follow the list viewport's width (a wider window), then the horizontal scroll need
+    -- drives the list viewport's height (the totals row sits lower when the bar is hidden).
+    FitSummaryColumns(listViewport:GetWidth())
     local horzLayoutChanged = SyncSummaryHorizontalScrollLayout()
 
     -- Virtual list: ROW_POOL_SIZE row widgets; visibleRows derived from viewport height. Maximum scroll

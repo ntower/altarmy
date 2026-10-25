@@ -15,7 +15,7 @@ local Writs = AltArmy.Writs
 local Book = AltArmy.AuctionBook
 local DS = AltArmy.DataStore
 if not (Theme and W and WC and Writs and Book and DS and AltArmy.CraftPlan and AltArmy.CraftContext
-    and frame.CreateScanFooter and frame.CreateEmptyState) then return end
+    and AltArmy.ColumnFit and frame.CreateScanFooter and frame.CreateEmptyState) then return end
 
 local panel = frame.WritsView
 local inner = Theme.CreatePanelInnerContent(panel)
@@ -27,7 +27,12 @@ local UI = {
     HEADER_ROW_GAP = 3,
     STATUS_HEIGHT = 22,
     ICON_SIZE = 14,
-    colWidths = { writ = 190, rep = 36, writPrice = 100, buy = 100, craft = 100, perRep = 100 }, -- 626
+    -- 626 at the stock window; the fitted widths. A wider window gives the writ column most of the extra and
+    -- the money columns a little each, as the Waylaid Crates view does (Data/ColumnFit.lua; FitColumns).
+    colWidths = { writ = 190, rep = 36, writPrice = 100, buy = 100, craft = 100, perRep = 100 },
+    stockWidths = { writ = 190, rep = 36, writPrice = 100, buy = 100, craft = 100, perRep = 100 },
+    flex = { writ = 0.6, writPrice = 0.1, buy = 0.1, craft = 0.1, perRep = 0.1 },
+    caps = { writPrice = 140, buy = 140, craft = 140, perRep = 140 },
     sortKeys = W.WRITS_SORT_KEYS,
     sortLabels = { writ = "Craftsman's Writ", rep = "Rep", writPrice = "Writ Price", buy = "Fill via AH",
         craft = "Fill via Craft", perRep = "Total / Rep" },
@@ -375,8 +380,46 @@ local function CurrentScan()
     return Book.Newest(realm, faction), realm, faction
 end
 
+--- The header's buttons and a row's cells at the current column widths.
+local function PlaceCells(cells, container, isHeader)
+    local x = 0
+    for _, sk in ipairs(UI.sortKeys) do
+        local cell = cells[sk]
+        if cell then
+            cell:ClearAllPoints()
+            if isHeader then
+                cell:SetPoint("TOPLEFT", container, "TOPLEFT", x, 0)
+                cell:SetSize(UI.colWidths[sk], UI.HEADER_HEIGHT)
+            else
+                cell:SetPoint("LEFT", container, "LEFT", x, 0)
+                cell:SetWidth(UI.colWidths[sk] - 4)
+            end
+        end
+        x = x + UI.colWidths[sk]
+    end
+end
+
+--- Fit the columns to the list's width (what it has beyond the stock total goes to the flex columns; a
+--- narrower list keeps the stock widths) and lay the header and every pooled row out again when one moved.
+local function FitColumns(width)
+    local fitted = AltArmy.ColumnFit.Fit(UI.stockWidths, UI.flex, width, UI.caps)
+    local changed = false
+    for sk, w in pairs(fitted) do
+        if UI.colWidths[sk] ~= w then
+            UI.colWidths[sk] = w
+            changed = true
+        end
+    end
+    if not changed then return end
+    headerRow:SetWidth(TotalColWidth())
+    PlaceCells(UI.headerButtons, headerRow, true)
+    for _, row in ipairs(UI.rowPool) do PlaceCells(row.cells, row) end
+    for _, row in ipairs(UI.activeRows) do PlaceCells(row.cells, row) end
+end
+
 local function RefreshWrits()
     ReleaseRows()
+    FitColumns(viewport.scroll:GetWidth())
     local scan, realm, faction = CurrentScan()
     if not scan then
         UI.cache = nil
@@ -442,3 +485,8 @@ local function RefreshWrits()
     if headerFade then headerFade:Update() end
 end
 frame.RefreshWrits = RefreshWrits
+
+-- The columns follow the list's width (the window's resize grip).
+viewport.scroll:HookScript("OnSizeChanged", function()
+    if panel:IsVisible() then RefreshWrits() end
+end)

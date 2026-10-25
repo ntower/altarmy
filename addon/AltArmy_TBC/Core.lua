@@ -24,7 +24,9 @@ local MainTabs = AltArmy.MainTabs
 -- Height matches Forever's native CharacterFrame (CHARACTER_FRAME_HEIGHT = 484).
 local FRAME_WIDTH = 670
 local FRAME_HEIGHT = 484
--- The grip never makes the window taller than twice the stock height.
+-- The grip never makes the window wider than 1.5 times the stock width, or taller than twice the
+-- stock height.
+local MAX_FRAME_WIDTH = math.floor(FRAME_WIDTH * 1.5)
 local MAX_FRAME_HEIGHT = FRAME_HEIGHT * 2
 local TAB_HEIGHT = 22 -- toolbar control height (settings button)
 local CONTENT_INSET = 8
@@ -36,7 +38,10 @@ local LAYOUT = {
     contentTop = -65,
     -- Search box + settings button: nudge down to sit visually centered in the row.
     toolbarControlsY = -2,
+    -- The search slot's width at the stock window; a wider window gives it half of what the window gains,
+    -- up to searchMaxWidth (SearchSlotWidth). Every tab's box in the slot follows it.
     searchWidth = 360,
+    searchMaxWidth = 520,
 }
 
 local setActiveTab -- forward-declare so header search scripts can call it
@@ -101,11 +106,10 @@ dragRegion:SetScript("OnDragStop", function()
 end)
 
 -- Resize from the bottom-right corner (the chat window's size grabber), never below the stock
--- 670 x 484 and never taller than twice the stock height (MAX_FRAME_HEIGHT); the size is kept in
--- AltArmyTBC_Options.window and applied when the window opens.
--- Tab content stretches with the window (the content area is anchored to its edges). The grip changes
--- the height alone until every tab reflows to the width: the Debug options' "Window width resize"
--- (/altarmy debug resize on|off) lets it change the width too.
+-- 670 x 484 and never past MAX_FRAME_WIDTH x MAX_FRAME_HEIGHT; the size is kept
+-- in AltArmyTBC_Options.window and applied when the window opens.
+-- Tab content stretches with the window (the content area is anchored to its edges) and every tab lays
+-- its columns out again for the width (Data/ColumnFit.lua says which columns take the extra).
 main:SetResizable(true)
 if main.SetResizeBounds then
     main:SetResizeBounds(FRAME_WIDTH, FRAME_HEIGHT)
@@ -138,12 +142,6 @@ local function ScreenSize()
     return w, h
 end
 
---- Whether the grip may change the window's width (the Debug options' "Window width resize").
-local function WidthResizeEnabled()
-    local D = AltArmy.Debug
-    return D and D.IsWindowWidthResizeEnabled and D.IsWindowWidthResizeEnabled() or false
-end
-
 -- Whoever lays content out by the window's size and can't follow it live (the Graphs tab redraws
 -- its plot) hears when a resize has ended: the grip let go, the stock size restored, the saved size
 -- applied. Not called while the grip is being dragged.
@@ -166,16 +164,14 @@ local function SetWindowSize(w, h)
 end
 
 --- The saved window size, when it is a valid one no smaller than the stock size, clamped to the
---- screen so a size saved on a bigger monitor still opens with its grip reachable, and to twice the
---- stock height. While the width can't be changed the saved width is passed over: the window is the
---- stock width at the saved height.
+--- screen so a size saved on a bigger monitor still opens with its grip reachable, and to the most the
+--- grip allows (MAX_FRAME_WIDTH x MAX_FRAME_HEIGHT).
 local function SavedWindowSize()
     local o = _G.AltArmyTBC_Options
     local w = type(o) == "table" and type(o.window) == "table" and o.window or nil
     if not w or type(w.width) ~= "number" or type(w.height) ~= "number" then return nil end
     if w.width < FRAME_WIDTH or w.height < FRAME_HEIGHT then return nil end
-    local width, height = w.width, math.min(w.height, MAX_FRAME_HEIGHT)
-    if not WidthResizeEnabled() then width = FRAME_WIDTH end
+    local width, height = math.min(w.width, MAX_FRAME_WIDTH), math.min(w.height, MAX_FRAME_HEIGHT)
     local maxW, maxH = ScreenSize()
     if maxW then width = math.min(width, math.max(FRAME_WIDTH, math.floor(maxW))) end
     if maxH then height = math.min(height, math.max(FRAME_HEIGHT, math.floor(maxH))) end
@@ -193,21 +189,20 @@ local function ApplySavedWindowSize()
     end
 end
 
---- The most the window may grow to from where it stands: down to the screen's bottom edge and, with
---- the width free, right to its right edge (the drag moves the bottom and right edges; the top-left
---- corner stays put), and never taller than twice the stock height. Never under the stock size. So
+--- The most the window may grow to from where it stands: down to the screen's bottom edge and right to
+--- its right edge (the drag moves the bottom and right edges; the top-left corner stays put), and never
+--- past MAX_FRAME_WIDTH x MAX_FRAME_HEIGHT. Never under the stock size. So
 --- the grip can't be dragged off the screen, out of reach, by a mouse that leaves the game window.
 local function MaxWindowSize()
-    local maxW, maxH = FRAME_WIDTH, MAX_FRAME_HEIGHT
+    local maxW, maxH = MAX_FRAME_WIDTH, MAX_FRAME_HEIGHT
     local screenW, screenH = ScreenSize() -- GetLeft/GetTop are in the window's units too
     local left, top = main:GetLeft(), main:GetTop()
     if screenW then
-        maxW = math.max(FRAME_WIDTH, math.floor(screenW - (left or 0)))
+        maxW = math.max(FRAME_WIDTH, math.floor(math.min(MAX_FRAME_WIDTH, screenW - (left or 0))))
     end
     if screenH then
         maxH = math.max(FRAME_HEIGHT, math.floor(math.min(MAX_FRAME_HEIGHT, screenH, top or screenH)))
     end
-    if not WidthResizeEnabled() then maxW = FRAME_WIDTH end
     return maxW, maxH
 end
 
@@ -237,10 +232,9 @@ sizeGrip:SetFrameLevel(main:GetFrameLevel() + 200)
 sizeGrip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
 sizeGrip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
 sizeGrip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
--- "BOTTOM" lets the drag move the bottom edge alone (the height); "BOTTOMRIGHT" the corner.
 sizeGrip:SetScript("OnMouseDown", function()
     ApplyResizeBounds() -- from where the window stands now, at this screen size
-    main:StartSizing(WidthResizeEnabled() and "BOTTOMRIGHT" or "BOTTOM")
+    main:StartSizing("BOTTOMRIGHT")
 end)
 sizeGrip:SetScript("OnMouseUp", function()
     main:StopMovingOrSizing()
@@ -249,14 +243,12 @@ sizeGrip:SetScript("OnMouseUp", function()
 end)
 sizeGrip:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
-    GameTooltip:SetText(WidthResizeEnabled() and "Drag to resize" or "Drag to change the height", 1, 1, 1)
+    GameTooltip:SetText("Drag to resize", 1, 1, 1)
     GameTooltip:Show()
 end)
 sizeGrip:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
---- Applies the saved scale, then the saved size: at the stock width unless the width may be changed.
---- Called when the window opens and when the Debug options' "Window width resize" flips (so turning
---- it off snaps a widened window back to the stock width, at its height).
+--- Applies the saved scale, then the saved size. Called when the window opens.
 AltArmy.ApplyWindowResize = function()
     local scale = AltArmy.GetWindowScale()
     if math.abs((main:GetScale() or 1) - scale) > 0.0005 then
@@ -266,8 +258,39 @@ AltArmy.ApplyWindowResize = function()
 end
 main:HookScript("OnShow", AltArmy.ApplyWindowResize)
 
+--- Keeps the open window inside the game window. A window made taller or wider, then a game window made
+--- smaller (windowed mode, a resolution or UI scale change), left its bottom and right edges, grip
+--- included, outside it. The size shrinks to what the screen holds, never under the stock size; the
+--- saved size is left as the user chose it, so a bigger game window gets it back when the window next
+--- opens. Then the window moves in to sit fully on screen: SetClampedToScreen clamps a move, not a
+--- screen that shrank under a frame.
+local function FitToScreen()
+    if not main:IsShown() then return end
+    local screenW, screenH = ScreenSize()
+    if not screenW or not screenH then return end
+    local fitW = math.max(FRAME_WIDTH, math.min(main:GetWidth(), math.floor(screenW)))
+    local fitH = math.max(FRAME_HEIGHT, math.min(main:GetHeight(), math.floor(screenH)))
+    SetWindowSize(fitW, fitH)
+    local left, top = main:GetLeft(), main:GetTop()
+    if not left or not top then return end
+    local newLeft = math.max(0, math.min(left, screenW - fitW))
+    local newTop = math.max(math.min(screenH, fitH), math.min(top, screenH))
+    if math.abs(newLeft - left) > 0.5 or math.abs(newTop - top) > 0.5 then
+        main:ClearAllPoints()
+        main:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", newLeft, newTop)
+    end
+end
+main:RegisterEvent("DISPLAY_SIZE_CHANGED")
+main:RegisterEvent("UI_SCALE_CHANGED")
+main:HookScript("OnEvent", function(_, event)
+    if event == "DISPLAY_SIZE_CHANGED" or event == "UI_SCALE_CHANGED" then
+        FitToScreen()
+    end
+end)
+
 --- Saves and applies a window scale (1 = 100%; clamped). The size is applied again after it, since
---- the screen holds less of a bigger window, and the resize listeners hear of the change.
+--- the screen holds less of a bigger window, the window is kept on screen, and the resize listeners
+--- hear of the change.
 function AltArmy.SetWindowScale(scale)
     if type(scale) ~= "number" or scale ~= scale then return end
     scale = math.max(AltArmy.WINDOW_SCALE_MIN, math.min(AltArmy.WINDOW_SCALE_MAX, scale))
@@ -277,6 +300,7 @@ function AltArmy.SetWindowScale(scale)
     if math.abs((main:GetScale() or 1) - scale) < 0.0005 then return end
     main:SetScale(scale)
     ApplySavedWindowSize()
+    FitToScreen()
     NotifyWindowResized()
 end
 -- Tab content that sits in the window's bottom-right corner keeps clear of the grip.
@@ -515,9 +539,17 @@ end
 
 --- Right side of the toolbar: [Filters Active] [Filter] [search] [settings]; search slides right when
 --- the active tab has no settings.
+--- The search slot's width for the window's width: the stock 360, plus half of what the window has beyond
+--- its stock width, up to LAYOUT.searchMaxWidth.
+local function SearchSlotWidth()
+    local extra = math.max(0, (main:GetWidth() or FRAME_WIDTH) - FRAME_WIDTH)
+    return math.min(LAYOUT.searchMaxWidth, LAYOUT.searchWidth + math.floor(extra / 2))
+end
+
 local function layoutToolbarRight()
     local showSearch = isHeaderSearchShown()
     headerSearchEdit:SetShown(showSearch)
+    headerSearchEdit:SetWidth(SearchSlotWidth())
     if not showSearch and headerSearchEdit.HasFocus and headerSearchEdit:HasFocus() then
         headerSearchEdit:ClearFocus()
     end
@@ -562,6 +594,8 @@ UpdateSettingsButtonGlow = function()
 end
 
 AltArmy.UpdateSearchSettingsButtonGlow = UpdateSettingsButtonGlow
+-- The search slot follows the window's width (the resize grip).
+main:HookScript("OnSizeChanged", layoutToolbarRight)
 
 --- Put a tab's own search/filter box in the toolbar slot the header search occupies (same
 --- position, width and font). The header search is hidden on those tabs. parent should be the

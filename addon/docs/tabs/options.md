@@ -12,7 +12,7 @@ The game's Options → AddOns entry and user-facing slash commands.
 | **Sharing** | **Guild** (guild data sharing: main, display name, data retention, chat; shown while guild sharing is available), then **Linked accounts** (`UI/LinkedAccountsOptions.lua`; each link with its characters, when it last synced, Rename (the name in place: Enter or Save keeps it, Escape cancels, blank goes back to the character it linked from), Sync now and Unlink (click twice); each other account of yours online with Alt Army that isn't linked, with Link, then the code to compare while the other account accepts), in its own scroll area. Guild prompts that open Options (`flash = "main"`, `"guildShare"`, `"autoDelete"`) open this page whatever page they name (`panel.FlashTargetPage`). |
 | **Characters** | Per-character bank-alt flags; delete character data (self-delete protected + confirmation) |
 | **Gear** | Gear upgrade notification toggles (current character / alts; loot, quest rewards, etc.) |
-| **Debug** | Listed after `/altarmy debug on` (a page can't be taken out of the list, so after `debug off` it stays until reload and says debug options are off); search timing, cooldown scan logging, item stats, guild share verbose, **Clear auction data** (deletes stored auction house scans; keeps the scan cooldown), **Window resize** (the main window's resize grip, not ready for every tab yet), etc. |
+| **Debug** | Listed after `/altarmy debug on` (a page can't be taken out of the list, so after `debug off` it stays until reload and says debug options are off); search timing, cooldown scan logging, item stats, guild share verbose, **Clear auction data** (deletes stored auction house scans; keeps the scan cooldown), etc. |
 
 Shared theme with the main UI ([UI_DESIGN.md](../UI_DESIGN.md)).
 
@@ -35,7 +35,6 @@ Options opened on a particular control (for example from the Alt Army scan butto
 | `/altarmy export` | Export for the Alt Army website (see below; there is no button for it) |
 | `/altarmy scan` | Scan the open auction house (same as the **Alt Army scan** button): the kind the scan mode allows now (Options → General → Auction House) |
 | `/altarmy debug on` / `off` | Add the Debug options page / turn it off and enable/suppress debug logging |
-| `/altarmy debug resize on` / `off` | Let the main window's resize grip change the width too, not only the height (the Debug options' **Window width resize**) |
 | `/altarmy resetsize` | Restore the main window's stock size |
 
 Additional `debug …` subcommands exist for developers (mail alerts, compare dump, guild share inject, etc.); they are not part of the product feature surface.

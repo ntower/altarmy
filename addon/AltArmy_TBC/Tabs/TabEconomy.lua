@@ -22,7 +22,7 @@ local Theme = AltArmy.Theme
 local W = AltArmy.WaylaidCosts
 local Crates = AltArmy.WaylaidCrates
 local Book = AltArmy.AuctionBook
-if not (Theme and W and Crates and Book) then return end
+if not (Theme and W and Crates and Book and AltArmy.ColumnFit) then return end
 
 W.EnsureOptions()
 
@@ -34,8 +34,13 @@ local UI = {
     STATUS_HEIGHT = 22, -- fits the scan button
     ICON_SIZE = 14,
     -- Sums to 626: the list viewport's width (window 670, content insets, panel padding, scrollbar gutter).
-    -- The same widths as the Craftsman's Writs view's columns.
+    -- The same widths as the Craftsman's Writs view's columns. colWidths holds the fitted widths: a wider
+    -- window gives the crate column (the text that gets cut off) most of the extra and the money columns a
+    -- little each, so their coins stop dropping (Data/ColumnFit.lua; FitColumns).
     colWidths = { crate = 190, favor = 36, price = 100, buy = 100, craft = 100, perFavor = 100 },
+    stockWidths = { crate = 190, favor = 36, price = 100, buy = 100, craft = 100, perFavor = 100 },
+    flex = { crate = 0.6, price = 0.1, buy = 0.1, craft = 0.1, perFavor = 0.1 },
+    caps = { price = 140, buy = 140, craft = 140, perFavor = 140 },
     sortKeys = W.SORT_KEYS,
     sortLabels = nil, -- set below: two name the Merchant's Favor icon
     sortJustify = { crate = "LEFT", favor = "RIGHT", price = "RIGHT", buy = "RIGHT", craft = "RIGHT",
@@ -214,7 +219,8 @@ local function CreateScanFooter(parent)
     -- Same setting as Options → General → Auction House. CreateLabeledCheckbox stretches its row to its
     -- parent's right edge: a holder sized to the checkbox and label keeps it right-aligned.
     local holder = CreateFrame("Frame", nil, parent)
-    holder:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", 0, 0)
+    -- clear of the window's resize grip in the corner
+    holder:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -(AltArmy.WINDOW_GRIP_INSET or 16), 0)
     holder:SetHeight(UI.STATUS_HEIGHT)
     local check = Theme.CreateLabeledCheckbox(holder, {
         point = "LEFT",
@@ -669,8 +675,46 @@ local function ShowEmpty(realm, faction)
     listViewport:Hide()
 end
 
+--- The header's buttons and a row's cells at the current column widths.
+local function PlaceCells(cells, container, isHeader)
+    local x = 0
+    for _, sk in ipairs(UI.sortKeys) do
+        local cell = cells[sk]
+        if cell then
+            cell:ClearAllPoints()
+            if isHeader then
+                cell:SetPoint("TOPLEFT", container, "TOPLEFT", x, 0)
+                cell:SetSize(UI.colWidths[sk], UI.HEADER_HEIGHT)
+            else
+                cell:SetPoint("LEFT", container, "LEFT", x, 0)
+                cell:SetWidth(UI.colWidths[sk] - 4)
+            end
+        end
+        x = x + UI.colWidths[sk]
+    end
+end
+
+--- Fit the columns to the list's width (what it has beyond the stock total goes to the flex columns; a
+--- narrower list keeps the stock widths) and lay the header and every pooled row out again when one moved.
+local function FitColumns(width)
+    local fitted = AltArmy.ColumnFit.Fit(UI.stockWidths, UI.flex, width, UI.caps)
+    local changed = false
+    for sk, w in pairs(fitted) do
+        if UI.colWidths[sk] ~= w then
+            UI.colWidths[sk] = w
+            changed = true
+        end
+    end
+    if not changed then return end
+    headerRow:SetWidth(TotalColWidth())
+    PlaceCells(UI.headerButtons, headerRow, true)
+    for _, row in ipairs(UI.rowPool) do PlaceCells(row.cells, row) end
+    for _, row in ipairs(UI.activeRows) do PlaceCells(row.cells, row) end
+end
+
 local function RefreshWaylaid()
     ReleaseRows()
+    FitColumns(viewport.scroll:GetWidth())
     local scan, realm, faction = CurrentScan()
     if not scan then
         UI.cache = nil
@@ -738,6 +782,11 @@ local function RefreshWaylaid()
     if headerFade then headerFade:Update() end
 end
 frame.RefreshWaylaid = RefreshWaylaid
+
+-- The columns follow the list's width (the window's resize grip).
+viewport.scroll:HookScript("OnSizeChanged", function()
+    if waylaidPanel:IsVisible() then RefreshWaylaid() end
+end)
 
 local function SetActiveEconomyView(which)
     if not W.VIEWS[which] or (which == "supply" and not supplyPanel) then

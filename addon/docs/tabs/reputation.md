@@ -11,6 +11,7 @@ See standing and progress for every tracked faction across alts; sort by faction
 - Rows = factions; columns = characters.
 - Per-cell standing label and progress bar.
 - Truncated faction names show the full name in a tooltip on hover.
+- A wider window shows more character columns (each keeps its width) and widens the faction name column a little, up to 200 px.
 - Faction name filter (in the main toolbar row, where Summary's item search sits) to reduce visible rows; matching text in faction names is highlighted green (same as other search results), including the visible part of a match cut off by "...".
 - Settings panel: the character filters (Realm, Level and Class filter, Pin and Hide individual characters, see [Realm filtering](../FEATURES.md#realm-filtering-and-character-visibility); same as Gear). Saved in `AltArmyTBC_ReputationSettings`.
 - Score-sort row (level / iLvl / played / gear score) for column ordering.

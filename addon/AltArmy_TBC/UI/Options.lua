@@ -566,35 +566,10 @@ debugShowZygorMissingHint:SetText(
     "On the Reputation tab, show Zygor guide icons even when Zygor only has trial placeholder "
         .. "guides (they cannot be opened). Paid Zygor installs show icons without this.")
 
--- Window width resize (on panel, to spare main-chunk locals). Also /altarmy debug resize on|off.
-panel.debugWindowResizeCheckbox = Theme.CreateLabeledCheckbox(debugScrollChild, {
-    point = "TOPLEFT",
-    relativeTo = debugShowZygorMissingHint,
-    relativePoint = "BOTTOMLEFT",
-    x = 0,
-    y = -16,
-    text = "Window width resize",
-    fullWidthHover = true,
-    onClick = function(checked)
-        if AltArmy.Debug and AltArmy.Debug.SetWindowWidthResizeEnabled then
-            AltArmy.Debug.SetWindowWidthResizeEnabled(checked)
-        end
-    end,
-}).check
-
-panel.debugWindowResizeHint = debugScrollChild:CreateFontString(nil, "ARTWORK", Theme.FONTS.body)
-panel.debugWindowResizeHint:SetPoint("TOPLEFT", panel.debugWindowResizeCheckbox, "BOTTOMLEFT", 0, -8)
-panel.debugWindowResizeHint:SetWidth(520)
-panel.debugWindowResizeHint:SetJustifyH("LEFT")
-panel.debugWindowResizeHint:SetText(
-    "Lets the main window's resize grip (bottom right) change the width as well as the height. Only the "
-        .. "Inventory tab reflows to the width so far. Off puts the window back to its stock width, at its "
-        .. "height; /altarmy resetsize restores the stock size.")
-
 -- Unannounced cooldowns (WoW Forever game data not announced yet). On panel, to spare main-chunk locals.
 panel.debugUnannouncedCooldownsCheckbox = Theme.CreateLabeledCheckbox(debugScrollChild, {
     point = "TOPLEFT",
-    relativeTo = panel.debugWindowResizeHint,
+    relativeTo = debugShowZygorMissingHint,
     relativePoint = "BOTTOMLEFT",
     x = 0,
     y = -16,
@@ -663,9 +638,6 @@ function RefreshDebugCheckboxes()
     end
     if panel.debugShowZygorMissingCheckbox then
         panel.debugShowZygorMissingCheckbox:SetChecked(d.showZygorMissingGuides == true)
-    end
-    if panel.debugWindowResizeCheckbox then
-        panel.debugWindowResizeCheckbox:SetChecked(d.windowWidthResize == true)
     end
     if panel.debugUnannouncedCooldownsCheckbox then
         panel.debugUnannouncedCooldownsCheckbox:SetChecked(d.showUnannouncedCooldowns == true)
@@ -2405,19 +2377,6 @@ SlashCmdList.ALTARMY = function(msg)
         local gearFrame = AltArmy and AltArmy.TabFrames and AltArmy.TabFrames.Gear
         if gearFrame and gearFrame.RefreshGrid then
             gearFrame:RefreshGrid()
-        end
-        return
-    end
-    if lower == "debug resize on" or lower == "debug resize off" then
-        local on = lower == "debug resize on"
-        if AltArmy.Debug and AltArmy.Debug.SetWindowWidthResizeEnabled then
-            AltArmy.Debug.SetWindowWidthResizeEnabled(on)
-            if AltArmy.Debug.NotifyChat then
-                AltArmy.Debug.NotifyChat(on and "Window width resize enabled" or "Window width resize disabled")
-            end
-        end
-        if panel.RefreshDebugCheckboxes then
-            panel.RefreshDebugCheckboxes()
         end
         return
     end

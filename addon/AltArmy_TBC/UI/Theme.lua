@@ -1135,12 +1135,15 @@ end
 
 --- Anchor a vertical scrollbar beside scrollFrame; track ends rightInset inside gutterEdge's right edge.
 --- scrollFrame should end at -(VerticalScrollBarGutter()) from gutterEdge's right edge.
+--- opts.bottomInset lifts the bar's bottom end that far above the scroll frame's: a list that reaches the
+--- window's bottom-right corner passes AltArmy.WINDOW_GRIP_INSET, so the bar's end stays clear of the grip.
 --- Sets scrollBar.altArmyAnchorX (x offset used) so callers can re-anchor one end consistently.
 function Theme.AnchorVerticalScrollBar(scrollBar, _gutterEdge, scrollFrame, opts)
     if not scrollBar or not scrollFrame then return scrollBar end
     opts = opts or {}
     local w = opts.width or Theme.SCROLL_BAR_WIDTH
     local gap = opts.gap or Theme.SCROLL_BAR_GAP
+    local bottom = opts.bottomInset or 0
     if scrollBar.altArmyNativeScrollBar then
         -- Real MinimalScrollBar keeps its template width; center it in the gutter track slot.
         local barW = scrollBar:GetWidth() or Theme.MINIMAL_SCROLL.width
@@ -1148,7 +1151,7 @@ function Theme.AnchorVerticalScrollBar(scrollBar, _gutterEdge, scrollFrame, opts
         scrollBar.altArmyAnchorX = x
         scrollBar:ClearAllPoints()
         scrollBar:SetPoint("TOPLEFT", scrollFrame, "TOPRIGHT", x, 0)
-        scrollBar:SetPoint("BOTTOMLEFT", scrollFrame, "BOTTOMRIGHT", x, 0)
+        scrollBar:SetPoint("BOTTOMLEFT", scrollFrame, "BOTTOMRIGHT", x, bottom)
         return scrollBar
     end
     scrollBar:SetOrientation("VERTICAL")
@@ -1156,7 +1159,7 @@ function Theme.AnchorVerticalScrollBar(scrollBar, _gutterEdge, scrollFrame, opts
     scrollBar.altArmyAnchorX = gap
     scrollBar:ClearAllPoints()
     scrollBar:SetPoint("TOPLEFT", scrollFrame, "TOPRIGHT", gap, 0)
-    scrollBar:SetPoint("BOTTOMLEFT", scrollFrame, "BOTTOMRIGHT", gap, 0)
+    scrollBar:SetPoint("BOTTOMLEFT", scrollFrame, "BOTTOMRIGHT", gap, bottom)
     Theme.SetupScrollBar(scrollBar, { thickness = w, thumbLength = opts.thumbLength })
     return scrollBar
 end
@@ -1496,6 +1499,15 @@ Theme.TAB_CONTENT_PADDING = 8
 Theme.TAB_SECTION_INSET = 0
 -- Gap between adjacent section panels within a tab (Graphs tab graph | selector).
 Theme.SECTION_GAP = 4
+-- A tab's settings side panel keeps one width whatever the window's (40% of the stock tab, less the gap);
+-- a wider window widens the content left of it instead.
+Theme.SETTINGS_PANEL_WIDTH = 258
+
+--- Where a settings side panel's left edge goes in a tab frame `frameWidth` wide: SETTINGS_PANEL_WIDTH
+--- (less `trim`, for a narrower panel) from its right edge.
+function Theme.SettingsPanelLeft(frameWidth, trim)
+    return frameWidth - (Theme.SETTINGS_PANEL_WIDTH - (trim or 0))
+end
 
 --- Bordered section panel for main tab content (matches settings panel styling).
 function Theme.CreateTabContentPanel(parent)
@@ -2388,6 +2400,7 @@ function Theme.CreateVerticalScrollViewport(opts)
         width = opts.scrollBarWidth,
         gap = opts.scrollBarGap,
         thumbLength = opts.scrollBarThumbLength,
+        bottomInset = opts.scrollBarBottomInset,
     })
 
     if opts.wheelOnChild ~= false then

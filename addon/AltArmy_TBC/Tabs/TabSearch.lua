@@ -22,7 +22,6 @@ local UI = {
     SECTION_GAP_BEFORE_TOOLTIP = 2,
     HORIZONTAL_SCROLL_BAR_HEIGHT = 20,
     TOOLTIP_CHUNK_SIZE = 80,
-    GRID_SPLIT_FRACTION = 0.6,
     SEARCH_SETTINGS_WIDTH_TRIM = 60,
     SETTINGS_ROW_HEIGHT = 22,
     RECIPE_LEVEL_LABEL_GAP = 6,
@@ -1368,8 +1367,9 @@ UpdateResults = function()
     if listViewport and horizontalScroll and horizontalScrollChild and horizontalScrollBar then
         local vw = listViewport:GetWidth()
         local settingsOpen = frame.IsSearchSettingsShown and frame:IsSearchSettingsShown()
-        -- Settings closed: columns fill the viewport (re-fit when its width changes).
-        if vw and vw > 0 and not settingsOpen and UI.fitWidth ~= math.floor(vw) and UI.ApplyColumnLayout then
+        -- The columns fill the viewport (re-fit when its width changes; settings open, they scroll
+        -- sideways while it is narrower than their minimums).
+        if vw and vw > 0 and UI.fitWidth ~= math.floor(vw) and UI.ApplyColumnLayout then
             UI.fitWidth = math.floor(vw)
             UI.ApplyColumnLayout()
         end
@@ -1529,7 +1529,8 @@ local function ApplySearchListLayout()
     horizontalScrollBar:ClearAllPoints()
     horizontalScrollBar:SetPoint("BOTTOMLEFT", tabContentInner, "BOTTOMLEFT", UI.PAD, -4)
     horizontalScrollBar:SetPoint("BOTTOMRIGHT", listViewport, "BOTTOMRIGHT", 0, -4)
-    Theme.AnchorVerticalScrollBar(searchScrollBar, tabContentPanel, listViewport)
+    Theme.AnchorVerticalScrollBar(searchScrollBar, tabContentPanel, listViewport,
+        { bottomInset = AltArmy.WINDOW_GRIP_INSET }) -- the bar's end stays clear of the window's grip
     if noResultsHint and listViewport then
         local vw = listViewport:GetWidth()
         if vw and vw > 0 then
@@ -1569,7 +1570,7 @@ end
 
 local function ApplySearchColumnLayout()
     local settingsOpen = settingsPanel and settingsPanel:IsShown()
-    local fitWidth = not settingsOpen and UI.fitWidth or nil
+    local fitWidth = UI.fitWidth
     SyncSearchColumnWidths(settingsOpen, fitWidth)
     totalColWidth = SearchColumns and SearchColumns.GetResultsTableWidth(settingsOpen, fitWidth)
         or math.max(getTotalColWidth(), getRecipeColWidth())
@@ -1622,11 +1623,19 @@ function frame:ToggleSearchSettings(_self)
     end
 end
 
+-- The columns follow the window's width (the resize grip): the layout is applied at once, the results
+-- (sorted, re-initialized rows) once per frame, so a drag re-sorts the list once a frame, not once an event.
 frame:SetScript("OnSizeChanged", function()
     if settingsPanel and settingsPanel:IsShown() then
         ApplySettingsPanelLayout()
     end
-    RefreshSearchListAfterLayout()
+    ApplySearchListLayout()
+    local vw = listViewport and listViewport:GetWidth()
+    if vw and vw > 0 then
+        UI.fitWidth = math.floor(vw)
+    end
+    ApplySearchColumnLayout()
+    ScheduleSearchUpdateAfterLayout()
 end)
 
 -- Initial empty state: layout list viewport then build results (horizontal scroll range set in UpdateResults)

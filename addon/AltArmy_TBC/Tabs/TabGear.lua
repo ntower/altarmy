@@ -19,7 +19,6 @@ local TruncateFontString = AltArmy.Text and AltArmy.Text.TruncateFontString
 local PAD = 4
 local SECTION_INSET = Theme.TAB_SECTION_INSET
 local SECTION_GAP = Theme.SECTION_GAP
-local GRID_SPLIT_FRACTION = 0.6 -- grid/compare stats get 60%; settings columns get 40%
 local LEFT_PANEL_WIDTH = 120
 local LEFT_PANEL_VISIBLE = false  -- set true to show "Who can use this?" drop zone
 local MESSAGE_ROW_HEIGHT = 14
@@ -1175,14 +1174,15 @@ function GearTab.GetQualityGlowColor(quality)
 end
 
 --- An empty cell shows the game's empty-slot art for its inventory slot, dimmed and without a glow.
---- A cell whose item the client hasn't cached yet still shows nothing.
-function GearTab.ApplyItemCellVisual(cell, item, gray, alpha)
+--- A cell whose item the client hasn't cached yet still shows nothing. classFile picks the relic art
+--- for the ranged slot of the classes that have one.
+function GearTab.ApplyItemCellVisual(cell, item, gray, alpha, classFile)
     local fade = alpha or 1
     local texPath = GearTab.GetItemTexture(item)
     local ESA = AltArmy.EmptySlotArt
     local emptyPath = nil
     if item == nil and ESA and ESA.TextureFor then
-        emptyPath = ESA.TextureFor(cell.inventorySlot)
+        emptyPath = ESA.TextureFor(cell.inventorySlot, classFile)
     end
     if texPath then
         cell.texture:SetTexture(texPath)
@@ -2903,8 +2903,11 @@ function GearTab.LayoutCompareStatRowColumns(rowCells, data)
         if rowCells.hint then rowCells.hint:Hide() end
         return
     end
+    -- The name column takes whatever the row has beyond the fixed delta and weight columns (a wider window).
+    local rowW = GearTab.GetCompareStatRowWidth()
     if data and data.formatAsWeightedChange then
-        local nameW = COMPARE_STAT_COL_WEIGHTED_NAME
+        local nameW = math.max(COMPARE_STAT_COL_WEIGHTED_NAME,
+            rowW - 2 * indent - COMPARE_STAT_COL_WEIGHTED_DELTA)
         local deltaLeft = indent + nameW
         nameFs:ClearAllPoints()
         nameFs:SetPoint("TOPLEFT", rowCells.frame, "TOPLEFT", indent, 0)
@@ -2922,12 +2925,14 @@ function GearTab.LayoutCompareStatRowColumns(rowCells, data)
         return
     end
     weightFs:Show()
+    local nameW = math.max(COMPARE_STAT_COL_NAME,
+        rowW - 2 * indent - COMPARE_STAT_COL_DELTA - COMPARE_STAT_COL_WEIGHT)
     local left = indent
     nameFs:ClearAllPoints()
     nameFs:SetPoint("TOPLEFT", rowCells.frame, "TOPLEFT", left, 0)
-    nameFs:SetWidth(COMPARE_STAT_COL_NAME)
+    nameFs:SetWidth(nameW)
     nameFs:SetJustifyH("LEFT")
-    left = left + COMPARE_STAT_COL_NAME
+    left = left + nameW
     deltaFs:ClearAllPoints()
     deltaFs:SetPoint("TOPLEFT", rowCells.frame, "TOPLEFT", left, 0)
     deltaFs:SetWidth(COMPARE_STAT_COL_DELTA)
@@ -3725,7 +3730,7 @@ function GearTab.UpdateGridWithOffset()
                     cell.itemLink = nil
                     cell.itemID = nil
                 end
-                GearTab.ApplyItemCellVisual(cell, item, false, columnAlpha)
+                GearTab.ApplyItemCellVisual(cell, item, false, columnAlpha, entry.classFile)
                 cell:Show()
 
                 if droppedItemLink then
@@ -4063,8 +4068,8 @@ function GearTab.ApplySettingsPanelLayout()
     local w = frame:GetWidth()
     if w <= 0 then return end
     settingsPanel:ClearAllPoints()
-    settingsPanel:SetPoint("TOPLEFT", frame, "TOPLEFT", w * GRID_SPLIT_FRACTION + SECTION_GAP, -SECTION_INSET)
-    settingsPanel:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", w * GRID_SPLIT_FRACTION + SECTION_GAP, SECTION_INSET)
+    settingsPanel:SetPoint("TOPLEFT", frame, "TOPLEFT", Theme.SettingsPanelLeft(w), -SECTION_INSET)
+    settingsPanel:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", Theme.SettingsPanelLeft(w), SECTION_INSET)
     settingsPanel:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -SECTION_INSET, -SECTION_INSET)
     settingsPanel:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -SECTION_INSET, SECTION_INSET)
 end
@@ -4129,13 +4134,15 @@ function frame:ToggleGearSettings(_self)
 end
 
 -- Keep 60/40 split when frame is resized and settings are open
+-- The grid follows the window's width (the resize grip): the settings panel keeps its share, and the
+-- refresh shows as many character columns as the viewport holds (the columns keep their width).
 frame:SetScript("OnSizeChanged", function()
     if settingsPanel and settingsPanel:IsShown() then
         GearTab.ApplySettingsPanelLayout()
         GearTab.ApplyGearLayoutHostBounds()
         GearTab.LayoutGearPanels()
-        if frame.RefreshGrid then frame:RefreshGrid() end
     elseif droppedItemLink then
         GearTab.LayoutGearPanels()
     end
+    if frame:IsVisible() and frame.RefreshGrid then frame:RefreshGrid() end
 end)

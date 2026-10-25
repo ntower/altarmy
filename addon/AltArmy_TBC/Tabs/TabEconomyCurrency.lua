@@ -12,7 +12,7 @@ local G = AltArmy.CurrencyGrid
 local SSR = AltArmy.ScoreSortRow
 local RGW = AltArmy.ReputationGridWindow
 local RepSort = AltArmy.ReputationFactionSort
-if not (DS and Theme and G and SSR and RGW and RepSort) then return end
+if not (DS and Theme and G and SSR and RGW and RepSort and AltArmy.ColumnFit) then return end
 
 local SD = AltArmy.SummaryData
 local CC = AltArmy.ClassColor
@@ -21,7 +21,14 @@ local TruncateFontString = AltArmy.Text and AltArmy.Text.TruncateFontString
 
 local UI = {
     PAD = 4,
+    -- The label column's fitted width: a wider window gives it a quarter of what the view gains (currency
+    -- names get cut off), up to LABEL_CAP; the character columns stay COLUMN_WIDTH and more of them show
+    -- (FitLabelColumn, Data/ColumnFit.lua). STOCK_VIEW_WIDTH is the view's width at the stock window.
     LABEL_WIDTH = 150,
+    LABEL_STOCK_WIDTH = 150,
+    LABEL_FLEX = 0.25,
+    LABEL_CAP = 220,
+    STOCK_VIEW_WIDTH = 626,
     COLUMN_WIDTH = 113, -- 50% wider than Reputation's, so gold / silver / copper fits
     CELL_TEXT_INSET = 2,
     ROW_HEIGHT = 20,
@@ -37,7 +44,6 @@ local UI = {
     HEADER_BG_BOTTOM_INSET = 6,
     HORIZONTAL_SCROLL_BAR_HEIGHT = 20,
     MIN_SCROLL_CHILD_WIDTH = 400,
-    GRID_SPLIT_FRACTION = 0.6,
     COLUMN_WINDOW_BUFFER = 2,
     SCROLL_GUTTER = Theme.VerticalScrollBarGutter(),
     GOLD = { 1, 0.82, 0 },
@@ -404,7 +410,8 @@ end
 
 --- Show the most detailed money string that fits the cell: drop copper, then silver.
 local function SetMoneyText(fs, copper)
-    local maxW = UI.COLUMN_WIDTH - 2 * UI.CELL_TEXT_INSET
+    local maxW = fs:GetWidth()
+    if not maxW or maxW <= 0 then maxW = UI.COLUMN_WIDTH - 2 * UI.CELL_TEXT_INSET end
     local variants = G.MoneyVariants(copper, UI.COINS)
     for i, text in ipairs(variants) do
         fs:SetText(text)
@@ -705,6 +712,22 @@ local function BuildCtx(list)
     }
 end
 
+--- The label column at the view's width (see UI.LABEL_FLEX): the corner, the label column and the grid's
+--- left edge move together when it changes.
+local function FitLabelColumn(viewWidth)
+    local fitted = AltArmy.ColumnFit.Fit(
+        { label = UI.LABEL_STOCK_WIDTH, grid = UI.STOCK_VIEW_WIDTH - UI.LABEL_STOCK_WIDTH },
+        { label = UI.LABEL_FLEX }, viewWidth, { label = UI.LABEL_CAP })
+    if fitted.label == UI.LABEL_WIDTH then return end
+    UI.LABEL_WIDTH = fitted.label
+    W.corner:SetWidth(UI.LABEL_WIDTH)
+    W.labelColumn:SetWidth(UI.LABEL_WIDTH)
+    W.gridScroll:ClearAllPoints()
+    W.gridScroll:SetPoint("TOPLEFT", W.scrollChild, "TOPLEFT", UI.LABEL_WIDTH, -UI.HEADER_HEIGHT)
+    W.gridScroll:SetPoint("BOTTOMRIGHT", W.scrollChild, "BOTTOMRIGHT", 0, 0)
+    for _, lab in pairs(pools.label) do lab:SetWidth(UI.LABEL_WIDTH) end
+end
+
 function frame.RefreshCurrency()
     if not panel:IsVisible() or not AltArmy.Characters then return end
     if AltArmy.Characters.InvalidateView then AltArmy.Characters:InvalidateView() end
@@ -732,6 +755,7 @@ function frame.RefreshCurrency()
 
     local numCols = #state.list
     local viewWidth = W.verticalScroll:GetWidth() or 0
+    FitLabelColumn(viewWidth)
     local contentWidth = numCols * UI.COLUMN_WIDTH + UI.PAD
     local gridViewWidth = math.max(0, viewWidth - UI.LABEL_WIDTH)
     W.scrollChild:SetWidth(math.max(UI.MIN_SCROLL_CHILD_WIDTH, viewWidth))
@@ -773,7 +797,7 @@ local function LayoutPanels()
     panel:ClearAllPoints()
     panel:SetPoint("TOPLEFT", frame, "TOPLEFT", inset, -inset)
     if sp:IsShown() then
-        local x = frame:GetWidth() * UI.GRID_SPLIT_FRACTION + gap
+        local x = Theme.SettingsPanelLeft(frame:GetWidth())
         sp:ClearAllPoints()
         sp:SetPoint("TOPLEFT", frame, "TOPLEFT", x, -inset)
         sp:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -inset, inset)
@@ -841,9 +865,11 @@ function frame.HideEconomySettings()
     end
 end
 
+-- The grid follows the window's width (the resize grip): the settings panel keeps its share, and the
+-- refresh fits the label column and shows as many character columns as the view holds.
 frame:HookScript("OnSizeChanged", function()
     if W.settingsPanel:IsShown() then
         LayoutPanels()
-        Refresh()
     end
+    Refresh()
 end)

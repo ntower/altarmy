@@ -16,7 +16,8 @@ IL.CONST = {
     -- Stock ContainerFrame geometry: 37 px slots on a 42 px pitch.
     SLOT = 37,
     SPACING = 5,
-    BLOCK_COLUMNS = 5, -- every block of the per-bag layout, bank and keyring included
+    BLOCK_COLUMNS = 5, -- every block of the per-bag layout at the stock width, bank and keyring included
+    BLOCK_COLUMN_CHOICES = { 5, 6 }, -- a wider window may give the blocks 6 (BlockArrangement)
     MAIL_ATTACHMENTS_MAX = 12,
 }
 local C = IL.CONST
@@ -401,6 +402,44 @@ function IL.ColumnsForWidth(width, slot, spacing, maxColumns)
     if maxColumns and columns > maxColumns then columns = maxColumns end
     if columns < 1 then columns = 1 end
     return columns
+end
+
+--- How the per-bag layout fits a row `width` wide: every bag is a block of 5 or 6 columns
+--- (C.BLOCK_COLUMN_CHOICES), and the arrangement that shows the most slot columns a row wins (more bags a
+--- row on a tie), so a wider window goes from three 5-column bags to three 6-column ones, then to four
+--- 5-column ones. What the row has beyond its blocks and their smallest gap (minGap) is spread between
+--- the bags. Returns { perRow, columns, blockWidth, gap }; one 5-column bag a row when nothing fits.
+function IL.BlockArrangement(width, slot, spacing, minGap)
+    slot = slot or C.SLOT
+    spacing = spacing or C.SPACING
+    minGap = minGap or spacing
+    -- A frame not laid out yet can report an infinite or NaN width: with it every bag would get the same
+    -- gap-less spot (infinite bags a row, a NaN gap). Treat it as no room.
+    if type(width) ~= "number" or width ~= width or width == math.huge or width == -math.huge then
+        width = 0
+    end
+    local best
+    for _, columns in ipairs(C.BLOCK_COLUMN_CHOICES) do
+        local blockWidth = columns * slot + (columns - 1) * spacing
+        local perRow = math.floor((width + minGap) / (blockWidth + minGap))
+        if perRow >= 1 then
+            local cells = perRow * columns
+            if not best or cells > best.cells or (cells == best.cells and perRow > best.perRow) then
+                best = { perRow = perRow, columns = columns, blockWidth = blockWidth, cells = cells }
+            end
+        end
+    end
+    if not best then
+        local columns = C.BLOCK_COLUMNS
+        return { perRow = 1, columns = columns, blockWidth = columns * slot + (columns - 1) * spacing,
+            gap = minGap }
+    end
+    local gap = minGap
+    if best.perRow > 1 then
+        local used = best.perRow * best.blockWidth + (best.perRow - 1) * minGap
+        gap = minGap + math.floor((width - used) / (best.perRow - 1))
+    end
+    return { perRow = best.perRow, columns = best.columns, blockWidth = best.blockWidth, gap = gap }
 end
 
 --- Geometry for `n` cells: { columns, rows, width, height, pitch, x(i), y(i) } where x and y are the
