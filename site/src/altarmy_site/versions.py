@@ -71,6 +71,7 @@ RULESETS = (
     ("normal", "Normal", ("PvE", "Normal"), True),
     ("pvp", "PvP", ("PvP",), True),
     ("rp", "RP", ("RP", "RPPvE", "Roleplay"), True),
+    ("rppvp", "RP-PvP", ("RPPvP", "RP-PvP"), True),
     ("hardcore", "Hardcore", ("Hardcore", "HC"), False),
 )
 

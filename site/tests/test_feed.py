@@ -323,7 +323,7 @@ def test_each_fixed_realm_has_an_alliance_and_a_horde_house(conn: Connection) ->
     assert {(r.realm, r.faction) for r in houses} == {
         (f"{region} {ruleset}", faction)
         for region in ("Americas", "Europe", "Asia")
-        for ruleset in ("Normal", "PvP", "RP", "Hardcore")
+        for ruleset in ("Normal", "PvP", "RP", "RP-PvP", "Hardcore")
         for faction in ("Alliance", "Horde")
     }
 

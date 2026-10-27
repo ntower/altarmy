@@ -101,6 +101,9 @@ def test_a_forever_realm_is_its_regions_fixed_realm_of_its_ruleset() -> None:
     assert forever.realm_name(SHARD3) == "Americas Normal"
     assert forever.realm_name("CAMWOW EU4 Realm 1 PvE") == "Europe Normal"
     assert forever.realm_name("CAMWOW EU4 Realm 4 PvP") == "Europe PvP"
+    assert forever.realm_name("CAMWOW EU4 Realm 10 RP") == "Europe RP"
+    assert forever.realm_name("CAMWOW US2 Realm 3 RPPvP") == "Americas RP-PvP"
+    assert forever.realm_name("CAMWOW US3 Realm 1 RPPvP") == "Americas RP-PvP"
     spec = forever.canonical_realm(US3)
     assert spec is not None
     assert (spec.key, spec.region, spec.ruleset) == ("americas-normal", "americas", "normal")
@@ -120,7 +123,7 @@ def test_a_forever_realm_of_an_unknown_region_or_ruleset_is_its_coalesced_group(
 def test_every_region_has_each_ruleset_and_tbc_realms_stay_as_they_are() -> None:
     forever = VERSIONS["forever"]
     assert {(s.region, s.ruleset) for s in forever.realms} == {
-        (r, s) for r in ("americas", "europe", "asia") for s in ("normal", "pvp", "rp", "hardcore")
+        (r, s) for r in ("americas", "europe", "asia") for s in ("normal", "pvp", "rp", "rppvp", "hardcore")
     }
     assert not any(s.open for s in forever.realms if s.ruleset == "hardcore")
     assert VERSIONS["tbc"].realm_name("CAMWOW US2 Realm 3 PvE") == "CAMWOW US2 Realm 3 PvE"
