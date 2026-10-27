@@ -1,6 +1,6 @@
 {
   "name": "altarmy-tbc",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "private": true,
   "description": "AltArmy — WoW addon for Forever and TBC Anniversary (character summary, gear, search)",
   "scripts": {
