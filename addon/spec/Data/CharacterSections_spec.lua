@@ -150,13 +150,13 @@ describe("CharacterSections", function()
             local list = {
                 { name = "Ariel", realm = "CAMWOW EU4 Realm 1 PvE", faction = "Horde" },
                 { name = "Frells", realm = "CAMWOW US2 Realm 3 PvE", faction = "Horde" },
-                { name = "Frell", realm = "CAMWOW US2 Realm 5 PvE", faction = "Horde" },
+                { name = "Frell", realm = "CAMWOW US3 Realm 5 PvE", faction = "Horde" },
             }
-            local elements = CS.BuildElements(list, { grouped = true, currentRealm = "CAMWOW US2 Realm 5 PvE",
+            local elements = CS.BuildElements(list, { grouped = true, currentRealm = "CAMWOW US3 Realm 5 PvE",
                 currentFaction = "Horde" })
-            assert.are.same({ "# US2 PvE — Horde (2)", "Frells", "Frell", "# EU4 PvE — Horde (1)", "Ariel" },
+            assert.are.same({ "# US PvE — Horde (2)", "Frells", "Frell", "# EU PvE — Horde (1)", "Ariel" },
                 shape(elements))
-            assert.are.equal("CAMWOW US2 PvE|Horde", elements[1].key)
+            assert.are.equal("CAMWOW US PvE|Horde", elements[1].key)
         end)
     end)
 end)

@@ -335,7 +335,7 @@ def test_a_realm_name_is_a_fixed_realm_by_name_or_alias() -> None:
     assert version.realm_name("PVP") == "PvP"
     assert version.realm_name("Classic Beta PvE") == "Classic Beta PvE"  # not a fixed realm: as it is
     assert version.realm_name("CAMWOW US2 Realm 3 PvP") == "PvP"  # a coalesced realm: its region's ruleset
-    assert version.realm_name("CAMWOW EU4 Realm 3 PvP") == "CAMWOW EU4 PvP"  # no fixed realm of its region
+    assert version.realm_name("CAMWOW EU4 Realm 3 PvP") == "CAMWOW EU PvP"  # no fixed realm of its region
     assert version.canonical_realm("Elsewhere") is None
 
 

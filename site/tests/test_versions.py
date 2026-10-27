@@ -92,11 +92,13 @@ def test_an_auctions_deposit_is_at_least_forevers_minimum() -> None:
 
 # Forever's live realms: "<cluster> <region><n> Realm <n> <ruleset>", coalesced by region and ruleset
 US3, US5 = "CAMWOW US2 Realm 3 PvE", "CAMWOW US2 Realm 5 PvE"
+SHARD3 = "CAMWOW US3 Realm 1 PvE"  # another shard of the region: its players play with US2's
 
 
 def test_a_forever_realm_is_its_regions_fixed_realm_of_its_ruleset() -> None:
     forever = VERSIONS["forever"]
     assert forever.realm_name(US3) == forever.realm_name(US5) == "Americas Normal"
+    assert forever.realm_name(SHARD3) == "Americas Normal"
     assert forever.realm_name("CAMWOW EU4 Realm 1 PvE") == "Europe Normal"
     assert forever.realm_name("CAMWOW EU4 Realm 4 PvP") == "Europe PvP"
     spec = forever.canonical_realm(US3)
@@ -109,8 +111,9 @@ def test_a_forever_realm_of_an_unknown_region_or_ruleset_is_its_coalesced_group(
     forever = VERSIONS["forever"]
     assert forever.canonical_realm("CAMWOW ZZ1 Realm 2 PvE") is None
     assert forever.realm_name("CAMWOW ZZ1 Realm 2 PvE") == forever.realm_name("CAMWOW ZZ1 Realm 7 PvE")
-    assert forever.realm_name("CAMWOW ZZ1 Realm 2 PvE") == "CAMWOW ZZ1 PvE"
-    assert forever.realm_name("CAMWOW US2 Realm 2 Arena") == "CAMWOW US2 Arena"
+    assert forever.realm_name("CAMWOW ZZ1 Realm 2 PvE") == forever.realm_name("CAMWOW ZZ2 Realm 1 PvE")
+    assert forever.realm_name("CAMWOW ZZ1 Realm 2 PvE") == "CAMWOW ZZ PvE"
+    assert forever.realm_name("CAMWOW US2 Realm 2 Arena") == "CAMWOW US Arena"
     assert forever.realm_name("Classic Beta PvE") == "Classic Beta PvE"  # another shape: as it is
 
 

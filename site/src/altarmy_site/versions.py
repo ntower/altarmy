@@ -56,9 +56,10 @@ class RealmSpec:
     ruleset: str = ""  # a `RULESETS` key
 
 
-# WoW: Forever's mega-server names its realms "<cluster> <region><n> Realm <n> <ruleset>" ("CAMWOW US2 Realm 3
-# PvE"); every realm of a region and ruleset is one (the client says coalesced: party, mail, auction house)
-COALESCED_REALM = re.compile(r"^(?P<group>.*?(?P<region>[A-Za-z]+)\d*)\s+Realm\s+\d+\s+(?P<ruleset>\S+)$")
+# WoW: Forever's mega-server names its realms "<cluster> <region><shard> Realm <n> <ruleset>" ("CAMWOW US2
+# Realm 3 PvE"); every realm of a region and ruleset is one, whatever its shard (the client says coalesced:
+# party, mail, auction house; US2 and US3 play together)
+COALESCED_REALM = re.compile(r"^(?P<group>.*?(?P<region>[A-Za-z]+))\d*\s+Realm\s+\d+\s+(?P<ruleset>\S+)$")
 # (key, label, the region codes realm names use): US and EU seen; Asia's codes are a guess
 REGIONS = (
     ("americas", "Americas", ("US",)),
@@ -167,7 +168,7 @@ class GameVersion:
     def realm_name(self, name: str) -> str:
         """The realm a realm name is one with, which characters are grouped by and whose auction houses
         price them: the fixed realm's name; else, for a coalesced realm of no fixed one, its group
-        ("CAMWOW US2 PvE": the name without "Realm <n>"); else the name as it is."""
+        ("CAMWOW US PvE": the name without its shard and "Realm <n>"); else the name as it is."""
         spec = self.canonical_realm(name)
         if spec is not None:
             return spec.name

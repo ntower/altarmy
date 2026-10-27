@@ -215,6 +215,7 @@ describe("RealmFilter", function()
     local US5 = "CAMWOW US2 Realm 5 PvE"
     local EU1 = "CAMWOW EU4 Realm 1 PvE"
     local EU4PVP = "CAMWOW EU4 Realm 4 PvP"
+    local SHARD3 = "CAMWOW US3 Realm 1 PvE" -- another shard of the same region: they play together
 
     before_each(function()
       AltArmy.DataStore = { IsWowForever = true }
@@ -224,9 +225,15 @@ describe("RealmFilter", function()
     end)
 
     it("groups realms of one cluster, region and ruleset", function()
-      assert.are.equal("CAMWOW US2 PvE", RF.realmGroup(US3))
+      assert.are.equal("CAMWOW US PvE", RF.realmGroup(US3))
       assert.are.equal(RF.realmGroup(US3), RF.realmGroup(US5))
       assert.is_true(RF.sameRealm(US3, US5))
+    end)
+
+    it("groups the region's shards", function()
+      assert.are.equal(RF.realmGroup(US3), RF.realmGroup(SHARD3))
+      assert.is_true(RF.sameRealm(US3, SHARD3))
+      assert.is_false(RF.hasMultipleRealms({ { realm = US3 }, { realm = SHARD3 } }))
     end)
 
     it("keeps another region or ruleset apart", function()
@@ -241,8 +248,8 @@ describe("RealmFilter", function()
     end)
 
     it("labels a group without its cluster", function()
-      assert.are.equal("US2 PvE", RF.realmLabel(US3))
-      assert.are.equal("EU4 PvP", RF.realmLabel(EU4PVP))
+      assert.are.equal("US PvE", RF.realmLabel(US3))
+      assert.are.equal("EU PvP", RF.realmLabel(EU4PVP))
       assert.are.equal("Classic Beta PvE", RF.realmLabel("Classic Beta PvE"))
     end)
 
@@ -266,7 +273,7 @@ describe("RealmFilter", function()
     end)
 
     it("names the group in a realm suffix", function()
-      assert.are.equal("A-US2 PvE", RF.formatCharacterDisplayName("A", US3, true))
+      assert.are.equal("A-US PvE", RF.formatCharacterDisplayName("A", US3, true))
     end)
   end)
 end)
