@@ -5,8 +5,8 @@
     "release": "db-sqlite-4641790"
   },
   "tbc": {
-    "build": "2.5.6.70006",
+    "build": "2.5.6.70577",
     "emulator": "cmangos",
-    "release": "2026-10-23"
+    "release": "2026-10-27"
   }
 }
