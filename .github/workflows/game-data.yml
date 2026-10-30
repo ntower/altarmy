@@ -34,16 +34,16 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           token: ${{ secrets.GAME_DATA_TOKEN }}
           fetch-depth: 0 # tags and history: release-addon compares with the newest addon-v* tag
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
 
@@ -60,19 +60,19 @@ jobs:
         run: python game_data.py status | tee -a "$GITHUB_OUTPUT"
 
       # One cache per build and release, so a day when one moves downloads only that one
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .cache/wago/${{ steps.status.outputs.forever_build }}
           key: wago-${{ steps.status.outputs.forever_build }}
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .cache/wago/${{ steps.status.outputs.tbc_build }}
           key: wago-${{ steps.status.outputs.tbc_build }}
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .cache/emulators/vmangos/${{ steps.status.outputs.forever_release }}
           key: vmangos-${{ steps.status.outputs.forever_release }}
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .cache/emulators/cmangos/${{ steps.status.outputs.tbc_release }}
           key: cmangos-${{ steps.status.outputs.tbc_release }}
@@ -98,7 +98,7 @@ jobs:
         if: steps.changed.outputs.changed == 'true'
         working-directory: site
         run: python scripts/check.py --skip-frontend
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         if: steps.changed.outputs.changed == 'true'
         with:
           path: |
@@ -129,7 +129,7 @@ jobs:
 
       - name: Open a pull request (a game patch)
         if: steps.changed.outputs.changed == 'true' && steps.status.outputs.game_patch == 'true'
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GAME_DATA_TOKEN }}
           branch: game-data/patch

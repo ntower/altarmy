@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Restore seen comments
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: state
           key: addon-comments-${{ github.run_id }}
@@ -122,7 +122,7 @@ jobs:
 
       - name: Save seen comments
         if: always() && hashFiles('state/seen.txt') != ''
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: state
           key: addon-comments-${{ github.run_id }}-${{ github.run_attempt }}
