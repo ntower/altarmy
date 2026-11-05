@@ -30,7 +30,8 @@
 -- crafting page later hands that taint to PlayerCastingBarFrame (SetOverrideCastBarActive, which writes
 -- showCastbar), and every player cast then fails with ADDON_ACTION_BLOCKED on PlayerCastingBarFrame:Show().
 -- The window is only ever opened by Blizzard's own TRADE_SKILL_SHOW handling. SetAlpha, SetScale,
--- EnableMouse and C_TradeSkillUI.CloseTradeSkill touch no Lua state and are safe.
+-- EnableMouse and C_TradeSkillUI.CloseTradeSkill touch no Lua state, but SetScale (and EnableMouse) wait
+-- until after the secure ShowUIPanel/HideUIPanel that runs the window's OnShow/OnHide (see conceal).
 
 if not AltArmy or not AltArmy.DataStore then return end
 
@@ -120,6 +121,7 @@ local pumpScheduled = false
 local workedSpell = {} -- skill line -> the spell whose link was answered (this session)
 local frameHooked = false
 local concealed = false
+local restoreLook -- the scale and mouse to put back a frame after the window was revealed
 local savedLook
 local tooltip
 local readLog = {}
@@ -270,28 +272,50 @@ end
 
 -- Keeping the window out of sight ------------------------------------------------------------------------
 
+-- Only the alpha changes in the call that shows or hides the window: OnShow and OnHide run inside the secure
+-- UI panel manager's ShowUIPanel/HideUIPanel (an attribute change), where tainted code calling SetScale on
+-- ProfessionsFrame is blocked (ADDON_ACTION_BLOCKED, "UNKNOWN()"). The scale and mouse follow a frame later,
+-- outside that call, if the window is still concealed (or revealed) by then.
+local applyLook
+applyLook = function()
+    local frame = ProfessionsFrame
+    if not frame then return end
+    if InCombatLockdown and InCombatLockdown() then
+        if concealed or restoreLook then C_Timer.After(R.RETRY, applyLook) end
+        return
+    end
+    if concealed then
+        pcall(frame.SetScale, frame, CONCEALED_SCALE)
+        pcall(frame.EnableMouse, frame, false)
+    elseif restoreLook then
+        pcall(frame.SetScale, frame, restoreLook.scale)
+        if restoreLook.mouse ~= nil then
+            pcall(frame.EnableMouse, frame, restoreLook.mouse)
+        end
+        restoreLook = nil
+    end
+end
+
 local function conceal(frame)
     if not concealed then
-        savedLook = {
+        savedLook = restoreLook or {
             alpha = frame.GetAlpha and frame:GetAlpha() or 1,
             scale = frame.GetScale and frame:GetScale() or 1,
             mouse = frame.IsMouseEnabled and frame:IsMouseEnabled(),
         }
+        restoreLook = nil
     end
     concealed = true
     pcall(frame.SetAlpha, frame, 0)
-    pcall(frame.SetScale, frame, CONCEALED_SCALE)
-    pcall(frame.EnableMouse, frame, false)
+    C_Timer.After(0, applyLook)
 end
 
 local function reveal()
     local frame = ProfessionsFrame
     if concealed and frame and savedLook then
         pcall(frame.SetAlpha, frame, savedLook.alpha)
-        pcall(frame.SetScale, frame, savedLook.scale)
-        if savedLook.mouse ~= nil then
-            pcall(frame.EnableMouse, frame, savedLook.mouse)
-        end
+        restoreLook = savedLook
+        C_Timer.After(0, applyLook)
     end
     concealed = false
     savedLook = nil
@@ -878,7 +902,7 @@ end
 function R._ResetForTests()
     unsilence()
     queue, pending, pumpScheduled, workedSpell = {}, nil, false, {}
-    frameHooked, concealed, savedLook = false, false, nil
+    frameHooked, concealed, savedLook, restoreLook = false, false, nil, nil
     tooltip, readLog, attempts, unreadableNames, seq = nil, {}, 0, {}, 0
     quietOff, quietTries, quietWorks, lateCatch = false, 0, 0, false
     unansweredAt, userLinkAt = -math.huge, -math.huge

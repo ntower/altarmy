@@ -44,16 +44,24 @@ describe("OwnRecipeRead", function()
             table.insert(self.hooks[script], fn)
         end
         local function run(self, script)
+            self.inScript = true -- OnShow/OnHide run inside the secure ShowUIPanel/HideUIPanel
             for _, fn in ipairs(self.hooks[script] or {}) do fn(self) end
+            self.inScript = false
         end
         function f:Show() if not self.shown then self.shown = true; run(self, "OnShow") end end
         function f:Hide() if self.shown then self.shown = false; run(self, "OnHide") end end
         function f:IsShown() return self.shown end
         function f:SetAlpha(a) self.alpha = a end
         function f:GetAlpha() return self.alpha end
-        function f:SetScale(s) self.scale = s end
+        function f:SetScale(s)
+            if self.inScript then self.blocked = (self.blocked or 0) + 1; return end
+            self.scale = s
+        end
         function f:GetScale() return self.scale end
-        function f:EnableMouse(on) self.mouse = on end
+        function f:EnableMouse(on)
+            if self.inScript then self.blocked = (self.blocked or 0) + 1; return end
+            self.mouse = on
+        end
         function f:IsMouseEnabled() return self.mouse end
         function f:GetParent() return nil end
         return f
@@ -339,11 +347,36 @@ describe("OwnRecipeRead", function()
             login()
             frame:Show()
             assert.are.equal(0, frame.alpha)
+            advance(0)
             assert.is_true(frame.scale < 0.1)
             assert.is_false(frame.mouse)
             R.OnRecipesScanned("Tailoring")
             assert.is_false(frame.shown)
             assert.are.equal(1, frame.alpha)
+            advance(0)
+            assert.are.equal(1, frame.scale)
+            assert.is_true(frame.mouse)
+        end)
+
+        it("never scales the window or turns its mouse off inside its OnShow or OnHide", function()
+            login()
+            frame:Show()
+            advance(0)
+            R.OnRecipesScanned("Tailoring")
+            advance(0)
+            assert.is_nil(frame.blocked)
+        end)
+
+        it("puts the scale back after combat when the read stopped for it", function()
+            login()
+            frame:Show()
+            advance(0)
+            combat = true
+            R.OnEvent("PLAYER_REGEN_DISABLED")
+            advance(0)
+            assert.is_true(frame.scale < 0.1)
+            combat = false
+            advance(R.RETRY)
             assert.are.equal(1, frame.scale)
             assert.is_true(frame.mouse)
         end)
