@@ -33,7 +33,7 @@ describe("LinkSession + LinkSync", function()
 
   local function newSide(name, accountId, data)
     local side = { name = name, AltArmy = {}, data = data, accountId = accountId, project = 18, prompts = {},
-      mine = {}, seq = 0 }
+      mine = {}, owners = {}, groupIdOf = {}, seq = 0 }
     within(side, function()
       AltArmy.DataStore = { _DATA_VERSIONS = VERSIONS, _MigrateDataVersions = function() end }
       for _, m in ipairs(MODULES) do
@@ -48,6 +48,7 @@ describe("LinkSession + LinkSync", function()
         return ((side.seq * 7919 + (name == "A" and 13 or 101)) % 1000) / 1000
       end,
       isMine = function(g) return side.mine[g] == true end,
+      ownerOf = function(g) return side.owners[g] end,
       myAccountId = function() return side.accountId end,
       regenerateAccountId = function() side.accountId = side.accountId .. (name == "A" and "1" or "2") end,
       self = function()
@@ -64,7 +65,8 @@ describe("LinkSession + LinkSync", function()
         local C = side.AltArmy.LinkCodec
         side.msgs = (side.msgs or 0) + 1
         for _, chunk in ipairs(C.Split(C.Encode(msg, libs), side.name .. side.msgs)) do
-          network[#network + 1] = { to = to, from = to.idOf[side], chunk = chunk, t = msg.t, g = msg.g }
+          local from = type(g) == "string" and to.groupIdOf[side] or to.idOf[side]
+          network[#network + 1] = { to = to, from = from, chunk = chunk, t = msg.t, g = msg.g, via = g }
         end
       end,
     }
@@ -126,6 +128,35 @@ describe("LinkSession + LinkSync", function()
     call(A, "LinkSession", "Discover", { { gameAccountID = 4, characterName = "B Main", realmName = "R" } })
     call(B, "LinkSession", "Discover", { { gameAccountID = 2, characterName = "A Main", realmName = "R" } })
     deliver()
+  end
+
+  -- The group route: A and B's characters in one party, each known by its character's GUID.
+  local function connectGroup()
+    A.peerSides["u:Player-1-B1"], B.peerSides["u:Player-1-A1"] = B, A
+    A.groupIdOf, B.groupIdOf = { [B] = "u:Player-1-B1" }, { [A] = "u:Player-1-A1" }
+    A.mine["u:Player-1-B1"], B.mine["u:Player-1-A1"] = true, true
+    A.owners["u:Player-1-B1"], B.owners["u:Player-1-A1"] = "bbbb", "aaaa"
+  end
+
+  local function discoverGroup()
+    call(A, "LinkSession", "Discover", { { key = "u:Player-1-B1", acct = "bbbb", playerGuid = "Player-1-B1",
+      characterName = "B One" } }, "group")
+    call(B, "LinkSession", "Discover", { { key = "u:Player-1-A1", acct = "aaaa", playerGuid = "Player-1-A1",
+      characterName = "A One" } }, "group")
+    deliver()
+  end
+
+  local function battleNetDown()
+    call(A, "LinkSession", "Discover", {})
+    call(B, "LinkSession", "Discover", {})
+  end
+
+  local function viewOf(side)
+    return within(side, function() return AltArmy.LinkSession.View() end)[1]
+  end
+
+  local function moneyOfB1()
+    return within(A, function() return AltArmy.LinkStore.Ensure().accounts.bbbb.Characters.R["Player-1-B1"].money end)
   end
 
   local function link(opts)
@@ -291,6 +322,63 @@ describe("LinkSession + LinkSync", function()
     assert.is_nil(linkOf(B, "aaaa"))
     assert.are.same({}, held(B, "aaaa"))
     assert.is_false(within(A, function() return AltArmy.LinkStore.IsUnlinkPending("bbbb") end))
+  end)
+
+  describe("the group route", function()
+    it("syncs through the group while Battle.net can't see the other account", function()
+      link()
+      battleNetDown()
+      assert.is_false(viewOf(A).online)
+      connectGroup()
+      discoverGroup()
+      assert.is_true(viewOf(A).online)
+      assert.are.equal("group", viewOf(A).route)
+      B.data.Characters.R["Player-1-B1"].money = 777
+      B.env.currentGuid = function() return "Player-1-B1" end
+      call(B, "LinkSync", "NoteLocalChange")
+      clock = clock + 21
+      call(B, "LinkSession", "Tick")
+      deliver()
+      assert.are.equal(777, moneyOfB1())
+    end)
+
+    it("goes back to Battle.net once it sees the account again", function()
+      link()
+      battleNetDown()
+      connectGroup()
+      discoverGroup()
+      clock = clock + 120
+      within(B, function() AltArmy.LinkSession._Reset() end) -- a new session there finds A over Battle.net
+      discover()
+      assert.are.equal("bn", viewOf(A).route)
+    end)
+
+    it("says nothing in the group to an account online over Battle.net", function()
+      link()
+      connectGroup()
+      call(A, "LinkSession", "Discover", { { key = "u:Player-1-B1", acct = "bbbb", playerGuid = "Player-1-B1" } },
+        "group")
+      assert.are.equal(0, #network)
+    end)
+
+    it("links nothing through the group", function()
+      connectGroup()
+      discoverGroup()
+      call(A, "LinkSession", "RequestLink", "u:Player-1-B1")
+      deliver()
+      assert.are.equal(0, #B.prompts)
+      assert.is_nil(linkOf(A, "bbbb"))
+      assert.is_nil(linkOf(B, "aaaa"))
+    end)
+
+    it("takes a HELLO only from the account the character belongs to", function()
+      link()
+      battleNetDown()
+      connectGroup()
+      A.owners["u:Player-1-B1"] = "cccc" -- A holds that character as another linked account's
+      discoverGroup()
+      assert.is_false(viewOf(A).online)
+    end)
   end)
 
   it("answers nobody who isn't on this Battle.net account", function()

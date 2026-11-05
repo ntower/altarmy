@@ -80,4 +80,31 @@ describe("LinkCodec", function()
     assert.is_nil(C.Decode("", libs))
     assert.is_nil(C.Decode(C.Encode({ x = 1 }, libs), libs)) -- no type
   end)
+
+  describe("the group envelope", function()
+    local TO, FROM = "6b9949cecd4731f8", "Player-6923-004D70E3"
+
+    it("carries who a chunk is for and who sent it, within an addon message's 255 bytes", function()
+      local payload = C.Encode({ t = "HELLO", acct = "x" }, libs) .. string.rep("z", 1200)
+      local chunks = C.Split(payload, "ab1", C.WrapRoom(TO, FROM))
+      local r = C.NewReassembler()
+      local whole
+      for _, chunk in ipairs(chunks) do
+        local text = C.Wrap(TO, FROM, chunk)
+        assert.is_true(#text <= C.MAX_CHUNK)
+        local to, from, inner = C.Unwrap(text)
+        assert.are.same({ TO, FROM }, { to, from })
+        whole = r:Add("u:" .. from, inner, 0) or whole
+      end
+      assert.are.equal(payload, whole)
+    end)
+
+    it("is no envelope without both parts", function()
+      assert.is_nil(C.Unwrap("ab1|1|1|data"))
+      assert.is_nil(C.Unwrap(TO .. "~not-a-guid~ab1|1|1|data"))
+      assert.is_nil(C.Unwrap(TO .. "~" .. FROM .. "~"))
+      assert.is_nil(C.Unwrap(string.rep("a", 300)))
+      assert.is_nil(C.Unwrap(nil))
+    end)
+  end)
 end)

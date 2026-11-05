@@ -3,7 +3,13 @@
 --   env.send(gameAccountID, msg, prio), env.now(), env.random(), env.isMine(gameAccountID) (that game account
 --   is on this Battle.net account, asked of the client afresh: LinkDiscovery), env.myAccountId(),
 --   env.regenerateAccountId(), env.self() ({ name, realm, faction, addon, interface, project }),
---   env.ownRoot(), env.currentGuid(), env.prompt(peer, code), env.changed()
+--   env.ownRoot(), env.currentGuid(), env.prompt(peer, code), env.changed(), env.ownerOf(key) (the account a
+--   group route's key must be, nil for Battle.net)
+-- A peer is reached by one of two routes, told apart by its key: Battle.net (a game account id, a number), or
+-- the group (a party or raid of nobody but linked accounts' characters, key "u:<character GUID>",
+-- LinkTransport). The group only carries links already made: a link is asked for, and an account proved ours,
+-- over Battle.net alone; a group peer is the linked account its character belongs to. One peer per account:
+-- Battle.net is preferred, and the group is used while Battle.net can't see the account.
 -- Nothing from a game account that is not ours is ever answered or kept. A game account id holds for this
 -- session only (each client numbers them its own way), so a peer is known by the account id its HELLO
 -- carries (AltArmyTBC_Data.accountId). Linking: one client asks (LREQ), the other answers with its own
@@ -52,38 +58,64 @@ local function hello(env, g, reply, acct)
     }, "NORMAL")
 end
 
+local function routeOf(key)
+    return type(key) == "number" and "bn" or "group"
+end
+
+-- Linking is over Battle.net only: the client vouches that the account is ours.
+local LINKING = { LREQ = true, LACK = true, LOK = true, LNO = true }
+
+--- Another peer than `key` that is `acct`, and its key.
+local function otherPeerOf(acct, key)
+    if not acct then
+        return nil
+    end
+    for k, peer in pairs(peers) do
+        if k ~= key and peer.acct == acct then
+            return peer, k
+        end
+    end
+    return nil
+end
+
 local function nonce(env)
     return math.floor(env.random() * 2147483646) + 1
 end
 
---- The game accounts of ours online now (LinkDiscovery candidates): say HELLO to the new ones (and again,
---- now and then, to one that hasn't answered), forget the ones gone, and tell any we unlinked meanwhile.
+--- Our accounts online now by `route` ("bn", the default: LinkDiscovery candidates; "group": its
+--- GroupCandidates, each with `key` and `acct`): say HELLO to the new ones (and again, now and then, to one that
+--- hasn't answered), forget the ones of that route gone, and tell any we unlinked meanwhile. A group candidate
+--- whose account is online over Battle.net is left alone.
 --- A known peer gets nothing: its changes come as partial manifests (LinkSync), and a full one is sent
 --- when a session starts on either side (its HELLO), on linking, and on Sync now.
-function L.Discover(env, candidates)
+function L.Discover(env, candidates, route)
+    route = route or "bn"
     local now = env.now()
     local seen = {}
     for _, c in ipairs(candidates or {}) do
-        local g = c.gameAccountID
+        local g = c.key or c.gameAccountID
         seen[g] = true
         local peer = peers[g]
-        if not peer then
-            peer = { g = g, name = c.characterName, realm = c.realmName, faction = c.factionName }
+        -- a group candidate whose account is online over Battle.net is left alone
+        if not peer and (route == "bn" or not otherPeerOf(c.acct, g)) then
+            peer = { g = g, route = route, name = c.characterName, realm = c.realmName, faction = c.factionName }
             peers[g] = peer
         end
-        -- the character it is on now (it may have switched since its HELLO)
-        if type(c.playerGuid) == "string" and c.playerGuid ~= "" then
-            peer.guid = c.playerGuid
-        end
-        if not peer.helloAt or (not peer.acct and now - peer.helloAt >= L.HELLO_AGAIN) then
-            peer.helloAt = now
-            hello(env, g, false)
-        elseif peer.acct and Store().IsUnlinkPending(peer.acct) then
-            env.send(g, { t = "UNL" }, "NORMAL")
+        if peer then
+            -- the character it is on now (it may have switched since its HELLO)
+            if type(c.playerGuid) == "string" and c.playerGuid ~= "" then
+                peer.guid = c.playerGuid
+            end
+            if not peer.helloAt or (not peer.acct and now - peer.helloAt >= L.HELLO_AGAIN) then
+                peer.helloAt = now
+                hello(env, g, false)
+            elseif peer.acct and Store().IsUnlinkPending(peer.acct) then
+                env.send(g, { t = "UNL" }, "NORMAL")
+            end
         end
     end
-    for g in pairs(peers) do
-        if not seen[g] then
+    for g, peer in pairs(peers) do
+        if (peer.route or routeOf(g)) == route and not seen[g] then
             peers[g] = nil
         end
     end
@@ -110,6 +142,15 @@ local function onHello(env, peer, msg)
             hello(env, peer.g, false)
         end
         return
+    end
+    -- one peer per account: Battle.net is preferred, the group used while Battle.net can't see the account
+    local other, otherKey = otherPeerOf(msg.acct, peer.g)
+    if other then
+        if routeOf(peer.g) ~= "bn" then
+            peers[peer.g] = nil
+            return
+        end
+        peers[otherKey] = nil
     end
     peer.acct = msg.acct
     peer.name = type(msg.name) == "string" and msg.name or peer.name
@@ -298,9 +339,16 @@ function L.OnMessage(env, g, msg)
     if type(msg) ~= "table" or not env.isMine(g) then
         return
     end
+    local owner = env.ownerOf and env.ownerOf(g)
+    if routeOf(g) ~= "bn" then
+        -- a group sender is the linked account its character belongs to, and links nothing
+        if not owner or LINKING[msg.t] or (msg.t == "HELLO" and msg.acct ~= owner) then
+            return
+        end
+    end
     local peer = peers[g]
     if not peer then
-        peer = { g = g }
+        peer = { g = g, route = routeOf(g) }
         peers[g] = peer
     end
     if msg.t ~= "HELLO" and not peer.acct then
@@ -358,7 +406,8 @@ function L.View()
         for _ in pairs(S.CharacterRealms(acct)) do chars = chars + 1 end
         out[#out + 1] = {
             acct = acct, linked = link.confirmed == true, label = S.Label(acct), online = peer ~= nil,
-            g = peer and peer.g, suspended = link.suspended or nil, characters = chars,
+            g = peer and peer.g, route = peer and (peer.route or routeOf(peer.g)), suspended = link.suspended or nil,
+            characters = chars,
             lastSyncAt = link.lastSyncAt, syncing = Sync().IsSyncing(acct), refused = peer and peer.lastRefused,
         }
     end

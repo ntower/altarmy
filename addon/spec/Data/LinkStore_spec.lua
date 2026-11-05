@@ -164,4 +164,15 @@ describe("LinkStore", function()
     assert.are.equal("Stheno", S.Label("acct1"))
     assert.is_false(S.SetName("nobody", "X"))
   end)
+
+  it("knows which active link a character GUID belongs to", function()
+    S.Receive("acct", REALM, GUID, "identity", identity("Theirs"), 100)
+    assert.is_nil(S.AccountOf(GUID)) -- not linked yet
+    S.SetLink("acct", { confirmed = true })
+    assert.are.equal("acct", S.AccountOf(GUID))
+    assert.is_nil(S.AccountOf("Player-4618-01")) -- ours
+    assert.is_nil(S.AccountOf(nil))
+    S.SetLink("acct", { suspended = "another game" })
+    assert.is_nil(S.AccountOf(GUID))
+  end)
 end)

@@ -144,8 +144,13 @@ local function fill(row, e)
             state = "Paused: " .. tostring(e.suspended)
         elseif e.syncing then
             state = "Syncing..."
+        elseif e.online and e.route == "group" then
+            state = "Online (through your group)"
         elseif e.online then
             state = "Online"
+        elseif T.BattleNetAvailable and not T.BattleNetAvailable() then
+            -- with Battle.net down here no account can be seen: it may well be online
+            state = "|cffffcc00Not seen: Battle.net is unavailable on this client (log out and back in)|r"
         else
             state = "Offline"
         end

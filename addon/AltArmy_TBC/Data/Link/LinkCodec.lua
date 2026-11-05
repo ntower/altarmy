@@ -61,16 +61,41 @@ function C.Decode(payload, libs)
     return msg
 end
 
---- A payload as chunks for message `msgId` (a short string without "|").
-function C.Split(payload, msgId)
+--- A payload as chunks for message `msgId` (a short string without "|"), each at most `maxChunk` bytes
+--- (MAX_CHUNK by default; less leaves room for a group envelope, C.Wrap).
+function C.Split(payload, msgId, maxChunk)
     local headLen = #msgId + 12 -- "|", seq and total up to 4 digits each, "|"s
-    local size = C.MAX_CHUNK - headLen
+    local size = (maxChunk or C.MAX_CHUNK) - headLen
     local total = math.max(1, math.ceil(#payload / size))
     local chunks = {}
     for seq = 1, total do
         chunks[seq] = msgId .. "|" .. seq .. "|" .. total .. "|" .. payload:sub((seq - 1) * size + 1, seq * size)
     end
     return chunks
+end
+
+--- A chunk sent to the whole party or raid (LinkTransport's group route): who it is for (an account id) and
+--- who sends it (the sender's character GUID) go in front, "<to>~<fromGuid>~<chunk>"; every other member
+--- hears it too, and only the account it names takes it.
+function C.Wrap(to, fromGuid, chunk)
+    return to .. "~" .. fromGuid .. "~" .. chunk
+end
+
+--- Room a chunk leaves for C.Wrap's envelope.
+function C.WrapRoom(to, fromGuid)
+    return C.MAX_CHUNK - #to - #fromGuid - 2
+end
+
+--- The parts of a wrapped chunk: to, fromGuid, chunk; nil if it is not one.
+function C.Unwrap(text)
+    if type(text) ~= "string" or #text > C.MAX_CHUNK then
+        return nil
+    end
+    local to, from, chunk = text:match("^(%x+)~(Player%-%d+%-%x+)~(.+)$")
+    if not to then
+        return nil
+    end
+    return to, from, chunk
 end
 
 --- The parts of one chunk: msgId, seq, total, data; nil if it is not one.

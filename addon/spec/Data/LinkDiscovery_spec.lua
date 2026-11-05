@@ -124,4 +124,43 @@ describe("LinkDiscovery", function()
     assert.are.same({ wowProjectID = 18 }, me)
     assert.are.same({}, LD.Scan({}, me))
   end)
+
+  describe("BattleNetUp", function()
+    it("is up while the client knows its own Battle.net account", function()
+      assert.is_true(LD.BattleNetUp({ guid = "Player-1-A", bnetAccountID = 7 }))
+      assert.is_true(LD.BattleNetUp({ guid = "Player-1-A", battleTag = "Frell#1234" }))
+    end)
+
+    it("is down when Battle.net answers nothing about us (measured on Forever: BNGetInfo blank)", function()
+      assert.is_false(LD.BattleNetUp({ guid = "Player-1-A" }))
+      assert.is_false(LD.BattleNetUp(nil))
+    end)
+  end)
+
+  describe("GroupCandidates", function()
+    local owners = { ["Player-1-B"] = "bbbb", ["Player-1-C"] = "cccc" }
+    local function ownerOf(guid) return owners[guid] end
+
+    it("names each linked account's character in a group of nobody else", function()
+      local got, why = LD.GroupCandidates({ { guid = "Player-1-B", name = "Frell" }, { guid = "Player-1-C" } },
+        ownerOf)
+      assert.is_nil(why)
+      assert.are.same({
+        { key = "u:Player-1-B", acct = "bbbb", playerGuid = "Player-1-B", characterName = "Frell" },
+        { key = "u:Player-1-C", acct = "cccc", playerGuid = "Player-1-C" },
+      }, got)
+    end)
+
+    it("uses no group with anyone else in it: they would hear everything", function()
+      local got, why = LD.GroupCandidates({ { guid = "Player-1-B" }, { guid = "Player-1-STRANGER" } }, ownerOf)
+      assert.are.same({}, got)
+      assert.are.equal("stranger", why)
+    end)
+
+    it("has none without a group", function()
+      local got, why = LD.GroupCandidates({}, ownerOf)
+      assert.are.same({}, got)
+      assert.are.equal("noGroup", why)
+    end)
+  end)
 end)

@@ -193,4 +193,31 @@ function LD.Candidates(scan)
     return out
 end
 
+--- Whether this client is on Battle.net: it knows its own Battle.net account (LD.Me). When the client loses
+--- Battle.net's friends service while staying in game, BNGetInfo and GetAccountInfoByGUID answer nothing and
+--- every game account reads blank (project 0, no character), so none can be told to be ours.
+function LD.BattleNetUp(me)
+    return type(me) == "table" and (me.bnetAccountID ~= nil or me.battleTag ~= nil)
+end
+
+--- The group route's candidates (LinkTransport): `members` are the others in this party or raid
+--- ({ guid, name, realm }), `ownerOf(guid)` the active linked account a character belongs to. Only when every
+--- one of them is a linked account's character (a multiboxer's own group) is the group used, since everyone in
+--- it hears what is sent; else none, and why ("noGroup", "stranger").
+function LD.GroupCandidates(members, ownerOf)
+    if type(members) ~= "table" or #members == 0 then
+        return {}, "noGroup"
+    end
+    local out = {}
+    for _, m in ipairs(members) do
+        local acct = type(m.guid) == "string" and ownerOf(m.guid) or nil
+        if not acct then
+            return {}, "stranger"
+        end
+        out[#out + 1] = { key = "u:" .. m.guid, acct = acct, playerGuid = m.guid, characterName = m.name,
+            realmName = m.realm }
+    end
+    return out
+end
+
 return LD

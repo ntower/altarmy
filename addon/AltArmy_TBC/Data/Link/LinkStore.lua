@@ -297,6 +297,23 @@ function S.FindCharacter(id, name, realm)
     return char
 end
 
+--- The account of an active link that holds the character `guid` (on any realm), else nil.
+function S.AccountOf(guid)
+    if type(guid) ~= "string" then
+        return nil
+    end
+    for id, acct in pairs(S.Ensure().accounts) do
+        if S.IsActive(id) then
+            for _, chars in pairs(acct.Characters or {}) do
+                if chars[guid] then
+                    return id
+                end
+            end
+        end
+    end
+    return nil
+end
+
 --- The link a character table came from (nil for our own characters).
 function S.LinkOf(char)
     return char and linkOf[char] or nil
