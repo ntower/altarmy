@@ -16,6 +16,7 @@ local CD = AltArmy.CooldownData
 ---@field noReagents boolean|nil Needs no materials: no mats count, tooltip reagents or stockpile send.
 ---@field itemId number|nil An item's use cooldown (saved under its use spell, spellId): a row for whoever holds one.
 ---@field unannounced boolean|nil In the game data but not announced: hidden unless Debug's Show unannounced cooldowns.
+---@field knownByCooldown boolean|nil A saved cooldown for spellId counts as knowing it (profession maybe unscanned).
 
 --- Longest plausible tracked profession cooldown (TBC's Shadowcloth 3d 20h, WoW Forever's Mooncloth 95h).
 --- Saved values above this are shown as unscanned in the UI (see IsExpiryPlausible).
@@ -255,12 +256,15 @@ CD.CATEGORIES = {
     -- spell's name, Study (the key stays "research": saved settings use it).
     -- Study is the only Research recipe known so far. Revisit if more appear: if they share one
     -- cooldown this should become a "group" category like transmute.
+    -- GetProfessions() never lists Comprehension, so it is in char.Professions only once its window was opened;
+    -- a saved cooldown (only the character's own cast saves one) says they know Study too (knownByCooldown).
     research = {
         key = "research",
         title = "Study",
         mode = "single",
         spellId = 1302508, -- Study
         spellIds = { 1302508 },
+        knownByCooldown = true,
     },
     -- WoW Forever: Legacy talent (Profession tree); 23h. +1 skill in the lowest tradeskill, no reagents.
     dedicated_study = {
@@ -1468,6 +1472,7 @@ function CD.BuildRows(DS, options, now, opts)
                             include = CD.CharacterHasLegacyTalentSpell(char, cat.spellId)
                         elseif cat.mode == "single" and cat.spellId then
                             include = select(1, CD.FindRecipeProfession(char, cat.spellId))
+                                or (cat.knownByCooldown == true and CD.GetExpiryUnix(char, cat.spellId) ~= nil)
                         end
                         if include
                             and CD.RowMeetsSpecializationGate(catKey, char,

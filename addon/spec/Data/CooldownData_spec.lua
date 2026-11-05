@@ -1113,6 +1113,38 @@ describe("CooldownData", function()
             assert.are.equal("1h 0m", research[1].timeText)
         end)
 
+        it("BuildRows adds a Research row for a mage who cast Study without opening Comprehension", function()
+            -- GetProfessions() never lists Comprehension, so only its window would add it to Professions
+            local ds = mockDS({ TestRealm = {
+                Mage = {
+                    name = "Frell Blast",
+                    classFile = "MAGE",
+                    Professions = { Tailoring = { Recipes = { [2963] = {} } } },
+                    ProfCooldownExpiry = { [STUDY] = { expiresAtUnix = 1000 + 3600 } },
+                },
+            } })
+            local rows = CD.BuildRows(ds, AltArmyTBC_Options.cooldowns, 1000)
+            local research = {}
+            for _, r in ipairs(rows) do
+                if r.categoryKey == "research" then research[#research + 1] = r end
+            end
+            assert.are.equal(1, #research)
+            assert.are.equal(1000 + 3600, research[1].expiresUnix)
+        end)
+
+        it("a saved cooldown alone doesn't keep other recipes' rows (Mooncloth after dropping Tailoring)", function()
+            local saved = AltArmy.DataStore
+            AltArmy.DataStore = { IsWowForever = true } -- Mooncloth is WoW Forever's
+            local ds = mockDS({ TestRealm = {
+                Tailor = { name = "Tailor", Professions = {}, ProfCooldownExpiry = { [18560] = { expiresAtUnix = 5000 } } },
+            } })
+            local rows = CD.BuildRows(ds, AltArmyTBC_Options.cooldowns, 1000)
+            AltArmy.DataStore = saved
+            for _, r in ipairs(rows) do
+                assert.are_not.equal("mooncloth", r.categoryKey)
+            end
+        end)
+
         it("Study needs one Light Feather even though Forever never scans reagents", function()
             assert.is_nil(AltArmyTBC_Data.RecipeReagents[STUDY])
             assert.are.same({ { 17056, 1 } }, CD.GetReagentList(STUDY))
