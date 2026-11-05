@@ -10,6 +10,7 @@ import {
   type Source,
   type Strategy,
   useDataVersion,
+  useMaxSkill,
   useProfessionRanks,
   useRank,
   usePrefetchSessionPlans,
@@ -24,7 +25,6 @@ import { layoutTop, scrollTarget } from '../lib/scroll'
 import { useStoredState } from '../lib/storage'
 import type { Holder } from '../lib/setup'
 import {
-  an,
   craftsToReach,
   REACH_TARGET,
   customDetail,
@@ -619,9 +619,19 @@ export function SkillWorkspace({
   const open = expanded || openAt === null ? undefined : openAt === 0 ? now : chain[openAt - 1]
   // the skill the run opened out starts at
   const openFrom = !openAt ? climber.rank : openAt === 1 ? (now?.stop_skill ?? 0) : (chain[openAt - 2]?.stop_skill ?? 0)
-  // a made-up climber is taken to train each rank as they come to it: never stuck at a cap
-  const atCap = !hypothetical && climber.rank >= climber.maxRank
-  const training: Training = { ranks: useProfessionRanks(), maxRank: climber.maxRank, profession }
+  // The climb trains each rank as it comes to it: only the version's top skill is a cap nothing goes past
+  // (a made-up climber is never stuck at one)
+  const professionRanks = useProfessionRanks()
+  const maxSkill = useMaxSkill()
+  const atCap = !hypothetical && climber.rank >= maxSkill
+  // at a lower cap, the next rank when the climber's level doesn't let them train it yet (the server then plans
+  // no climb past their cap: `GameVersion.trainable_cap`; an unknown level, 0, never holds them back)
+  const nextRank =
+    !hypothetical && !atCap && climber.rank >= climber.maxRank
+      ? professionRanks.find((r) => r.cap > climber.maxRank)
+      : undefined
+  const levelShort = nextRank && climber.level > 0 && climber.level < nextRank.level ? nextRank : undefined
+  const training: Training = { ranks: professionRanks, maxRank: climber.maxRank, profession }
   const planParams: EvaluateParams = {
     unlearned: filters.unlearned,
     lookAhead: filters.lookAhead,
@@ -762,8 +772,8 @@ export function SkillWorkspace({
     </Alert>
   )
   const capCard = atCap && (
-    <Alert color="orange" title={`You're at your ${profession} cap (${climber.maxRank})`}>
-      Visit {an(profession)} {profession} trainer to learn the next rank, then /reload so Alt Army Sync uploads it.
+    <Alert color="orange" title={`You're at your ${profession} cap (${maxSkill})`}>
+      There is no higher rank to train.
     </Alert>
   )
   if (!results.length) {
@@ -771,7 +781,13 @@ export function SkillWorkspace({
       <Stack>
         {capCard}
         {refresh}
-        {!atCap && <Alert>No path was found for {climber.name} to gain skill in {profession}</Alert>}
+        {levelShort ? (
+          <Alert color="orange" title={`${climber.name} needs level ${levelShort.level} to train ${levelShort.name} ${profession}`}>
+            Until then {profession} stays at {climber.maxRank}.
+          </Alert>
+        ) : (
+          !atCap && <Alert>No path was found for {climber.name} to gain skill in {profession}</Alert>
+        )}
       </Stack>
     )
   }

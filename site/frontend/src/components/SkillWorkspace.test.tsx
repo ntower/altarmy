@@ -1135,11 +1135,28 @@ describe('SkillWorkspace', () => {
     expect(screen.queryByRole('alert', { name: /^Train / })).not.toBeInTheDocument()
   })
 
-  it('says to visit a trainer at the cap', async () => {
-    api({ '/api/rank': { ...ranked, results: [], total: 0, chain: [], strategies: [] } })
+  it("says so at the version's top skill", async () => {
+    const versions = [{ key: 'forever', label: 'WoW: Forever', build: null, recipes: 3, ah_cut: 0.05, profession_ranks: professionRanks }]
+    api({ '/api/rank': { ...ranked, results: [], total: 0, chain: [], strategies: [] }, '/api/versions': versions })
+    show({ ...CLIMBER, rank: 300, maxRank: 300 })
+    expect(await screen.findByText("You're at your Tailoring cap (300)")).toBeInTheDocument()
+    expect(screen.queryByText(/No path was found/)).not.toBeInTheDocument()
+  })
+
+  it('plans on past a lower cap, the next rank assumed trained', async () => {
+    const versions = [{ key: 'forever', label: 'WoW: Forever', build: null, recipes: 3, ah_cut: 0.05, profession_ranks: professionRanks }]
+    api({ '/api/versions': versions })
     show({ ...CLIMBER, rank: 75 })
-    expect(await screen.findByText("You're at your Tailoring cap (75)")).toBeInTheDocument()
-    expect(screen.getByText(/Visit a Tailoring trainer to learn the next rank, then \/reload/)).toBeInTheDocument()
+    await screen.findByRole('region', { name: 'Your options' })
+    expect(screen.queryByText(/cap/)).not.toBeInTheDocument()
+  })
+
+  it("says when the climber's level doesn't let them train the next rank yet", async () => {
+    const versions = [{ key: 'forever', label: 'WoW: Forever', build: null, recipes: 3, ah_cut: 0.05, profession_ranks: professionRanks }]
+    api({ '/api/rank': { ...ranked, results: [], total: 0, chain: [], strategies: [] }, '/api/versions': versions })
+    show({ ...CLIMBER, level: 15, rank: 150, maxRank: 150 })
+    expect(await screen.findByText('Tailor Guy needs level 20 to train Expert Tailoring')).toBeInTheDocument()
+    expect(screen.queryByText(/cap|No path was found/)).not.toBeInTheDocument()
   })
 
   it('plans for a character nobody uploaded from the skill given, never stuck at a cap', async () => {
