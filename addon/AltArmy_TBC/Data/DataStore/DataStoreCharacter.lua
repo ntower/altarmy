@@ -18,6 +18,10 @@ function DS:ScanCharacter(_self)
     local guid = DS:GetCurrentPlayerGUID()
     -- Adopt this character's older entries (same GUID, or saved under its full name before GUIDs).
     DS._FoldLegacyEntries(nil, realm, guid, fullName, char)
+    -- A deleted character whose name this one took (recreated under the same name) is gone from the game.
+    if DS._DropReplacedEntries(nil, realm, guid, fullName, char) > 0 then
+        DS._NoteCharactersDeleted()
+    end
     if fullName ~= "" then
         -- Renamed (paid rename, or WoW Forever now reporting the surname): carry settings over.
         if char.name and char.name ~= fullName and AltArmy.RekeyCharSettings then

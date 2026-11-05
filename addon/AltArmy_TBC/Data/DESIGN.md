@@ -47,7 +47,7 @@ Data flows in one direction:
 1. **DataStore (core + modules)** — Persistence and scanning  
    - Core owns `AltArmyTBC_Data` (SavedVariables) and the event frame; modules attach scans and getters.  
    - Scans the current character on WoW events (e.g. `PLAYER_ENTERING_WORLD`, `PLAYER_MONEY`, `TIME_PLAYED_MSG`).  
-   - Exposes: `GetRealms()`, `GetCharacters(realm)`, `GetCharacter(name, realm)`, `GetCurrentCharacter()`, and per-field getters on character data (and containers, equipment, professions, etc.). `GetCharacter` and `DeleteCharacter` accept a character name or a storage key. `GetCharacters` and `ForEachCharacter` hand out storage keys, so callers read the name from `charData.name`.
+   - Exposes: `GetRealms()`, `GetCharacters(realm)`, `GetCharacter(name, realm)`, `GetCurrentCharacter()`, and per-field getters on character data (and containers, equipment, professions, etc.). `GetCharacter` and `DeleteCharacter` accept a character name or a storage key (pass the key to delete: a deleted character's entry keeps its name until the character that took the name next logs in, whose scan drops it, `DropReplacedEntries`). `GetCharacters` and `ForEachCharacter` hand out storage keys, so callers read the name from `charData.name`.
 
 2. **SummaryData.lua** — Aggregation and formatting  
    - Reads from DataStore only (no direct SavedVariables access).  

@@ -226,6 +226,30 @@ local function FoldLegacyEntries(data, realm, guid, fullName, char)
     end
 end
 
+--- Delete the entries on `realm` of characters that were deleted (or renamed) and whose name the current
+--- character, `guid` called `fullName`, now holds: a name belongs to one character of a realm at a time, so
+--- another GUID's entry under it is gone from the game. Nothing of them is kept. On WoW Forever a name without
+--- its surname is passed over (older addons saved other characters under their first name alone).
+--- Returns how many were deleted.
+local function DropReplacedEntries(data, realm, guid, fullName, char)
+    local chars = (data or AltArmyTBC_Data).Characters
+    local realmTable = chars and chars[realm]
+    if not realmTable or not char or not guid or not fullName or fullName == "" then return 0 end
+    if DS.IsWowForever and not fullName:find(SurnameSeparator(), 1, true) then return 0 end
+    local gone = {}
+    for key, old in pairs(realmTable) do
+        if old ~= char and type(old) == "table" and old.name == fullName
+            and type(old.guid) == "string" and old.guid ~= "" and old.guid ~= guid
+        then
+            gone[#gone + 1] = key
+        end
+    end
+    for _, key in ipairs(gone) do
+        realmTable[key] = nil
+    end
+    return #gone
+end
+
 -- This WoW account's id: 16 random hex digits made on first load and kept in AltArmyTBC_Data. Nothing in the
 -- game names the account, and every character of it shares this file. The website replaces only the
 -- characters of the account an upload comes from (site/src/altarmy_site/altarmy.py), and linked accounts
@@ -253,6 +277,7 @@ DS._GetCurrentCharTable = GetCurrentCharTable
 DS._RemoveUnknownStubs = RemoveUnknownStubs
 DS._MigrateCharacterKeys = MigrateCharacterKeys
 DS._FoldLegacyEntries = FoldLegacyEntries
+DS._DropReplacedEntries = DropReplacedEntries
 DS._MigrateDataVersions = MigrateDataVersions
 DS._DATA_VERSIONS = DATA_VERSIONS
 
@@ -455,10 +480,8 @@ function DS:FireContainerDataChanged()
     for _, fn in ipairs(containerListeners) do pcall(fn) end
 end
 
-function DS:DeleteCharacter(name, realm)
-    local key = FindCharacterEntry(name, realm)
-    if not key then return end
-    AltArmyTBC_Data.Characters[realm][key] = nil
+--- After characters were deleted from AltArmyTBC_Data: redraw, and tell linked accounts.
+local function NoteCharactersDeleted()
     if AltArmy.Characters and AltArmy.Characters.InvalidateView then
         AltArmy.Characters:InvalidateView()
     end
@@ -467,6 +490,17 @@ function DS:DeleteCharacter(name, realm)
     if T and T.NoteDeletion then
         T.NoteDeletion()
     end
+end
+
+DS._NoteCharactersDeleted = NoteCharactersDeleted
+
+--- Delete a stored character, by storage key (GUID or legacy name) or by name. Pass the key when there is
+--- one: two entries of a realm can carry the same name until the current character's scan drops the older.
+function DS:DeleteCharacter(nameOrKey, realm)
+    local key = FindCharacterEntry(nameOrKey, realm)
+    if not key then return end
+    AltArmyTBC_Data.Characters[realm][key] = nil
+    NoteCharactersDeleted()
 end
 
 -- Event frame and dispatch

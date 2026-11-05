@@ -396,6 +396,16 @@ describe("DataStore", function()
       assert.is_not_nil(AltArmyTBC_Data.Characters.RealmA.Legacy)
     end)
 
+    it("deletes by storage key the one of two entries that share a name", function()
+      AltArmyTBC_Data.Characters.RealmA = {
+        ["Player-1-A"] = { name = "Frell Blast", guid = "Player-1-A" },
+        ["Player-1-B"] = { name = "Frell Blast", guid = "Player-1-B" },
+      }
+      DS:DeleteCharacter("Player-1-B", "RealmA")
+      assert.is_not_nil(AltArmyTBC_Data.Characters.RealmA["Player-1-A"])
+      assert.is_nil(AltArmyTBC_Data.Characters.RealmA["Player-1-B"])
+    end)
+
     it("returns the storage key for a character", function()
       assert.are.equal("Player-1-A", DS:GetCharacterKey({ name = "Frell Blast", guid = "Player-1-A" }))
       assert.are.equal("Legacy", DS:GetCharacterKey({ name = "Legacy" }))

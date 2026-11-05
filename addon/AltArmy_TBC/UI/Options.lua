@@ -111,8 +111,13 @@ end
 -- Character list helpers
 -- ---------------------------------------------------------------------------
 
-local function IsCurrentCharacter(name, realm)
+--- By storage key when `key` is given: another entry may still carry the current character's name.
+local function IsCurrentCharacter(name, realm, key)
     local DS = AltArmy.DataStore
+    if key and DS and DS.GetCurrentCharacter and DS.GetCharacterKey and DS.GetCurrentPlayerRealm then
+        local current = DS:GetCurrentCharacter()
+        return current ~= nil and DS:GetCurrentPlayerRealm() == realm and DS:GetCharacterKey(current) == key
+    end
     return DS and DS.IsCurrentCharacter and DS:IsCurrentCharacter(name, realm)
 end
 
@@ -122,6 +127,7 @@ local function GetSortedCharacters()
     local list = {}
     DS:ForEachCharacter(function(realm, charName, charData)
         list[#list + 1] = {
+            key       = charName, -- storage key: GUID, or the name for entries saved before GUIDs
             name      = charData.name or charName,
             realm     = realm,
             classFile = charData.classFile or "",
@@ -1730,7 +1736,7 @@ panel.tabGearUpgradesHost = tabGearUpgrades
 -- Selection state
 -- ---------------------------------------------------------------------------
 
-local selectedEntry        = nil   -- { name, realm, classFile } or nil
+local selectedEntry        = nil   -- { name, realm, classFile, key } or nil
 local deleteConfirmPending = false
 
 -- Forward declarations
@@ -1744,7 +1750,8 @@ local function ResolveCharacterClassFile(name, realm)
     return charData and charData.classFile or nil
 end
 
-local function SelectCharacterEntry(name, realm, classFile)
+--- `key` is the entry's storage key when known (a row of the list); a focus from elsewhere names it alone.
+local function SelectCharacterEntry(name, realm, classFile, key)
     if not name or not realm then
         selectedEntry = nil
         return
@@ -1753,6 +1760,7 @@ local function SelectCharacterEntry(name, realm, classFile)
         name = name,
         realm = realm,
         classFile = classFile or ResolveCharacterClassFile(name, realm),
+        key = key,
     }
 end
 
@@ -1882,6 +1890,7 @@ local function RefreshCharacterList_impl()
         local isSelected = selectedEntry
             and selectedEntry.name  == entry.name
             and selectedEntry.realm == entry.realm
+            and (selectedEntry.key == nil or selectedEntry.key == entry.key)
         row.selBg:SetShown(isSelected == true)
         Theme.SetRowSelected(row, isSelected == true)
 
@@ -1889,8 +1898,9 @@ local function RefreshCharacterList_impl()
         local capName  = entry.name
         local capRealm = entry.realm
         local capClass = entry.classFile
+        local capKey   = entry.key
         row:SetScript("OnClick", function()
-            SelectCharacterEntry(capName, capRealm, capClass)
+            SelectCharacterEntry(capName, capRealm, capClass, capKey)
             UpdateCharSettings()
             RefreshCharacterList()
         end)
@@ -2078,7 +2088,7 @@ charSettingDeleteBtn:SetScript("OnClick", function(self)
         -- Second click: commit delete
         deleteConfirmPending = false
         if AltArmy.DataStore and AltArmy.DataStore.DeleteCharacter and selectedEntry then
-            AltArmy.DataStore:DeleteCharacter(selectedEntry.name, selectedEntry.realm)
+            AltArmy.DataStore:DeleteCharacter(selectedEntry.key or selectedEntry.name, selectedEntry.realm)
         end
         selectedEntry = nil
         RefreshCharacterList()
@@ -2093,7 +2103,7 @@ end)
 UpdateCharSettings = function()
     local hasSelection = selectedEntry ~= nil
     local isSelf = hasSelection
-        and IsCurrentCharacter(selectedEntry.name, selectedEntry.realm)
+        and IsCurrentCharacter(selectedEntry.name, selectedEntry.realm, selectedEntry.key)
     local showGuildShare = hasSelection and isGuildShareOptionsEnabled()
     charSettingPrompt:SetShown(not hasSelection)
     setCharSettingHeader(selectedEntry)

@@ -348,6 +348,70 @@ describe("DataStoreCharacter", function()
       assert.are.equal("MAGE", realmChars().Frell.classFile)
     end)
 
+    describe("a deleted character whose name was taken again", function()
+      -- A name belongs to one character of a realm at a time, so an entry with this character's
+      -- name under another GUID is one that was deleted (or renamed) since.
+      local savedTransport, savedCharacters, deletionsNoted, invalidated
+      before_each(function()
+        savedTransport, savedCharacters = AltArmy.LinkTransport, AltArmy.Characters
+        deletionsNoted, invalidated = 0, 0
+        AltArmy.LinkTransport = { NoteDeletion = function() deletionsNoted = deletionsNoted + 1 end }
+        AltArmy.Characters = { InvalidateView = function() invalidated = invalidated + 1 end }
+      end)
+      after_each(function()
+        AltArmy.LinkTransport, AltArmy.Characters = savedTransport, savedCharacters
+      end)
+
+      it("drops the old character's entry", function()
+        oldEntry("Player-1-OLD", { name = "Frell Ofelements", guid = "Player-1-OLD", level = 1 })
+        DS:ScanCharacter()
+        assert.are.same({ "Player-1-A" }, keys())
+        assert.are.equal(21, realmChars()["Player-1-A"].level)
+        assert.are.equal(1, deletionsNoted)
+        assert.are.equal(1, invalidated)
+      end)
+
+      it("takes nothing from the old character's entry", function()
+        oldEntry("Player-1-OLD", { name = "Frell Ofelements", guid = "Player-1-OLD" })
+        DS:ScanCharacter()
+        assert.is_nil(realmChars()["Player-1-A"].Professions)
+      end)
+
+      it("tells linked accounts nothing when nothing was dropped", function()
+        oldEntry("Player-1-B", { name = "Frell Blast", guid = "Player-1-B" })
+        DS:ScanCharacter()
+        assert.are.same({ "Player-1-A", "Player-1-B" }, keys())
+        assert.are.equal(0, deletionsNoted)
+      end)
+
+      it("leaves the same name on another realm alone", function()
+        AltArmyTBC_Data.Characters["Other Realm"] = {
+          ["Player-2-X"] = { name = "Frell Ofelements", guid = "Player-2-X" },
+        }
+        DS:ScanCharacter()
+        assert.is_not_nil(AltArmyTBC_Data.Characters["Other Realm"]["Player-2-X"])
+      end)
+
+      it("on WoW Forever, drops nothing before the surname is known", function()
+        -- Older addons saved Forever characters under their first name alone, so "Frell" may be
+        -- another character's name, not this one's.
+        local savedForever = DS.IsWowForever
+        DS.IsWowForever = true
+        _G.UnitName = function() return "Frell", nil end
+        oldEntry("Player-1-OLD", { name = "Frell", guid = "Player-1-OLD" })
+        DS:ScanCharacter()
+        DS.IsWowForever = savedForever
+        assert.is_not_nil(realmChars()["Player-1-OLD"])
+      end)
+
+      it("elsewhere, drops a one-word name's old character", function()
+        _G.UnitName = function() return "Frell", nil end
+        oldEntry("Player-1-OLD", { name = "Frell", guid = "Player-1-OLD" })
+        DS:ScanCharacter()
+        assert.are.same({ "Player-1-A" }, keys())
+      end)
+    end)
+
     it("leaves other realms alone", function()
       AltArmyTBC_Data.Characters["Other Realm"] = {
         ["Frell Ofelements"] = { name = "Frell Ofelements", classFile = "SHAMAN", raceFile = "TAUREN", faction = "Horde" },
