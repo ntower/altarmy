@@ -241,7 +241,8 @@ local function LayoutBlocks(view, blocks, width)
     return y + rowHeight
 end
 
---- "combined": the bag bar, then every slot in one grid. Hovering a bag on the bar lights its slots.
+--- "combined": the bag bar, then every slot in one grid, each drawn over its bag's icon. Hovering a bag on
+--- the bar lights its slots.
 local function LayoutCombined(view, blocks, width)
     local combined = IL.Combined(blocks)
     local function HighlightBag(barButton, inside)
@@ -270,13 +271,15 @@ local function LayoutCombined(view, blocks, width)
         local btn = view.slots.Acquire()
         btn:SetPoint("TOPLEFT", view.child, "TOPLEFT", m.x(i), -(top + m.y(i)))
         btn.bagID = entry.bagID
+        local block = byBag[entry.bagID] or {}
         if entry.itemID then
-            entry.where = SlotWhere(byBag[entry.bagID] or {}, entry.slot)
+            entry.where = SlotWhere(block, entry.slot)
             btn.tooltipExtra = SlotTooltipExtra
             TrackPendingIcon(ISB.SetItem(btn, entry))
         else
             ISB.SetEmpty(btn)
         end
+        ISB.SetBagBackground(btn, block.icon) -- which bag the slot is in, as Blizzard's combined bags
     end
     return top + m.height
 end

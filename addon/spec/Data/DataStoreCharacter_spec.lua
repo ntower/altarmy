@@ -384,6 +384,16 @@ describe("DataStoreCharacter", function()
         assert.are.equal(0, deletionsNoted)
       end)
 
+      it("leaves characters sharing only the first name or only the surname alone", function()
+        oldEntry("Player-1-B", { name = "Frell Blast", guid = "Player-1-B" })
+        oldEntry("Player-1-C", { name = "Gor Ofelements", guid = "Player-1-C" })
+        oldEntry("Player-1-D", { name = "Frell", guid = "Player-1-D" })
+        oldEntry("Player-1-E", { name = "Ofelements", guid = "Player-1-E" })
+        DS:ScanCharacter()
+        assert.are.same({ "Player-1-A", "Player-1-B", "Player-1-C", "Player-1-D", "Player-1-E" }, keys())
+        assert.are.equal(0, deletionsNoted)
+      end)
+
       it("leaves the same name on another realm alone", function()
         AltArmyTBC_Data.Characters["Other Realm"] = {
           ["Player-2-X"] = { name = "Frell Ofelements", guid = "Player-2-X" },

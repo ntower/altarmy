@@ -35,6 +35,18 @@ local function now()
     return time and time() or 0
 end
 
+-- TEMP (link stall diagnosis): the last TRACE_MAX link events, dumped at logout (devDumps.linkTrace).
+local TRACE_MAX = 60
+local trace = { events = {}, counts = {} }
+local function traceEvent(kind, detail)
+    trace.counts[kind] = (trace.counts[kind] or 0) + 1
+    local ev = trace.events
+    ev[#ev + 1] = { t = now(), k = kind, d = detail }
+    if #ev > TRACE_MAX then
+        table.remove(ev, 1)
+    end
+end
+
 function T.IsEnabled()
     local D = AltArmy.Debug
     return D and D.IsLinkedAccountsEnabled and D.IsLinkedAccountsEnabled() or false
@@ -128,6 +140,8 @@ function env.send(g, msg, prio)
         return
     end
     local item = { g = g, prio = prio or "NORMAL", chunks = C.Split(C.Encode(msg, l), nextMsgId()) }
+    traceEvent("send", { g = g, t = msg.t, partial = msg.partial, chunks = #item.chunks,
+        paused = paused(), outbox = #outbox, ctl = ChatThrottleLib ~= nil })
     if paused() or #outbox > 0 then
         if #outbox < T.MAX_WAITING then
             outbox[#outbox + 1] = item
@@ -198,6 +212,7 @@ local function handlePayload(g, payload)
         return
     end
     local msg = C.Decode(payload, l)
+    traceEvent("recv", { g = g, t = msg and msg.t or "undecodable", partial = msg and msg.partial })
     if msg then
         Session.OnMessage(env, g, msg)
     end
@@ -212,8 +227,12 @@ local function onAddonMessage(prefix, text, _, sender)
         return
     end
     if isSecret(text) or isSecret(sender) or type(text) ~= "string" or not isMine(sender) then
+        traceEvent("chunkDropped", { sender = not isSecret(sender) and sender or "secret",
+            secretText = isSecret(text), mine = not isSecret(sender) and isMine(sender) or nil })
         return
     end
+    trace.counts.chunk = (trace.counts.chunk or 0) + 1
+    trace.lastChunkAt = now()
     local payload = reassembler:Add(sender, text, now())
     if not payload then
         return
@@ -237,7 +256,16 @@ function T.Discover()
     me = LD.Me(api)
     mineCache = {}
     local scan = LD.Scan(api, me)
-    Session.Discover(env, LD.Candidates(scan))
+    local candidates = LD.Candidates(scan)
+    local seen = {}
+    for _, info in ipairs(scan) do
+        seen[#seen + 1] = { g = info.gameAccountID, online = info.isOnline, client = info.clientProgram,
+            proj = info.wowProjectID, region = info.regionID, name = info.characterName, realm = info.realmName,
+            candidate = info.candidate, reason = info.reason }
+    end
+    traceEvent("discover", { me = { guid = me.guid, bnet = me.bnetAccountID, from = me.bnetAccountFrom },
+        candidates = #candidates, scan = seen })
+    Session.Discover(env, candidates)
 end
 
 local function tick()
@@ -317,6 +345,13 @@ frame:SetScript("OnEvent", function(_, event, ...)
             C_Timer.After(5, T.Discover)
         end
     elseif event == "PLAYER_LOGOUT" then
+        if AltArmy.Debug and AltArmy.Debug.Dump then
+            AltArmy.Debug.Dump("linkTrace", {
+                at = now(), lastChunkAt = trace.lastChunkAt, counts = trace.counts, events = trace.events,
+                outbox = #outbox, inbox = #inbox, paused = paused(), view = Session.View(),
+                ctlQueued = ChatThrottleLib and ChatThrottleLib.bQueueing or nil,
+            })
+        end
         if T.IsEnabled() then
             Session.Goodbye(env)
         end

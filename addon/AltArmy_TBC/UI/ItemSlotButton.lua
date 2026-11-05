@@ -27,6 +27,7 @@ ISB.SEARCH_GLOW_COLOR = { 1, 0.82, 0 } -- gold
 ISB.DIMMED_ALPHA = 0.3 -- a slot the search leaves out
 -- Retail's combined bags' BagIndicator: the blue glow on a hovered bag's slots (in every client's art).
 ISB.BAG_HIGHLIGHT_TEXTURE = "Interface\\Store\\store-item-highlight"
+ISB.BAG_BACKGROUND_ALPHA = 0.3 -- the bag's icon behind a combined layout's slot
 
 -- Fallbacks for ITEM_QUALITY_COLORS (uncommon, rare, epic, legendary).
 local QUALITY_RGB = { [2] = { 0, 1, 0 }, [3] = { 0, 0.44, 0.87 }, [4] = { 0.64, 0.21, 0.93 }, [5] = { 1, 0.5, 0 } }
@@ -150,6 +151,15 @@ function ISB.Create(parent, opts)
     end
     btn.emptyBg = empty
 
+    -- The combined layout's slot background: its bag's icon, faint and grey, in place of the well (as
+    -- Blizzard's combined backpack draws it); the item's icon covers it.
+    local bagBg = btn:CreateTexture(nil, "BACKGROUND", nil, 1)
+    bagBg:SetAllPoints(btn)
+    if bagBg.SetAlpha then bagBg:SetAlpha(ISB.BAG_BACKGROUND_ALPHA) end
+    if bagBg.SetDesaturated then bagBg:SetDesaturated(true) end -- grey, as Blizzard's
+    bagBg:Hide()
+    btn.bagBg = bagBg
+
     local icon = btn:CreateTexture(nil, "ARTWORK")
     icon:SetAllPoints(btn)
     icon:Hide()
@@ -239,12 +249,26 @@ function ISB.SetBagHighlight(btn, shown)
     if shown then btn.bagHighlight:Show() else btn.bagHighlight:Hide() end
 end
 
+--- Draw `texture` (a bag's icon) faintly behind the slot in place of the empty-slot well, or the well again
+--- with nil. Call after SetItem or SetEmpty (which bring the well back).
+function ISB.SetBagBackground(btn, texture)
+    if texture then
+        btn.bagBg:SetTexture(texture)
+        btn.bagBg:Show()
+        btn.emptyBg:Hide()
+    else
+        btn.bagBg:Hide()
+        btn.emptyBg:Show()
+    end
+end
+
 --- Show nothing in the slot.
 function ISB.SetEmpty(btn)
     btn.entry = nil
     btn.itemName = nil
     setSearchLook(btn, false, false)
     btn.bagHighlight:Hide()
+    btn.bagBg:Hide()
     btn.icon:Hide()
     btn.border:Hide()
     btn.count:Hide()
