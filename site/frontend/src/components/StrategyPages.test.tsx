@@ -229,6 +229,31 @@ describe('the strategy pages', () => {
     expect(screen.getByText(/limited, back in 1h/)).toBeInTheDocument()
   })
 
+  it('lists everything on the auction house by how far it is from what a vendor pays, the cheapest first', async () => {
+    at('/profit/gold/vendorcheck')
+    const fetch = mockApi({
+      '/api/status': status(),
+      '/api/characters': characters,
+      '/api/vendorcheck': {
+        realm: 'Classic Beta PvE',
+        faction: 'Horde',
+        items: [],
+        total: 0,
+        listed: 0,
+        page: 1,
+        page_size: 50,
+        classes: [],
+        qualities: [],
+      },
+    })
+    renderWithProviders(<SearchTab />)
+    expect(await screen.findByRole('heading', { name: 'Vendor check' })).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Vendor price check' })).toBeChecked()
+    const asked = fetch.mock.calls.map(([r]) => new URL(r.url)).find((u) => u.pathname === '/api/vendorcheck')
+    expect([asked?.searchParams.get('sort'), asked?.searchParams.get('order')]).toEqual(['percent', 'asc'])
+    expect(fetch.mock.calls.some(([r]) => new URL(r.url).pathname === '/api/rank')).toBe(false)
+  })
+
   it('says what each character holds and what to do with it, and keeps what is ticked', async () => {
     at('/profit/gold/held')
     const fetch = mockApi({

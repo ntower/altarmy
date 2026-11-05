@@ -299,9 +299,10 @@ def load_listed(
 ) -> ListedPage:
     """What the auction house lists now (its current price, unless the newest scan had none of it),
     without the hidden item classes and qualities, sorted and sliced (`offset`, `limit`) in the query. The
-    vendor columns (`vendor`, `difference`, `percent`: what a vendor pays over the cheapest listing, and that
-    as a share of it) put items no vendor buys last either way; ties go by name. With `first_party` only Alt
-    Army's scans and hand-set prices count. Nothing for None."""
+    vendor columns (`vendor`; `difference`, what a vendor pays over the cheapest listing; `percent`, how far
+    the cheapest listing is from what a vendor pays, as a share of that: negative under it) put items no
+    vendor buys last either way; ties go by name. With `first_party` only Alt Army's scans and hand-set
+    prices count. Nothing for None."""
     if auction_house_id is None:
         return ListedPage([], 0, 0, [], [])
     i, pc, snap = schema.items, schema.price_current, schema.price_snapshots
@@ -335,7 +336,7 @@ def load_listed(
         "ah_price": pc.c.price,
         "vendor": i.c.sell_price,
         "difference": gain,
-        "percent": cast(gain, Float) / func.nullif(pc.c.price, 0),
+        "percent": cast(-gain, Float) / func.nullif(i.c.sell_price, 0),
     }
     key = keys[sort]
     order: list[ColumnElement[Any]] = []

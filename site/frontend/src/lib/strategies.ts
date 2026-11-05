@@ -42,6 +42,12 @@ export const GOLD_STRATEGIES: readonly StrategySpec[] = [
     feature: 'vendorRuns',
   },
   {
+    key: 'vendorcheck',
+    title: 'Vendor price check',
+    blurb: 'Everything listed, by how far its price is from what a vendor pays: what is listed under it first.',
+    errand: "You'll buy what is listed under its vendor price and sell it to a vendor",
+  },
+  {
     key: 'held',
     title: 'What I hold',
     blurb: "What your characters' bags and banks hold, and what each thing is worth: vendor it, post it or keep it.",

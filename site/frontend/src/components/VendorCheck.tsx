@@ -21,8 +21,9 @@ const NONE_HIDDEN: number[] = []
 /** What a vendor pays over the cheapest listing: the gain of buying it out and vendoring it a unit. */
 const difference = (r: Row) => r.sell_price - r.ah_price
 
-/** That gain as a percentage of the listing's price. */
-const percent = (r: Row) => (difference(r) / r.ah_price) * 100
+/** How far the cheapest listing is from what a vendor pays, as a percentage of that: -40 is listed 40% under it,
+ * +250 at 3.5 times it. */
+const percent = (r: Row) => ((r.ah_price - r.sell_price) / r.sell_price) * 100
 
 const canVendor = (r: Row) => r.sell_price > 0
 
@@ -37,13 +38,17 @@ const COLUMNS: readonly (readonly [string, SortKey])[] = [
   ['AH price', 'ah_price'],
   ['Vendor pays', 'vendor'],
   ['Difference', 'difference'],
-  ['% Difference', 'percent'],
+  ['vs Vendor', 'percent'],
 ]
 const TEXT_SORTS: ReadonlySet<SortKey> = new Set(['item', 'type'])
+/** The columns sorted smallest (or A) first on the first click: text, and the percent, whose smallest is the
+ * cheapest against what a vendor pays. */
+const ASCENDING_FIRST: ReadonlySet<SortKey> = new Set(['item', 'type', 'percent'])
 
 type Sort = { column: SortKey; descending: boolean }
-/** Underpriced items first: the biggest gain at the top. */
-const DEFAULT_SORT: Sort = { column: 'difference', descending: true }
+/** Closest to what a vendor pays first, counting from the furthest under it: whatever is listed under its vendor
+ * price, then the rest, the dearest last. */
+const DEFAULT_SORT: Sort = { column: 'percent', descending: false }
 
 /** An opened row: the item's order book as a staircase, the price a vendor pays drawn across it, so what is listed
  * under it shows at a glance. Its levels are fetched when it opens. */
@@ -101,11 +106,12 @@ function FilterGroup({
 }
 
 /**
- * The vendor check (/profit/vendorcheck, reached by its path alone): what the selected realm's auction house lists,
- * its cheapest listing beside what a vendor pays for it, so items sold under their vendor price stand out. The server
+ * The vendor check (/profit/gold/vendorcheck, a gold strategy): what the selected realm's auction house lists, its
+ * cheapest listing beside what a vendor pays for it and how far apart they are, so items sold under their vendor
+ * price come first and the rest follow by how close they come to it. The server
  * filters, sorts and pages (`/api/vendorcheck`, 50 a page): checkboxes leave item types and qualities out
- * (remembered in localStorage), and the headers sort (a number largest first on the first click, text A first;
- * another click reverses it). A change of filter or sort goes back to the first page. A row clicked opens into its
+ * (remembered in localStorage), and the headers sort (a number largest first on the first click, text A first and
+ * the percent from the vendor price smallest first, as it starts; another click reverses it). A change of filter or sort goes back to the first page. A row clicked opens into its
  * order book (`RowDetails`).
  */
 export function VendorCheck() {
@@ -127,7 +133,7 @@ export function VendorCheck() {
     setSort((prev) =>
       prev.column === column
         ? { column, descending: !prev.descending }
-        : { column, descending: !TEXT_SORTS.has(column) },
+        : { column, descending: !ASCENDING_FIRST.has(column) },
     )
     toPage(1)
   }
@@ -268,7 +274,7 @@ export function VendorCheck() {
                       </Table.Td>
                       <Table.Td ta="right" ff="monospace" className={classes.figure}>
                         {canVendor(r) ? (
-                          <Text span inherit c={difference(r) < 0 ? 'red' : 'teal'}>
+                          <Text span inherit c={difference(r) > 0 ? 'teal' : 'red'}>
                             {percentText(percent(r))}
                           </Text>
                         ) : (

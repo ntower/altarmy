@@ -73,7 +73,7 @@ describe('VendorCheck', () => {
     const fetch = mockApi({ '/api/status': status(), '/api/vendorcheck': check() })
     renderWithProviders(<VendorCheck />)
     const table = await screen.findByRole('table', { name: 'Vendor check' })
-    expect(asked(fetch)).toEqual(['sort=difference&order=desc&page=1'])
+    expect(asked(fetch)).toEqual(['sort=percent&order=asc&page=1'])
     expect(screen.getByText(/auction house on Classic Beta PvE \(Horde\)/)).toBeInTheDocument()
     expect(rowNames(table)).toEqual(['Green RobeCloth', 'Linen ClothCloth', 'Coarse ThreadCloth', 'Old Key'])
     expect(screen.getByText('4 of 4 items')).toBeInTheDocument()
@@ -82,16 +82,16 @@ describe('VendorCheck', () => {
       'none',
       'none',
       'none',
-      'descending',
       'none',
+      'ascending',
     ])
     const cells = within(within(table).getAllByRole('row')[1]!).getAllByRole('cell')
     expect(cells[1]).toHaveTextContent('Armor')
     expect(shown(cells[2])).toBe('1 20') // 120 copper: 1s 20c
     expect(shown(cells[3])).toBe('5 _0')
     expect(shown(cells[4])).toBe('3 80')
-    expect(cells[5]).toHaveTextContent('+317%')
-    expect(within(within(table).getAllByRole('row')[3]!).getAllByRole('cell')[5]).toHaveTextContent('-90%')
+    expect(cells[5]).toHaveTextContent('-76%')
+    expect(within(within(table).getAllByRole('row')[3]!).getAllByRole('cell')[5]).toHaveTextContent('+900%')
     const key = within(table).getAllByRole('row')[4]!
     expect(within(key).getAllByRole('cell').map((c) => c.textContent)).toEqual(['Old Key', 'Key', '7', '—', '—', '—'])
     expect(screen.queryByRole('button', { name: '2' })).not.toBeInTheDocument() // one page: no pager
@@ -106,16 +106,16 @@ describe('VendorCheck', () => {
     await click('AH price')
     await click('AH price')
     await click('Item') // text: A first
-    await click('% Difference')
+    await click('vs Vendor')
     await click('Type')
     await click('Vendor pays')
     await waitFor(() =>
       expect(asked(fetch)).toEqual([
-        'sort=difference&order=desc&page=1',
+        'sort=percent&order=asc&page=1',
         'sort=ah_price&order=desc&page=1',
         'sort=ah_price&order=asc&page=1',
         'sort=item&order=asc&page=1',
-        'sort=percent&order=desc&page=1',
+        'sort=percent&order=asc&page=1',
         'sort=type&order=asc&page=1',
         'sort=vendor&order=desc&page=1',
       ]),
@@ -139,7 +139,7 @@ describe('VendorCheck', () => {
     await userEvent.click(within(qualities()).getByRole('checkbox', { name: 'Poor' }))
     await waitFor(() =>
       expect(asked(fetch).at(-1)).toBe(
-        'hide_classes=4&hide_classes=13&hide_qualities=0&sort=difference&order=desc&page=1',
+        'hide_classes=4&hide_classes=13&hide_qualities=0&sort=percent&order=asc&page=1',
       ),
     )
     expect(JSON.parse(localStorage.getItem(HIDDEN_TYPES_KEY)!)).toEqual([4, 13]) // in the checkboxes' order
@@ -149,7 +149,7 @@ describe('VendorCheck', () => {
     // ticked again, it is sent no more
     await userEvent.click(within(types()).getByRole('checkbox', { name: 'Armor' }))
     await waitFor(() =>
-      expect(asked(fetch).at(-1)).toBe('hide_classes=13&hide_qualities=0&sort=difference&order=desc&page=1'),
+      expect(asked(fetch).at(-1)).toBe('hide_classes=13&hide_qualities=0&sort=percent&order=asc&page=1'),
     )
     first.unmount()
 
@@ -157,7 +157,7 @@ describe('VendorCheck', () => {
     const again = mockApi({ '/api/status': status(), '/api/vendorcheck': check() })
     renderWithProviders(<VendorCheck />)
     await screen.findByRole('table', { name: 'Vendor check' })
-    expect(asked(again)).toEqual(['hide_classes=13&hide_qualities=0&sort=difference&order=desc&page=1'])
+    expect(asked(again)).toEqual(['hide_classes=13&hide_qualities=0&sort=percent&order=asc&page=1'])
     expect(within(types()).getByRole('checkbox', { name: 'Key' })).not.toBeChecked()
     expect(within(qualities()).getByRole('checkbox', { name: 'Poor' })).not.toBeChecked()
   })
@@ -169,7 +169,7 @@ describe('VendorCheck', () => {
     await screen.findByRole('table', { name: 'Vendor check' })
     await userEvent.click(within(types()).getByRole('checkbox', { name: 'Key' }))
     await waitFor(() =>
-      expect(asked(fetch).at(-1)).toBe('hide_classes=9&hide_classes=13&sort=difference&order=desc&page=1'),
+      expect(asked(fetch).at(-1)).toBe('hide_classes=9&hide_classes=13&sort=percent&order=asc&page=1'),
     )
   })
 
@@ -203,8 +203,8 @@ describe('VendorCheck', () => {
     await userEvent.click(within(types()).getByRole('checkbox', { name: 'Armor' }))
     expect(await screen.findByText('120 of 130 items, 1–50 shown')).toBeInTheDocument()
     expect(asked(fetch)).toEqual([
-      'sort=difference&order=desc&page=1',
-      'sort=difference&order=desc&page=3',
+      'sort=percent&order=asc&page=1',
+      'sort=percent&order=asc&page=3',
       'sort=ah_price&order=desc&page=1',
       'sort=ah_price&order=desc&page=2',
       'hide_classes=4&sort=ah_price&order=desc&page=1',

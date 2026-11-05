@@ -436,7 +436,8 @@ def test_vendor_check_lists_what_the_selected_house_has_beside_the_vendor_price(
 def test_vendor_check_filters_sorts_and_pages_on_the_server(
     client: TestClient, priced: Connection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # linen vendors at 13 (gain 8, +160%), thread at 10 (-90, -90%), the robe at 500 (+380, +317%)
+    # linen vendors at 13 (gain 8, listed 62% under), thread at 10 (-90, 900% over),
+    # the robe at 500 (+380, 76% under)
     scanned(priced, {1: [(5, 10)], 2: [(100, 50)], 3: [(120, 1)]})
 
     def names(**params: str | int | list[int]) -> list[str]:
@@ -450,7 +451,8 @@ def test_vendor_check_filters_sorts_and_pages_on_the_server(
     assert names(sort="type", order="asc") == ["Green Robe", "Coarse Thread", "Linen Cloth"]
     assert names(sort="ah_price") == ["Green Robe", "Coarse Thread", "Linen Cloth"]
     assert names(sort="vendor", order="asc") == ["Coarse Thread", "Linen Cloth", "Green Robe"]
-    assert names(sort="percent") == ["Green Robe", "Linen Cloth", "Coarse Thread"]
+    assert names(sort="percent", order="asc") == ["Green Robe", "Linen Cloth", "Coarse Thread"]
+    assert names(sort="percent") == ["Coarse Thread", "Linen Cloth", "Green Robe"]
 
     body = client.get("/api/vendorcheck", params={"hide_classes": [4]}).json()
     assert [i["name"] for i in body["items"]] == ["Linen Cloth", "Coarse Thread"]

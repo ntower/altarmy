@@ -16,6 +16,7 @@ import { navigate, usePath } from '../lib/router'
 import { StrategyBar, StrategyPicker } from './StrategyPicker'
 import { VendorRuns } from './VendorRuns'
 import { WhatIHold } from './WhatIHold'
+import { VendorCheck } from './VendorCheck'
 import { useSession } from '../lib/session'
 import { useFeatures } from '../lib/useFeatures'
 import {
@@ -298,6 +299,8 @@ export function SearchTab({
         {strategy && <StrategyBar current={strategy} />}
         {strategy === 'vendor' ? (
           <VendorRuns />
+        ) : strategy === 'vendorcheck' ? (
+          <VendorCheck />
         ) : strategy === 'held' ? (
           <WhatIHold />
         ) : (

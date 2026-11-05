@@ -6,7 +6,7 @@ import { byGroup, byProcessGroup, liveStrategies, parseSellVia, sellViaExits, se
 
 describe('strategies', () => {
   it('offers every strategy built', () => {
-    expect(liveStrategies(featuresFor(false)).map((s) => s.key)).toEqual(['craft', 'process', 'vendor', 'held'])
+    expect(liveStrategies(featuresFor(false)).map((s) => s.key)).toEqual(['craft', 'process', 'vendor', 'vendorcheck', 'held'])
   })
 
   it('shows processing results in their groups, those of none last', () => {
