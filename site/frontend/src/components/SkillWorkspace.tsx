@@ -624,8 +624,8 @@ export function SkillWorkspace({
   const professionRanks = useProfessionRanks()
   const maxSkill = useMaxSkill()
   const atCap = !hypothetical && climber.rank >= maxSkill
-  // at a lower cap, the next rank when the climber's level doesn't let them train it yet (the server then plans
-  // no climb past their cap: `GameVersion.trainable_cap`; an unknown level, 0, never holds them back)
+  // at a lower cap, the next rank when the climber's level doesn't let them train it yet (the server still plans
+  // the climb through that rank, `_trained_up`; an unknown level, 0, never holds them back)
   const nextRank =
     !hypothetical && !atCap && climber.rank >= climber.maxRank
       ? professionRanks.find((r) => r.cap > climber.maxRank)
@@ -776,18 +776,18 @@ export function SkillWorkspace({
       There is no higher rank to train.
     </Alert>
   )
+  const levelCard = levelShort && (
+    <Alert color="orange" title={`${climber.name} needs level ${levelShort.level} to train ${levelShort.name} ${profession}`}>
+      Until then {profession} stays at {climber.maxRank}.
+      {results.length > 0 && ` The climb below is for once ${levelShort.name} is trained.`}
+    </Alert>
+  )
   if (!results.length) {
     return (
       <Stack>
         {capCard}
         {refresh}
-        {levelShort ? (
-          <Alert color="orange" title={`${climber.name} needs level ${levelShort.level} to train ${levelShort.name} ${profession}`}>
-            Until then {profession} stays at {climber.maxRank}.
-          </Alert>
-        ) : (
-          !atCap && <Alert>No path was found for {climber.name} to gain skill in {profession}</Alert>
-        )}
+        {levelCard || (!atCap && <Alert>No path was found for {climber.name} to gain skill in {profession}</Alert>)}
       </Stack>
     )
   }
@@ -968,6 +968,7 @@ export function SkillWorkspace({
     <CharacterClasses.Provider value={rank.data.classes}>
       <Stack>
         {capCard}
+        {levelCard}
         {refresh}
         <LayoutGroup>
           <Stack gap="xs" component="section" aria-label="Your options" pos="relative">

@@ -1159,6 +1159,15 @@ describe('SkillWorkspace', () => {
     expect(screen.queryByText(/cap|No path was found/)).not.toBeInTheDocument()
   })
 
+  it('shows the climb under the level banner, for once the next rank is trained', async () => {
+    const versions = [{ key: 'forever', label: 'WoW: Forever', build: null, recipes: 3, ah_cut: 0.05, profession_ranks: professionRanks }]
+    api({ '/api/versions': versions })
+    show({ ...CLIMBER, level: 15, rank: 150, maxRank: 150 })
+    expect(await screen.findByText('Tailor Guy needs level 20 to train Expert Tailoring')).toBeInTheDocument()
+    expect(screen.getByText(/The climb below is for once Expert is trained/)).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Your options' })).toBeInTheDocument()
+  })
+
   it('plans for a character nobody uploaded from the skill given, never stuck at a cap', async () => {
     const fetch = api()
     const you = { name: 'Your character', classFile: '', level: 0, rank: 75, maxRank: 75 }

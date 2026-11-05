@@ -2031,12 +2031,18 @@ def _trained_up(
     """For a climb (`runs` asked for, one character skilled up; planned for some copies too), `chars` with
     the climber's profession capped at the highest skill their level lets them train to: they are assumed
     to train each rank as they come to it (the skill workspace reminds them where, from `/api/versions`'
-    `profession_ranks`), but not one their level doesn't allow yet."""
+    `profession_ranks`), but not one their level doesn't allow yet. One whose skill is already at that cap
+    is planned through the next rank anyway, so the list shows what to craft once they've trained it (the
+    workspace says what level that takes)."""
     if not climbing or len(skilled) != 1:
         return chars
     (name,) = skilled
     who = next((c for c in chars if c.name == name), None)
     cap = state.version.trainable_cap(who.level if who is not None else 0)
+    wanted = skill_name.lower() if skill_name else None
+    prof = next((p for p in who.professions if p.name.lower() == wanted), None) if who else None
+    if prof is not None and prof.rank >= prof.max_rank >= cap:
+        cap = next((r.cap for r in state.version.profession_ranks if r.cap > prof.max_rank), cap)
     return service.trained_up(chars, name, skill_name, cap)
 
 

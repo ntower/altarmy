@@ -1226,6 +1226,21 @@ def test_a_climb_trains_only_the_ranks_the_climbers_level_allows(
     assert climb_end("Grown")[0] == 95  # trained up as they go
 
 
+def test_a_climb_at_the_level_cap_is_planned_through_the_next_rank(
+    client: TestClient, priced: Connection
+) -> None:
+    # at 75 of 75 and too young for Journeyman: the list is what to craft once it's trained (the page says so)
+    tailoring_options(priced)
+    young = Character(
+        "Realm", "Young", "Horde", "MAGE", 9, (Profession("Tailoring", 75, 75, frozenset({900, 991, 992})),)
+    )
+    service.replace_characters(priced, ME, FOREVER, [young])
+    params = {**SKILL_UP, "skill_crafters": ["Young"], "runs": True, "chain_length": 20}
+    body = client.get("/api/rank", params=params).json()
+    assert body["results"]
+    assert (body["results"][:1] + body["chain"])[-1]["stop_skill"] == 95
+
+
 def test_skill_up_keeps_what_no_vendor_buys(client: TestClient, priced: Connection) -> None:
     priced.execute(update(schema.items).where(schema.items.c.id == 3).values(sell_price=0))
     assert client.get("/api/rank", params={**SKILL_UP, "exits": ["vendor"]}).json()["results"] == []
