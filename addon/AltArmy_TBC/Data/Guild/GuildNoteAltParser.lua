@@ -592,7 +592,7 @@ function GNP.BuildRosterNoteEntries(api)
     for i = 1, n do
         -- name, rank, rankIndex, level, class, zone, note, officernote, online, status, classFileName
         local name, _, _, _, _, _, publicNote, officerNote = getInfo(i)
-        if type(name) == "string" and name ~= "" and canAccessSecretValue(name) then
+        if type(name) == "string" and canAccessSecretValue(name) and name ~= "" then
             local short = name:match("^[^%-]+") or name
             if not canAccessSecretValue(publicNote) then publicNote = "" end
             if not canAccessSecretValue(officerNote) then officerNote = "" end

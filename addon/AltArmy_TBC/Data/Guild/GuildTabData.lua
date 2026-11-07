@@ -2284,6 +2284,7 @@ function GTD.BuildRosterLastOnlineMap(api)
     if type(n) ~= "number" or n < 1 then return out end
     for i = 1, n do
         local name, _, _, _, _, _, _, _, online = getInfo(i)
+        if not canAccessSecretValue(name) or not canAccessSecretValue(online) then name = nil end
         local key = normalize(name)
         if key and key ~= "" then
             if online then

@@ -207,6 +207,10 @@ end
 
 --- BN_CHAT_MSG_ADDON for our prefix: records what arrived, answers PING and bursts from your accounts.
 function P.OnMessage(prefix, text, channel, senderID)
+    -- Nothing secret is compared, formatted or saved (a secret in SavedVariables loses the file).
+    if isSecret(prefix) or isSecret(text) or isSecret(channel) or isSecret(senderID) then
+        return
+    end
     if prefix ~= P.PREFIX then
         return
     end

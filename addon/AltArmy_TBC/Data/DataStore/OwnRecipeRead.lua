@@ -869,7 +869,10 @@ end
 
 --- SetItemRef's hook: the player clicked a link; a profession link's window is theirs, never a late reply.
 function R.OnLinkClicked(link)
-    if type(link) == "string" and link:sub(1, 6) == "trade:" then
+    if type(link) ~= "string" then return end
+    -- A link clicked in a chat line that arrived secret (dungeon, raid) may itself be secret.
+    if _G.canaccessvalue and not _G.canaccessvalue(link) then return end
+    if link:sub(1, 6) == "trade:" then
         userLinkAt = now()
     end
 end

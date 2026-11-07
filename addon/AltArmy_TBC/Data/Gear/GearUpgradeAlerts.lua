@@ -149,7 +149,9 @@ local function resolveItemLinkForUpgrade(itemId)
 end
 
 local function upgradeLinkPayload(link)
-    if not link then return nil end
+    -- A link clicked in a chat line that arrived secret (dungeon, raid) may itself be secret.
+    if type(link) ~= "string" then return nil end
+    if _G.canaccessvalue and not _G.canaccessvalue(link) then return nil end
     local lower = link:lower()
     for _, prefix in ipairs({ UPGRADE_LINK_PREFIX, LEGACY_UPGRADE_LINK_PREFIX }) do
         local prefixLower = prefix:lower()

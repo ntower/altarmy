@@ -93,18 +93,30 @@ local function CooldownRemainingSeconds(a, b, gt, wall, apiKind)
     return CooldownRemainingSecondsFromSpellApi(a, b, gt, wall)
 end
 
+--- On 12.0-based clients (Forever) cooldown start and duration are secret values in combat and
+--- encounters: comparing or formatting one errors ("execution tainted by 'AltArmy_TBC'"). Such a
+--- reading is no reading: nil, nil, so nothing is saved from it.
+local function readableCooldown(a, b, ...)
+    local can = _G.canaccessvalue
+    if can and not (can(a) and can(b)) then
+        return nil, nil
+    end
+    return a, b, ...
+end
+DS._ReadableCooldownForTest = readableCooldown
+
 --- (start, duration) from the global GetSpellCooldown, or C_Spell.GetSpellCooldown's table where
 --- the global is gone (WoW Forever). nil when neither API exists.
 local function GetSpellCooldownCompat(spellId)
     local legacy = _G.GetSpellCooldown
     if legacy then
-        return legacy(spellId)
+        return readableCooldown(legacy(spellId))
     end
     local cSpell = _G.C_Spell
     if not cSpell or not cSpell.GetSpellCooldown then return nil end
     local ok, info = pcall(cSpell.GetSpellCooldown, spellId)
     if not ok or type(info) ~= "table" then return 0, 0 end
-    return info.startTime, info.duration
+    return readableCooldown(info.startTime, info.duration)
 end
 
 local function HasSpellCooldownApi()
@@ -132,6 +144,8 @@ local function PersistCooldownExpiry(char, spellId, a, b, gt, wall, logPrefix, a
     gt = gt or (GetTime and GetTime() or 0)
     wall = wall or (time and time() or 0)
     apiKind = apiKind or "spell"
+    -- No reading (secret in combat, or no API): keep what is saved rather than call it ready.
+    if apiKind == "spell" and type(a) ~= "number" then return false end
 
     local remaining = CooldownRemainingSeconds(a, b, gt, wall, apiKind)
     char.ProfCooldownExpiry = char.ProfCooldownExpiry or {}
@@ -1858,11 +1872,11 @@ end
 local function GetItemCooldownCompat(itemId)
     local cc = rawget(_G, "C_Container")
     if type(cc) == "table" and type(cc.GetItemCooldown) == "function" then
-        return cc.GetItemCooldown(itemId)
+        return readableCooldown(cc.GetItemCooldown(itemId))
     end
     local fn = rawget(_G, "GetItemCooldown")
     if type(fn) == "function" then
-        return fn(itemId)
+        return readableCooldown(fn(itemId))
     end
     return nil, nil
 end
@@ -1943,7 +1957,7 @@ function DS:TryScanTrackedCooldownsFromActionBars()
     local nonEmpty = 0
     local debugPrinted = 0
     local function persistFromActionCooldown(spellId, slot)
-        local a, b = GetActionCooldown(slot)
+        local a, b = readableCooldown(GetActionCooldown(slot))
         PersistCooldownExpiry(char, spellId, a, b, gt, wall, "ActionBar", "spell")
         scanned = scanned + 1
         LogCooldownScanDebug(string.format(

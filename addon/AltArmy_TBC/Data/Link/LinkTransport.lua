@@ -330,7 +330,7 @@ local function groupMembers()
     for i = 1, raid and n or n - 1 do
         local unit = (raid and "raid" or "party") .. i
         local guid = UnitGUID(unit)
-        if guid ~= nil and not isSecret(guid) and guid ~= mine then
+        if guid and not isSecret(guid) and guid ~= mine then
             local name = UnitName and UnitName(unit)
             out[#out + 1] = { guid = guid, name = not isSecret(name) and name or nil }
         end

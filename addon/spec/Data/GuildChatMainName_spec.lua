@@ -579,4 +579,94 @@ describe("GuildChatMainName", function()
       end)
     end)
   end)
+
+  describe("chat filter installation", function()
+    local savedDebug, savedGSS
+    local installed, insertion
+
+    local function count()
+      local n = 0
+      for _ in pairs(installed) do n = n + 1 end
+      return n
+    end
+
+    before_each(function()
+      savedDebug = AltArmy.Debug
+      savedGSS = AltArmy.GuildShareSettings
+      insertion = true
+      AltArmy.Debug = { IsGuildShareEnabled = function() return true end }
+      AltArmy.GuildShareSettings = {
+        IsSharingEnabled = function() return true end,
+        IsChatInsertionEnabled = function() return insertion end,
+      }
+      installed = {}
+      _G.ChatFrame_AddMessageEventFilter = function(event, fn) installed[fn] = event end
+      _G.ChatFrame_RemoveMessageEventFilter = function(_, fn) installed[fn] = nil end
+    end)
+
+    after_each(function()
+      insertion = false
+      GCM.SyncFilters()
+      AltArmy.Debug = savedDebug
+      AltArmy.GuildShareSettings = savedGSS
+      _G.ChatFrame_AddMessageEventFilter = nil
+      _G.ChatFrame_RemoveMessageEventFilter = nil
+      _G.InCombatLockdown = nil
+      _G.C_ChatInfo = nil
+    end)
+
+    it("installs nothing while chat insertion is off", function()
+      insertion = false
+      assert.is_false(GCM.SyncFilters())
+      assert.are.equal(0, count())
+    end)
+
+    it("installs the filters once chat insertion is on, and removes them when it goes off", function()
+      assert.is_true(GCM.SyncFilters())
+      assert.is_true(count() > 0)
+      insertion = false
+      assert.is_false(GCM.SyncFilters())
+      assert.are.equal(0, count())
+    end)
+
+    it("takes the filters out in combat, when messages may be secret", function()
+      assert.is_true(GCM.SyncFilters())
+      _G.InCombatLockdown = function() return true end
+      assert.is_false(GCM.SyncFilters())
+      assert.are.equal(0, count())
+      _G.InCombatLockdown = function() return false end
+      assert.is_true(GCM.SyncFilters())
+    end)
+
+    it("takes the filters out while an addon restriction is active, and puts them back after", function()
+      assert.is_true(GCM.SyncFilters())
+      GCM._OnEvent(nil, "ADDON_RESTRICTION_STATE_CHANGED", 4, 1) -- Map, Activating
+      assert.are.equal(0, count())
+      GCM._OnEvent(nil, "ADDON_RESTRICTION_STATE_CHANGED", 4, 0) -- Map, Inactive
+      assert.is_true(count() > 0)
+    end)
+
+    it("takes the filters out during an encounter", function()
+      GCM._OnEvent(nil, "ENCOUNTER_START")
+      assert.are.equal(0, count())
+      GCM._OnEvent(nil, "ENCOUNTER_END")
+      assert.is_true(count() > 0)
+    end)
+
+    it("never replaces Communities FormatMessage on clients with secret values", function()
+      local orig = function() return "x" end
+      local owner = { FormatMessage = orig }
+      _G.canaccessvalue = function() return true end
+      local wrapped = GCM.WrapCommunitiesFormatMessage(owner)
+      _G.canaccessvalue = nil
+      assert.is_false(wrapped)
+      assert.are.equal(orig, owner.FormatMessage)
+    end)
+
+    it("takes the filters out during chat lockdown", function()
+      _G.C_ChatInfo = { InChatMessagingLockdown = function() return true end }
+      assert.is_false(GCM.SyncFilters())
+      assert.are.equal(0, count())
+    end)
+  end)
 end)

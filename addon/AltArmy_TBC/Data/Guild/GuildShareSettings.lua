@@ -93,8 +93,15 @@ function GSS.IsSharingEnabled()
     return ensure().enabled == true
 end
 
+--- The guild chat filters are installed only while chat insertion is allowed (GuildChatMainName.lua).
+local function refreshChatFilters()
+    local GCM = AltArmy.GuildChatMainName
+    if GCM and GCM.Refresh then GCM.Refresh() end
+end
+
 function GSS.SetSharingEnabled(on)
     ensure().enabled = on == true
+    refreshChatFilters()
 end
 
 -- *** Auto-delete stale received guild data ***
@@ -120,6 +127,7 @@ end
 
 function GSS.SetChatInsertionEnabled(on)
     ensure().chatInsertion = on == true
+    refreshChatFilters()
 end
 
 GSS.CHAT_INSERTION_CHANNEL_ORDER = {
@@ -184,9 +192,16 @@ function GSS.ApplyBlizzardChatClassColorForChannel(key, on)
     local setter = _G.SetChatColorNameByClass
     if not types or type(setter) ~= "function" then return end
     local enabled = on == true
+    -- SetChatColorNameByClass fires UPDATE_CHAT_COLOR_NAME_BY_CLASS, whose Blizzard handler sets
+    -- ChatTypeInfo[chatType].colorNameByClass. Writing that field ourselves taints it, and on 12.0-based
+    -- clients (Forever) Blizzard's chat handler reads it for every message: the rest of the handler then
+    -- runs tainted and fails on secret senders in a dungeon or raid ("attempt to perform string
+    -- conversion on a secret string value (execution tainted by 'AltArmy_TBC')"). Older clients without
+    -- secret values keep the direct write, so the setting shows at once.
+    local writeDirectly = _G.issecretvalue == nil and _G.canaccessvalue == nil
     for _, chatType in ipairs(types) do
         setter(chatType, enabled)
-        local info = _G.ChatTypeInfo and _G.ChatTypeInfo[chatType]
+        local info = writeDirectly and _G.ChatTypeInfo and _G.ChatTypeInfo[chatType]
         if info then
             info.colorNameByClass = enabled
         end

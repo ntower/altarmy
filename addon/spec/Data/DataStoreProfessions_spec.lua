@@ -191,6 +191,23 @@ describe("DataStoreProfessions", function()
       assert.are.equal(1000, char.ProfCooldownExpiry[123].expiresAtUnix)
     end)
 
+    it("keeps the saved expiry when the spell cooldown can't be read (secret in combat)", function()
+      local char = { ProfCooldownExpiry = { [123] = { expiresAtUnix = 1000 } } }
+      local changed = DS._PersistCooldownExpiryForTest(char, 123, nil, nil, 0, 900, "Test", "spell")
+      assert.is_false(changed)
+      assert.are.equal(1000, char.ProfCooldownExpiry[123].expiresAtUnix)
+    end)
+
+    it("reads a secret cooldown as no reading", function()
+      _G.canaccessvalue = function(v) return v ~= "secret" end
+      local a, b = DS._ReadableCooldownForTest("secret", 30)
+      local c, d, e = DS._ReadableCooldownForTest(10, 30, 1)
+      _G.canaccessvalue = nil
+      assert.is_nil(a)
+      assert.is_nil(b)
+      assert.are.same({ 10, 30, 1 }, { c, d, e })
+    end)
+
     it("does overwrite when prior expiry is not meaningfully in the future", function()
       local char = { ProfCooldownExpiry = { [123] = { expiresAtUnix = 905 } } }
       local changed = DS._PersistCooldownExpiryForTest(char, 123, 0, 0, 0, 900, "Test")

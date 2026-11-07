@@ -268,10 +268,7 @@ function GCM.ShouldAnnotateClubMessage(clubInfo, message)
     end
     local author = message.author
     local name = author and author.name
-    if type(name) ~= "string" or name == "" then
-        return false
-    end
-    if not canAccessSecretValue(name) then
+    if type(name) ~= "string" or not canAccessSecretValue(name) or name == "" then
         return false
     end
     return true
@@ -283,31 +280,135 @@ function GCM.AnnotateClubMessageContent(authorName, content)
     return GCM.FilterMessage(content, authorName, "guild")
 end
 
-local function installChatFilter(channelKey, eventName)
-    if not ChatFrame_AddMessageEventFilter then return end
-    ChatFrame_AddMessageEventFilter(eventName, function(_, _, msg, author, ...)
-        local newMsg = GCM.FilterMessage(msg, author, channelKey)
-        if newMsg then
-            return false, newMsg, author, ...
-        end
-        return false
-    end)
-end
+-- Chat filters. On 12.0-based clients (Forever) Blizzard calls each filter through
+-- securecallfunction and skips it when the message is secret, but a filter that rewrites a message
+-- hands its values back to Blizzard's chat handler, which then runs the rest of that message tainted;
+-- a secret value later in it (in a dungeon or raid every chat payload can be one) fails with "attempt
+-- to perform string conversion on a secret string value (execution tainted by 'AltArmy_TBC')". So the
+-- filters are installed only while chat insertion is on, and taken out whenever addon restrictions
+-- apply (combat, encounters, Mythic+, PvP matches, restricted maps, chat lockdown).
 
+local filters = {} -- { event, fn } pairs, built once
 for channelKey, events in pairs(GCM.CHANNEL_EVENTS) do
     for _, eventName in ipairs(events) do
-        installChatFilter(channelKey, eventName)
+        filters[#filters + 1] = { eventName, function(_, _, msg, author, ...)
+            local newMsg = GCM.FilterMessage(msg, author, channelKey)
+            if newMsg then
+                return false, newMsg, author, ...
+            end
+            return false
+        end }
     end
 end
+filters[#filters + 1] = { "CHAT_MSG_SYSTEM", function(_, _, msg, ...)
+    local newMsg = GCM.FilterSystemMessage(msg)
+    if newMsg then
+        return false, newMsg, ...
+    end
+    return false
+end }
 
-if ChatFrame_AddMessageEventFilter then
-    ChatFrame_AddMessageEventFilter("CHAT_MSG_SYSTEM", function(_, _, msg, ...)
-        local newMsg = GCM.FilterSystemMessage(msg)
-        if newMsg then
-            return false, newMsg, ...
+local filtersInstalled = false
+-- Restrictions seen turning on through ADDON_RESTRICTION_STATE_CHANGED (type -> true); "Activating" is
+-- reported during the event's own dispatch, before C_RestrictedActions says it is active.
+local restricted = {}
+-- Clients without restriction events: combat and encounters by event, since PLAYER_REGEN_DISABLED
+-- fires before InCombatLockdown() turns true.
+local inEncounter = false
+local inCombat = false
+
+local function filterApi()
+    local util = _G.ChatFrameUtil
+    local add = _G.ChatFrame_AddMessageEventFilter or (util and util.AddMessageEventFilter)
+    local remove = _G.ChatFrame_RemoveMessageEventFilter or (util and util.RemoveMessageEventFilter)
+    return add, remove
+end
+
+local RESTRICTION_TYPES = { 0, 1, 2, 3, 4, 5 } -- Enum.AddOnRestrictionType: Combat .. Chat
+
+local function anyRestrictionActive()
+    for _, on in pairs(restricted) do
+        if on then return true end
+    end
+    local ra = _G.C_RestrictedActions
+    if ra and ra.IsAddOnRestrictionActive then
+        for _, t in ipairs(RESTRICTION_TYPES) do
+            local ok, active = pcall(ra.IsAddOnRestrictionActive, t)
+            if ok and active then return true end
         end
-        return false
-    end)
+    end
+    return false
+end
+
+--- True while chat messages may reach addons as secret values.
+function GCM.MessagesMayBeSecret()
+    if inEncounter or inCombat then return true end
+    if _G.InCombatLockdown and _G.InCombatLockdown() then return true end
+    local chat = _G.C_ChatInfo
+    if chat and chat.InChatMessagingLockdown and chat.InChatMessagingLockdown() then return true end
+    return anyRestrictionActive()
+end
+
+--- Whether the chat filters should be installed now.
+function GCM.WantsFilters()
+    return chatInsertionAllowed() and not GCM.MessagesMayBeSecret()
+end
+
+--- Installs or removes the chat filters to match `GCM.WantsFilters()`. Returns whether they are installed.
+function GCM.SyncFilters()
+    local add, remove = filterApi()
+    if not add or not remove then return false end
+    local want = GCM.WantsFilters()
+    if want and not filtersInstalled then
+        for _, f in ipairs(filters) do add(f[1], f[2]) end
+        filtersInstalled = true
+    elseif not want and filtersInstalled then
+        for _, f in ipairs(filters) do remove(f[1], f[2]) end
+        filtersInstalled = false
+    end
+    return filtersInstalled
+end
+
+function GCM.FiltersInstalled()
+    return filtersInstalled
+end
+
+--- Call after a setting that `chatInsertionAllowed` reads changes.
+GCM.Refresh = GCM.SyncFilters
+
+--- The sync frame's event handler (exposed for tests).
+function GCM._OnEvent(_, event, arg1, arg2)
+    if event == "ADDON_RESTRICTION_STATE_CHANGED" then
+        if type(arg1) == "number" then
+            restricted[arg1] = arg2 ~= 0 -- Enum.AddOnRestrictionState.Inactive
+        end
+    elseif event == "ENCOUNTER_START" then
+        inEncounter = true
+    elseif event == "ENCOUNTER_END" then
+        inEncounter = false
+    elseif event == "PLAYER_REGEN_DISABLED" then
+        inCombat = true
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        inCombat = false
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        inEncounter = false
+        inCombat = _G.UnitAffectingCombat and _G.UnitAffectingCombat("player") and true or false
+        restricted = {}
+    end
+    GCM.SyncFilters()
+end
+
+if CreateFrame then
+    local syncFrame = CreateFrame("Frame")
+    syncFrame:SetScript("OnEvent", GCM._OnEvent)
+    for _, event in ipairs({
+        "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED",
+        "ENCOUNTER_START", "ENCOUNTER_END", "ADDON_RESTRICTION_STATE_CHANGED",
+    }) do
+        if not (_G.C_EventUtils and _G.C_EventUtils.IsEventValid) or _G.C_EventUtils.IsEventValid(event) then
+            pcall(syncFrame.RegisterEvent, syncFrame, event)
+        end
+    end
 end
 
 -- Anniversary guild UI (Communities) message feed: wrap FormatMessage so live and
@@ -320,6 +421,12 @@ end
 --- Returns true when newly wrapped, false if already wrapped or nothing to wrap.
 function GCM.WrapCommunitiesFormatMessage(owner)
     if not owner or type(owner.FormatMessage) ~= "function" then
+        return false
+    end
+    -- Replacing FormatMessage makes Blizzard render every Communities message from addon code, so on
+    -- 12.0-based clients (Forever), where C_Club's messages are secret in a dungeon or raid, its own
+    -- formatting then fails "tainted by 'AltArmy_TBC'". There the guild window goes unannotated.
+    if _G.issecretvalue ~= nil or _G.canaccessvalue ~= nil then
         return false
     end
     if owner._altArmyMainNameFormatHooked then

@@ -262,6 +262,24 @@ describe("GuildShareSettings", function()
       GSS.SetChatInsertionClassColorEnabled(false)
       assert.equals(0, #calls)
     end)
+    it("never writes ChatTypeInfo itself on clients with secret values (it would taint chat)", function()
+      local calls = {}
+      _G.SetChatColorNameByClass = function(chatType, on)
+        calls[#calls + 1] = { chatType = chatType, on = on }
+      end
+      _G.ChatTypeInfo = { PARTY = { colorNameByClass = false } }
+      _G.canaccessvalue = function() return true end
+      GSS.ApplyBlizzardChatClassColorForChannel("party", true)
+      _G.canaccessvalue = nil
+      assert.is_false(_G.ChatTypeInfo.PARTY.colorNameByClass)
+      assert.is_true(#calls > 0)
+    end)
+    it("writes ChatTypeInfo directly on clients without secret values", function()
+      _G.SetChatColorNameByClass = function() end
+      _G.ChatTypeInfo = { PARTY = { colorNameByClass = false } }
+      GSS.ApplyBlizzardChatClassColorForChannel("party", true)
+      assert.is_true(_G.ChatTypeInfo.PARTY.colorNameByClass)
+    end)
     it("SetChatInsertionClassColorEnabled syncs Blizzard class color for enabled channels", function()
       local calls = {}
       _G.SetChatColorNameByClass = function(chatType, on)
