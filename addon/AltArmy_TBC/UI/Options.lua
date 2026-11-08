@@ -2580,6 +2580,27 @@ SlashCmdList.ALTARMY = function(msg)
         end
         return
     end
+    if lower == "debug guildshare cards" or lower:match("^debug guildshare cards%s+") then
+        local Probe = AltArmy and AltArmy.GuildShareProbe
+        local rest = trimmed:match("^%S+%s+%S+%s+%S+%s+(.+)$") or ""
+        local query, times = rest:match("^(.-)%s+(%d+)$")
+        if Probe and Probe.RunCards then
+            Probe.RunCards(query or rest, times)
+        elseif AltArmy.Debug and AltArmy.Debug.NotifyChat then
+            AltArmy.Debug.NotifyChat("Guild share probe is unavailable.")
+        end
+        return
+    end
+    if lower == "debug guildshare probe" or lower:match("^debug guildshare probe%s+") then
+        local Probe = AltArmy and AltArmy.GuildShareProbe
+        local query = trimmed:match("^%S+%s+%S+%s+%S+%s+(.+)$")
+        if Probe and Probe.Run then
+            Probe.Run(query)
+        elseif AltArmy.Debug and AltArmy.Debug.NotifyChat then
+            AltArmy.Debug.NotifyChat("Guild share probe is unavailable.")
+        end
+        return
+    end
     if lower == "debug guildshare test" then
         local Comm = AltArmy and AltArmy.GuildShareComm
         local D = AltArmy and AltArmy.Debug

@@ -85,6 +85,96 @@ local function payloadKey(c)
     return c.guid or c.name
 end
 
+-- *** Coalesced realms (WoW Forever) ***
+-- Guildmates on other servers report other realm strings ("CAMWOW US2 Realm 3 PvE" beside "CAMWOW US1 Realm 5
+-- PvE") though they play together (RealmFilter.sameRealm). A guildmate is stored once, in the realm table the
+-- receiver keeps them in (its own realm when first seen); `charRealm` is the realm the character itself
+-- reports, which requests name: responders on older versions look their characters up by that realm alone.
+
+local function hasProfessions(entry)
+    return type(entry) == "table" and type(entry.Professions) == "table" and next(entry.Professions) ~= nil
+end
+
+--- The realm table that holds the character with `guid` among the realms one with `realm`, else `realm`.
+function GSD.StorageRealm(realm, guid)
+    realm = realm or "?"
+    if not isNonEmptyGuid(guid) then return realm end
+    local d = ensure()
+    if d.chars[realm] and d.chars[realm][guid] then return realm end
+    for r, rt in pairs(d.chars) do
+        if r ~= realm and sameRealm(r, realm) and type(rt[guid]) == "table" then return r end
+    end
+    return realm
+end
+
+--- Remove and return the entries for `guid` kept in the other realm tables of `realm`'s group.
+local function takeFromOtherRealms(realm, guid)
+    local out = {}
+    if not isNonEmptyGuid(guid) then return out end
+    for r, rt in pairs(ensure().chars) do
+        if r ~= realm and sameRealm(r, realm) and type(rt[guid]) == "table" then
+            out[#out + 1] = rt[guid]
+            rt[guid] = nil
+        end
+    end
+    return out
+end
+
+--- Fold `other` (the same character, stored under another realm) into `base`: professions when base has none.
+local function absorb(base, other)
+    if hasProfessions(base) or not hasProfessions(other) then return end
+    base.Professions = other.Professions
+    base.ch = other.ch
+    base.needsProfessionCard = other.needsProfessionCard
+end
+
+--- Merge characters stored in more than one realm table of a group (older versions filed a guildmate's card
+--- under their realm and their presence under the receiver's) into the table `preferRealm` names, else the
+--- one received last. Returns how many entries were merged away.
+function GSD.MergeCoalescedRealms(preferRealm)
+    local d = ensure()
+    local byGuid = {}
+    for r, rt in pairs(d.chars) do
+        for key, entry in pairs(rt) do
+            if type(entry) == "table" and isNonEmptyGuid(key) and key == entry.guid then
+                local group = AltArmy.RealmFilter and AltArmy.RealmFilter.realmGroup
+                    and AltArmy.RealmFilter.realmGroup(r) or r
+                local id = group .. "\0" .. key
+                byGuid[id] = byGuid[id] or { guid = key, realms = {} }
+                byGuid[id].realms[#byGuid[id].realms + 1] = r
+            end
+        end
+    end
+    local merged = 0
+    for _, found in pairs(byGuid) do
+        local guid, realms = found.guid, found.realms
+        if #realms > 1 then
+            local keep
+            for _, r in ipairs(realms) do
+                if r == preferRealm then keep = r end
+            end
+            if not keep then
+                for _, r in ipairs(realms) do
+                    if not keep or (d.chars[r][guid].receivedAt or 0) > (d.chars[keep][guid].receivedAt or 0) then
+                        keep = r
+                    end
+                end
+            end
+            local base = d.chars[keep][guid]
+            for _, other in ipairs(takeFromOtherRealms(keep, guid)) do
+                absorb(base, other)
+                base.charRealm = base.charRealm or other.charRealm
+                merged = merged + 1
+            end
+        end
+    end
+    -- Realm tables the merge emptied.
+    for r, rt in pairs(d.chars) do
+        if next(rt) == nil then d.chars[r] = nil end
+    end
+    return merged
+end
+
 --- True when `entry` was stored from the character that sent a message. Matches by the sender's
 --- ID when both sides have one. An ID-keyed sender never matches a message without an ID (an
 --- older client that only shares a short name); a legacy entry matches by sender name.
@@ -402,9 +492,13 @@ function GSD.SaveReceived(sender, presence, guild, realm)
         if oldKey and oldKey ~= key then
             rt[oldKey] = nil
         end
+        for _, other in ipairs(takeFromOtherRealms(realm, c.guid)) do
+            if existing then absorb(existing, other) else existing = other end
+        end
         local entry = existing or {}
         entry.name = c.name
         entry.realm = realm
+        entry.charRealm = c.realm or entry.charRealm
         entry.guid = c.guid or entry.guid
         entry.classFile = c.classFile
         entry.faction = c.faction
@@ -483,7 +577,8 @@ function GSD.CharsNeedingProfessionCard(presence, realm)
         if c and c.name then
             local _, stored = findPayloadEntry(rt, c)
             if stored and stored.needsProfessionCard then
-                out[#out + 1] = { name = c.name, realm = realm, guid = c.guid }
+                -- The character's own realm: the responder looks its characters up by it.
+                out[#out + 1] = { name = c.name, realm = stored.charRealm or c.realm or realm, guid = c.guid }
             end
         end
     end
@@ -504,6 +599,7 @@ function GSD.SaveCharCard(sender, card, guild, realm)
     local entry = existing or {}
     entry.name = card.name
     entry.realm = realm
+    entry.charRealm = entry.charRealm or card.realm
     entry.guid = card.guid or entry.guid
     if card.from then entry.sourceGuid = card.from end
     if card.classFile then entry.classFile = card.classFile end
@@ -517,7 +613,51 @@ function GSD.SaveCharCard(sender, card, guild, realm)
     if card.ch ~= nil then entry.ch = card.ch end
     mergeProfessionSummaries(entry, card.profs or {})
     entry.needsProfessionCard = false
+    entry.cardRequestedAt = nil
+    entry.cardRequests = nil
     rt[key] = entry
+end
+
+-- *** Asking again for cards that never came ***
+-- A card is asked for when the guildmate's presence arrives. One lost on the way (or asked of a guildmate who
+-- went offline) used to wait for their next presence; GuildShareComm.SweepPending asks again while they are
+-- online, backing off CARD_RETRY_BASE_SEC, doubling per request up to CARD_RETRY_MAX_SEC.
+
+GSD.CARD_RETRY_BASE_SEC = 60
+GSD.CARD_RETRY_MAX_SEC = 1800
+
+--- Note that a card was asked for the character with this ID (or name) on `realm`.
+function GSD.MarkCardRequested(nameOrKey, realm, nowTs)
+    local entry = GSD.GetCharacter(nameOrKey, realm)
+    if not entry then return end
+    entry.cardRequestedAt = nowTs or now()
+    entry.cardRequests = (entry.cardRequests or 0) + 1
+end
+
+--- Whether a stored character still needs a card and may be asked for one again now.
+function GSD.CardRetryDue(entry, nowTs)
+    if type(entry) ~= "table" or not entry.needsProfessionCard or entry.linkOnly then return false end
+    if not entry.cardRequestedAt then return true end
+    local wait = GSD.CARD_RETRY_BASE_SEC * 2 ^ math.max(0, (entry.cardRequests or 1) - 1)
+    if wait > GSD.CARD_RETRY_MAX_SEC then wait = GSD.CARD_RETRY_MAX_SEC end
+    return (nowTs or now()) - entry.cardRequestedAt >= wait
+end
+
+--- The stored guildmates shared by someone (not read by link) on the realms one with `realm`:
+--- { { entry, realm }, ... }, sorted by name.
+function GSD.SharedCharactersInGroup(realm)
+    local out = {}
+    for r, rt in pairs(ensure().chars) do
+        if sameRealm(r, realm) then
+            for _, entry in pairs(rt) do
+                if type(entry) == "table" and not entry.linkOnly and isNonEmptyString(entry.source) then
+                    out[#out + 1] = { entry = entry, realm = r }
+                end
+            end
+        end
+    end
+    table.sort(out, function(a, b) return tostring(a.entry.name) < tostring(b.entry.name) end)
+    return out
 end
 
 --- Store a pulled recipe payload; reconstructs a minimal Recipes map ({ [id] = { primaryRecipeID = id } }).

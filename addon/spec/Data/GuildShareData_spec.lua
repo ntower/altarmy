@@ -1448,4 +1448,115 @@ describe("GuildShareData", function()
       assert.are.equal(20, shownByName({})["Cropdust Deathwind"].level)
     end)
   end)
+  describe("coalesced realms (WoW Forever)", function()
+    local MINE, THEIRS = "CAMWOW US1 Realm 5 PvE", "CAMWOW US2 Realm 3 PvE"
+    local GUID = "Player-6929-K"
+    local savedRF
+
+    before_each(function()
+      savedRF = AltArmy.RealmFilter
+      local function group(r) return ((r or ""):gsub("US%d Realm %d+", "US")) end
+      AltArmy.RealmFilter = { realmGroup = group, sameRealm = function(a, b) return group(a) == group(b) end }
+    end)
+
+    after_each(function() AltArmy.RealmFilter = savedRF end)
+
+    local function kairu()
+      return { name = "Kairu Stormhoof", realm = THEIRS, guid = GUID, classFile = "DRUID", faction = "Horde",
+        level = 30, itemLevel = 20, ch = 7 }
+    end
+    local function kairuPresence() return P.ParsePresence({ v = 2, chars = { kairu() } }) end
+    local function kairuCard()
+      local card = kairu()
+      card.v = 2
+      card.profs = { { key = "alchemy", name = "Alchemy", rank = 19, count = 5, rv = 3 } }
+      return P.ParseCharCard(card)
+    end
+
+    it("asks for a card naming the realm the character reports", function()
+      GSD.SaveReceived("Kairu Stormhoof", kairuPresence(), "G", MINE)
+      assert.are.equal(THEIRS, GSD.GetCharacter(GUID, MINE).charRealm)
+      local needing = GSD.CharsNeedingProfessionCard(kairuPresence(), MINE)
+      assert.are.equal(1, #needing)
+      assert.are.equal(THEIRS, needing[1].realm)
+    end)
+
+    it("files the card where the presence is", function()
+      GSD.SaveReceived("Kairu Stormhoof", kairuPresence(), "G", MINE)
+      local realm = GSD.StorageRealm(MINE, GUID)
+      assert.are.equal(MINE, realm)
+      GSD.SaveCharCard("Kairu Stormhoof", kairuCard(), "G", realm)
+      local entry = GSD.GetCharacter(GUID, MINE)
+      assert.are.equal(19, entry.Professions.alchemy.rank)
+      assert.is_false(entry.needsProfessionCard)
+      assert.is_nil(GSD.GetCharacter(GUID, THEIRS))
+    end)
+
+    it("finds a guildmate kept under another realm of the group, never of another group", function()
+      GSD.SaveCharCard("Kairu Stormhoof", kairuCard(), "G", THEIRS)
+      assert.are.equal(THEIRS, GSD.StorageRealm(MINE, GUID))
+      assert.are.equal("CAMWOW EU1 Realm 1 PvE", GSD.StorageRealm("CAMWOW EU1 Realm 1 PvE", GUID))
+    end)
+
+    it("adopts a card filed under the character's realm when their presence comes", function()
+      GSD.SaveCharCard("Kairu Stormhoof", kairuCard(), "G", THEIRS)
+      GSD.SaveReceived("Kairu Stormhoof", kairuPresence(), "G", MINE)
+      local entry = GSD.GetCharacter(GUID, MINE)
+      assert.are.equal(19, entry.Professions.alchemy.rank)
+      assert.is_false(entry.needsProfessionCard)
+      assert.is_nil(GSD.GetCharacter(GUID, THEIRS))
+    end)
+
+    it("merges a guildmate split across realm tables into the preferred realm's", function()
+      GSD.SaveReceived("Kairu Stormhoof", kairuPresence(), "G", MINE)
+      GSD.SaveCharCard("Kairu Stormhoof", kairuCard(), "G", THEIRS)
+      assert.are.equal(1, GSD.MergeCoalescedRealms(MINE))
+      local entry = GSD.GetCharacter(GUID, MINE)
+      assert.are.equal(19, entry.Professions.alchemy.rank)
+      assert.is_false(entry.needsProfessionCard)
+      assert.is_nil(GSD.GetCharacter(GUID, THEIRS))
+      assert.are.equal(0, GSD.MergeCoalescedRealms(MINE))
+    end)
+  end)
+  describe("card retries", function()
+    local function slim(name, guid)
+      return P.ParsePresence({ v = 2, chars = { { name = name, realm = "R", guid = guid, classFile = "MAGE",
+        faction = "Alliance", level = 20, itemLevel = 10, ch = 5 } } })
+    end
+
+    it("is due at once, then backs off doubling up to the cap", function()
+      GSD.SaveReceived("Peer", slim("Main", "Player-1-M"), "G", "R")
+      local entry = GSD.GetCharacter("Player-1-M", "R")
+      assert.is_true(GSD.CardRetryDue(entry, NOW))
+      GSD.MarkCardRequested("Player-1-M", "R", NOW)
+      assert.is_false(GSD.CardRetryDue(entry, NOW + GSD.CARD_RETRY_BASE_SEC - 1))
+      assert.is_true(GSD.CardRetryDue(entry, NOW + GSD.CARD_RETRY_BASE_SEC))
+      GSD.MarkCardRequested("Player-1-M", "R", NOW)
+      assert.is_false(GSD.CardRetryDue(entry, NOW + GSD.CARD_RETRY_BASE_SEC))
+      assert.is_true(GSD.CardRetryDue(entry, NOW + 2 * GSD.CARD_RETRY_BASE_SEC))
+      for _ = 1, 20 do GSD.MarkCardRequested("Player-1-M", "R", NOW) end
+      assert.is_true(GSD.CardRetryDue(entry, NOW + GSD.CARD_RETRY_MAX_SEC))
+    end)
+
+    it("is never due once the card came, and the card clears the count", function()
+      GSD.SaveReceived("Peer", slim("Main", "Player-1-M"), "G", "R")
+      GSD.MarkCardRequested("Player-1-M", "R", NOW)
+      GSD.SaveCharCard("Peer", P.ParseCharCard({ v = 2, name = "Main", realm = "R", guid = "Player-1-M",
+        classFile = "MAGE", faction = "Alliance", level = 20, itemLevel = 10, ch = 5,
+        profs = { { key = "tailoring", name = "Tailoring", rank = 50, count = 3, rv = 9 } } }), "G", "R")
+      local entry = GSD.GetCharacter("Player-1-M", "R")
+      assert.is_nil(entry.cardRequests)
+      assert.is_false(GSD.CardRetryDue(entry, NOW + 99999))
+    end)
+
+    it("lists shared characters, never link-read ones", function()
+      GSD.SaveReceived("Peer", slim("Main", "Player-1-M"), "G", "R")
+      GSD.SaveLinkRead("R", { guid = "Player-1-L", name = "Linky", profKey = "cooking", skillLine = 185,
+        rank = 1, maxRank = 75, recipeIDs = {}, guild = "G" })
+      assert.is_true(GSD.GetCharacter("Player-1-L", "R").linkOnly)
+      local names = {}
+      for _, item in ipairs(GSD.SharedCharactersInGroup("R")) do names[#names + 1] = item.entry.name end
+      assert.are.same({ "Main" }, names)
+    end)
+  end)
 end)

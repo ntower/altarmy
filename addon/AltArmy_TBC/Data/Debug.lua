@@ -410,7 +410,7 @@ function D.DumpTaint()
 end
 
 D.MAX_COMPARE_PANEL_DUMPS = 1
-D.MAX_GUILD_SHARE_UNDECODABLE_DUMPS = 1
+D.MAX_GUILD_SHARE_UNDECODABLE_DUMPS = 10
 
 local function ensureComparePanelDumps()
     D.Ensure()

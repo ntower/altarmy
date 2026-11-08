@@ -112,6 +112,21 @@ local function saveUndecodableDump(prefix, message, distribution, rawSender, des
     local payload = Comm._BuildUndecodableDump(
         prefix, message, distribution, rawSender, deserializeOk, firstValue
     )
+    -- The sender's recent raw parts (GuildShareProbe): which part of a multipart message went missing.
+    local Probe = AltArmy.GuildShareProbe
+    if Probe and Probe.PartsFrom then
+        local ok, recent = pcall(Probe.PartsFrom, rawSender)
+        if ok then payload.parts = recent end
+        -- Again a few seconds on: the part that completed this message (the probe sees it after AceComm does),
+        -- and a missing part that only arrives late.
+        local ctimer = _G.C_Timer
+        if ctimer and ctimer.After then
+            ctimer.After(Probe.LATE_PARTS_SEC or 8, function()
+                local okLate, later = pcall(Probe.PartsFrom, rawSender)
+                if okLate then payload.partsLater = later end
+            end)
+        end
+    end
     local index = D.AppendGuildShareUndecodableDump(payload)
     -- Chat tip only when verbose logging is on (dump itself always saved, last one kept).
     if index and D.IsGuildShareVerbose and D.IsGuildShareVerbose()
@@ -236,6 +251,35 @@ function Comm._SelectShareChars(flagOn, guild, realm)
         return GSS.GetShareableCharacters(guild, realm)
     end
     return GSS.GetAllGuildedCharacters(guild, realm)
+end
+
+local function sameRealm(a, b)
+    local RF = AltArmy.RealmFilter
+    if RF and RF.sameRealm then return RF.sameRealm(a, b) end
+    return (a or "") == (b or "")
+end
+
+--- The share set across every realm one with `realm` (WoW Forever's coalesced realms: the player's characters
+--- report "CAMWOW US1 Realm 5 PvE" or "CAMWOW US2 Realm 3 PvE" yet play together), `realm` itself first. Each
+--- entry carries its own realm. Elsewhere realms are one only with themselves, so this is the realm's set.
+function Comm._SelectShareCharsInGroup(flagOn, guild, realm)
+    local realms = { realm }
+    local DS = AltArmy.DataStore
+    if DS and DS.GetRealms then
+        local others = {}
+        for r in pairs(DS:GetRealms() or {}) do
+            if r ~= realm and sameRealm(r, realm) then others[#others + 1] = r end
+        end
+        table.sort(others)
+        for _, r in ipairs(others) do realms[#realms + 1] = r end
+    end
+    local out = {}
+    for _, r in ipairs(realms) do
+        for _, entry in ipairs(Comm._SelectShareChars(flagOn, guild, r)) do
+            out[#out + 1] = entry
+        end
+    end
+    return out
 end
 
 --- Legacy helper: sharing-disabled no longer skips the wire send (an empty presence is
@@ -444,11 +488,64 @@ local function serialize(msgType, payload)
     return commObj:Serialize(msgType, payload)
 end
 
-local function send(msgType, payload, distribution, target)
+-- *** Numbered parts (GuildShareReassembly.SplitSequenced) ***
+-- Every message says this client reads numbered parts (`mp`, MULTIPART_VERSION); a whisper over 255 bytes to a
+-- peer whose last message said so goes in numbered parts, reassembled exactly whatever order they arrive in.
+-- Anyone else (and the guild channel, where not every reader has it) gets AceComm's parts as before.
+Comm.MULTIPART_VERSION = 1
+
+local peerNumbered = {}   -- [short sender] = true when their last message carried `mp`
+
+--- Remember whether a peer reads numbered parts, from a message they sent.
+function Comm._NotePeerCapabilities(payload, sender)
+    if type(payload) ~= "table" or type(sender) ~= "string" then return end
+    local short = normalizeSender(sender)
+    if short == "" then return end
+    peerNumbered[short] = (tonumber(payload.mp) or 0) >= 1 or nil
+end
+
+function Comm._PeerReadsNumbered(target)
+    return type(target) == "string" and peerNumbered[normalizeSender(target)] == true
+end
+
+local nextMessageId = math.random and math.random(0, 1295) or 0
+local ID_DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz"
+
+--- A short id for a numbered message (two base-36 digits; it only has to differ from the sender's other
+--- messages still in flight).
+local function newMessageId()
+    nextMessageId = (nextMessageId + 1) % 1296
+    local hi, lo = math.floor(nextMessageId / 36), nextMessageId % 36
+    return ID_DIGITS:sub(hi + 1, hi + 1) .. ID_DIGITS:sub(lo + 1, lo + 1)
+end
+Comm._NewMessageId = newMessageId
+
+--- Send `data` to `target` in numbered parts through ChatThrottleLib's queue for our prefix (AceComm's own
+--- messages use the same queue, so everything goes out in order). Returns false when it can't.
+local function sendNumbered(data, target, onResult)
+    local R = AltArmy.GuildShareReassembly
+    local CTL = _G.ChatThrottleLib
+    if not (R and R.SplitSequenced and CTL and CTL.SendAddonMessage) then return false end
+    local parts = R.SplitSequenced(data, newMessageId())
+    for i, part in ipairs(parts) do
+        local callback = (onResult and i == #parts) and function(_, sent, sendResult)
+            pcall(onResult, sent, sendResult)
+        end or nil
+        CTL:SendAddonMessage("NORMAL", PREFIX, part, "WHISPER", target, PREFIX, callback)
+    end
+    return true
+end
+
+--- `onResult(sent, sendResult)` (optional) is called per wire part once ChatThrottleLib sends it
+--- (GuildShareProbe reads the client's send result).
+local function send(msgType, payload, distribution, target, onResult)
     -- Stamp the sending character's ID so peers can tell senders apart and ignore our echo.
     -- Older clients ignore the field.
     if type(payload) == "table" and payload.from == nil then
         payload.from = playerGuid()
+    end
+    if type(payload) == "table" and payload.mp == nil then
+        payload.mp = Comm.MULTIPART_VERSION
     end
     -- Unit-test hook: capture outbound messages without AceComm.
     if Comm._TestHookSend then
@@ -460,12 +557,19 @@ local function send(msgType, payload, distribution, target)
     log(string.format("SEND %s -> %s%s (%d bytes)",
         formatMsgType(msgType), distribution, target and (":" .. target) or "", #data))
     pcall(function()
-        commObj:SendCommMessage(PREFIX, data, distribution, target)
+        if distribution == "WHISPER" and #data > 255 and Comm._PeerReadsNumbered(target)
+            and sendNumbered(data, target, onResult) then
+            return
+        end
+        local callback = onResult and function(_, sent, _, sendResult) pcall(onResult, sent, sendResult) end
+        commObj:SendCommMessage(PREFIX, data, distribution, target, "NORMAL", callback)
     end)
 end
+Comm._Send = send
 
 --- On-demand recipe pull for one character; whispers `sender` when they are online and recipes are missing.
---- `guid` (optional) is the character's ID; the name is always sent for responders on older versions.
+--- `guid` (optional) is the character's ID; the name is always sent for responders on older versions. `realm` is
+--- the realm table the character is stored in; the request names the realm the character reports.
 --- Returns true when a request was sent.
 function Comm.RequestRecipesForCharacter(name, realm, sender, guid)
     if not name or not sender or sender == "" then return false end
@@ -476,7 +580,10 @@ function Comm.RequestRecipesForCharacter(name, realm, sender, guid)
     local storedKey = guid or name
     local needed = GSD.GetProfessionsNeedingRecipes(storedKey, realm)
     if #needed == 0 then return false end
-    send(MSG_REQ_RECIPES, { name = name, realm = realm, guid = guid }, "WHISPER", sender)
+    -- Name the character's own realm: responders look their characters up by it (older versions by it alone).
+    local stored = GSD.GetCharacter and GSD.GetCharacter(storedKey, realm)
+    local charRealm = stored and stored.charRealm or realm
+    send(MSG_REQ_RECIPES, { name = name, realm = charRealm, guid = guid }, "WHISPER", sender)
     if GSD.MarkRecipesRequested then
         GSD.MarkRecipesRequested(storedKey, realm, needed)
     end
@@ -492,7 +599,72 @@ function Comm.RequestCharCard(name, realm, sender, guid)
     local P = AltArmy.GuildShareProtocol
     if not P or not P.BuildCharCardRequest then return false end
     send(MSG_REQ_CHAR_CARD, P.BuildCharCardRequest(name, realm, guid), "WHISPER", sender)
+    local GSD = AltArmy.GuildShareData
+    if GSD and GSD.MarkCardRequested and GSD.StorageRealm then
+        GSD.MarkCardRequested(guid or name, GSD.StorageRealm(currentRealm(), guid))
+    end
     return true
+end
+
+Comm.SWEEP_SEC = 60            -- how often cards and recipes still missing are asked for again
+Comm.SWEEP_MAX_REQUESTS = 8    -- requests one sweep sends at most
+Comm.RETRY_AFTER_LOSS_SEC = 5  -- after a sender's message is lost, ask them again this soon
+
+--- Ask again for what guildmates online still owe: a card (GSD.CardRetryDue; `force` ignores the back-off,
+--- for right after one of their messages was lost) or recipe lists (RequestRecipesForCharacter's own back-off).
+--- `onlySender` (optional) limits it to one sender's characters. Returns how many requests went out.
+function Comm.SweepPending(onlySender, force, nowTs)
+    local GSD = AltArmy.GuildShareData
+    if not (GSD and GSD.SharedCharactersInGroup and GSD.CardRetryDue) then return 0 end
+    if not (IsInGuild and IsInGuild()) then return 0 end
+    nowTs = nowTs or ((time and time()) or 0)
+    local sent = 0
+    local online = {}
+    for _, item in ipairs(GSD.SharedCharactersInGroup(currentRealm())) do
+        if sent >= Comm.SWEEP_MAX_REQUESTS then break end
+        local entry, storedRealm = item.entry, item.realm
+        local source = normalizeSender(entry.source)
+        if (not onlySender or source == normalizeSender(onlySender)) then
+            if online[source] == nil then online[source] = Comm.IsGuildMemberOnline(source) end
+            if online[source] then
+                if entry.needsProfessionCard then
+                    if force or GSD.CardRetryDue(entry, nowTs) then
+                        if Comm.RequestCharCard(entry.name, entry.charRealm or storedRealm, source, entry.guid) then
+                            sent = sent + 1
+                        end
+                    end
+                elseif Comm.RequestRecipesForCharacter(entry.name, storedRealm, source, entry.guid) then
+                    sent = sent + 1
+                end
+            end
+        end
+    end
+    if sent > 0 then log(string.format("sweep: asked again %d time(s)%s", sent,
+        onlySender and (" of " .. tostring(onlySender)) or "")) end
+    return sent
+end
+
+local sweepScheduled = false
+
+--- Sweep every SWEEP_SEC from login on.
+local function scheduleSweeps()
+    local ctimer = _G.C_Timer
+    if sweepScheduled or not (ctimer and ctimer.After) then return end
+    sweepScheduled = true
+    local function tick()
+        pcall(Comm.SweepPending)
+        ctimer.After(Comm.SWEEP_SEC, tick)
+    end
+    ctimer.After(Comm.SWEEP_SEC, tick)
+end
+
+--- A sender's message was lost or mangled: ask them again shortly, without waiting for the back-off.
+function Comm.RetryAfterLoss(sender)
+    local ctimer = _G.C_Timer
+    if not (ctimer and ctimer.After) or type(sender) ~= "string" then return end
+    ctimer.After(Comm.RETRY_AFTER_LOSS_SEC, function()
+        pcall(Comm.SweepPending, sender, true)
+    end)
 end
 
 --- Build my presence payload for the given guild/realm (respecting the flag-branched set).
@@ -500,7 +672,7 @@ local function buildMyPresence(guild, realm)
     local GSS = AltArmy.GuildShareSettings
     if not GSS then return nil end
     local flagOn = isReceiveEnabled()
-    local chars = Comm._SelectShareChars(flagOn, guild, realm)
+    local chars = Comm._SelectShareCharsInGroup(flagOn, guild, realm)
     local mainName, displayName
     if #chars > 0 and GSS.ResolvePresenceMainAndDisplay then
         mainName, displayName = GSS.ResolvePresenceMainAndDisplay(chars, realm)
@@ -690,9 +862,12 @@ local function handleRecipeRequest(payload, sender)
     local guild = currentGuild()
     local realm = payload.realm or currentRealm()
     local flagOn = isReceiveEnabled()
-    local chars = Comm._SelectShareChars(flagOn, guild, realm)
+    local chars = Comm._SelectShareCharsInGroup(flagOn, guild, realm)
     local guid = type(payload.guid) == "string" and payload.guid ~= "" and payload.guid or nil
     local ownedAndShared = findRequestedShareChar(chars, payload.name, guid)
+    if Comm.OnRequestHandled then
+        pcall(Comm.OnRequestHandled, MSG_REQ_RECIPES, payload.name, guid, realm, #chars, ownedAndShared ~= nil, sender)
+    end
     if not ownedAndShared then return end
     -- Echo the requested name: an older requester stores the reply under the name it asked for.
     send(MSG_RECIPES, P.BuildRecipes(payload.name, realm, ownedAndShared), "WHISPER", sender)
@@ -708,8 +883,12 @@ local function handleCharCardRequest(payload, sender)
     local guild = currentGuild()
     local realm = parsed.realm or currentRealm()
     local flagOn = isReceiveEnabled()
-    local chars = Comm._SelectShareChars(flagOn, guild, realm)
+    local chars = Comm._SelectShareCharsInGroup(flagOn, guild, realm)
     local ownedAndShared = findRequestedShareChar(chars, parsed.name, parsed.guid)
+    if Comm.OnRequestHandled then
+        pcall(Comm.OnRequestHandled, MSG_REQ_CHAR_CARD, parsed.name, parsed.guid, realm, #chars,
+            ownedAndShared ~= nil, sender)
+    end
     if not ownedAndShared then return end
     send(MSG_CHAR_CARD, P.BuildCharCard(parsed.name, realm, ownedAndShared), "WHISPER", sender)
 end
@@ -762,8 +941,16 @@ local function handleCharCard(payload, sender)
     if not P or not GSD or not P.ParseCharCard or not GSD.SaveCharCard then return end
     local parsed = P.ParseCharCard(payload)
     if not parsed then return end
+    -- Diagnostics (GuildShareProbe): a reply to a probe is recorded and stored under its real name.
+    if Comm.InterceptCharCard then
+        local ok, card = pcall(Comm.InterceptCharCard, parsed, sender)
+        if ok and type(card) == "table" then parsed = card end
+    end
     local guild = currentGuild()
-    local realm = parsed.realm or currentRealm()
+    -- Stored where the guildmate already is (the card names the character's own realm, maybe another
+    -- coalesced realm's string than ours).
+    local realm = GSD.StorageRealm and GSD.StorageRealm(currentRealm(), parsed.guid)
+        or parsed.realm or currentRealm()
     GSD.SaveCharCard(sender, parsed, guild, realm)
     Comm.NotifyDataChanged()
     Comm.RequestRecipesForCharacter(parsed.name, realm, sender, parsed.guid)
@@ -775,7 +962,9 @@ local function handleRecipes(payload)
     if not P or not GSD then return end
     local parsed = P.ParseRecipes(payload)
     if not parsed then return end
-    GSD.SaveRecipes(parsed.realm or currentRealm(), parsed)
+    local realm = GSD.StorageRealm and GSD.StorageRealm(currentRealm(), parsed.guid)
+        or parsed.realm or currentRealm()
+    GSD.SaveRecipes(realm, parsed)
     Comm.NotifyDataChanged()
 end
 
@@ -785,7 +974,9 @@ end
 function Comm._DispatchReceivedMessage(msgType, payload, rawSender)
     local sender = normalizeSender(rawSender)
     if isLocalMessage(payload, sender) then return end
-    log(string.format("RECV %s from %s", formatMsgType(msgType), tostring(sender)))
+    Comm._NotePeerCapabilities(payload, sender)
+    log(string.format("RECV %s from %s", formatMsgType(msgType),
+        tostring(rawSender ~= sender and rawSender or sender)))
     if msgType == MSG_PRESENCE then
         handlePresence(payload, sender, false)
     elseif msgType == MSG_PRESENCE_REPLY then
@@ -808,11 +999,79 @@ local function onCommReceived(prefix, message, distribution, rawSender)
         if not ok or type(msgType) ~= "string" then
             log(Comm._FormatUndecodableRecvLog(prefix, message, distribution, rawSender, ok, msgType))
             saveUndecodableDump(prefix, message, distribution, rawSender, ok, msgType)
+            Comm.RetryAfterLoss(rawSender)
             return
+        end
+        -- Diagnostics (GuildShareProbe): who sent what, with the sender's realm suffix intact.
+        if Comm.OnRawReceive then
+            pcall(Comm.OnRawReceive, msgType, payload, rawSender, distribution)
         end
         if not isInboundAllowed(msgType) then return end
         Comm._DispatchReceivedMessage(msgType, payload, rawSender)
     end)
+end
+
+-- *** Receiving multipart messages in any order (GuildShareReassembly) ***
+
+local receiver
+
+--- Whether an AceSerializer text decodes to one of our messages (the reassembler's check of an arrangement).
+local function decodes(text)
+    if not commObj then return false end
+    local ok, msgType = commObj:Deserialize(text)
+    return ok == true and type(msgType) == "string"
+end
+
+--- Parts that solved nothing in time: logged, and saved like an undecodable message (in arrival order).
+local function dropUnsolvedParts(parts, distribution, sender)
+    local kinds, texts = {}, {}
+    for i, p in ipairs(parts) do
+        kinds[i] = p.kind
+        texts[i] = p.text
+    end
+    local reason = "unsolved multipart parts: " .. table.concat(kinds, ",")
+    log(string.format("dropped %d unsolved part(s) from %s (%s)", #parts, tostring(sender), reason))
+    saveUndecodableDump(PREFIX, table.concat(texts), distribution, sender, false, reason)
+    Comm.RetryAfterLoss(sender)
+end
+
+--- Receive the prefix ourselves instead of through AceComm's in-order reassembly. Returns false when the
+--- client lacks what it needs (the caller then registers with AceComm as before).
+function Comm._StartReceiver()
+    local R = AltArmy.GuildShareReassembly
+    if receiver or not (R and R.New and CreateFrame) then return receiver ~= nil end
+    local chatInfo = _G.C_ChatInfo
+    if chatInfo and chatInfo.RegisterAddonMessagePrefix then
+        chatInfo.RegisterAddonMessagePrefix(PREFIX)
+    elseif _G.RegisterAddonMessagePrefix then
+        _G.RegisterAddonMessagePrefix(PREFIX)
+    else
+        return false
+    end
+    local ctimer = _G.C_Timer
+    receiver = R.New({
+        validate = decodes,
+        deliver = function(text, distribution, sender)
+            onCommReceived(PREFIX, text, distribution, sender)
+        end,
+        drop = function(parts, distribution, sender)
+            pcall(dropUnsolvedParts, parts, distribution, sender)
+        end,
+        after = ctimer and ctimer.After and function(sec, fn) ctimer.After(sec, fn) end or nil,
+    })
+    local frame = CreateFrame("Frame")
+    frame:RegisterEvent("CHAT_MSG_ADDON")
+    frame:SetScript("OnEvent", function(_, _, prefix, message, distribution, sender)
+        -- Values the client hides (encounter chat lockdown) can't be read; drop them, as AceComm's patch does.
+        if not (canAccessSecretValue(prefix) and canAccessSecretValue(message)
+            and canAccessSecretValue(distribution) and canAccessSecretValue(sender)) then
+            return
+        end
+        if prefix ~= PREFIX then return end
+        if _G.Ambiguate and type(sender) == "string" then sender = _G.Ambiguate(sender, "none") end
+        pcall(receiver.OnPart, receiver, message, distribution, sender)
+    end)
+    return true
 end
 
 -- *** Initialization ***
@@ -826,14 +1085,21 @@ function Comm.Init()
     commObj = {}
     AceComm:Embed(commObj)
     AceSerializer:Embed(commObj)
-    commObj:RegisterComm(PREFIX, onCommReceived)
+    if not Comm._StartReceiver() then
+        commObj:RegisterComm(PREFIX, onCommReceived)
+    end
     initialized = true
+    scheduleSweeps()
     -- Prune very old received data (harmless when the flag is off / no data present).
     Comm.PurgeStaleReceived()
     -- Drop the player's own characters that older clients stored as guildmates.
     local GSD = AltArmy.GuildShareData
     if GSD and GSD.PurgeOwnCharacters then
         pcall(GSD.PurgeOwnCharacters)
+    end
+    -- Merge guildmates older versions split across coalesced realms' tables (card under theirs, presence ours).
+    if GSD and GSD.MergeCoalescedRealms then
+        pcall(GSD.MergeCoalescedRealms, currentRealm())
     end
     -- Drop professions stored from the server's empty answer for a profession the player hasn't got.
     if GSD and GSD.PurgeEmptyLinkReads then

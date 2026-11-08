@@ -1159,6 +1159,52 @@ describe("GuildShareComm helpers", function()
       assert.truthy(saved.cardFor)
     end)
 
+    describe("coalesced realms (WoW Forever)", function()
+      local MINE, THEIRS = "CAMWOW US1 Realm 5 PvE", "CAMWOW US2 Realm 3 PvE"
+      local savedRF
+
+      before_each(function()
+        savedRF = AltArmy.RealmFilter
+        local function group(r) return ((r or ""):gsub("US%d Realm %d+", "US")) end
+        AltArmy.RealmFilter = { realmGroup = group, sameRealm = function(a, b) return group(a) == group(b) end }
+        AltArmy.DataStore = { GetRealms = function() return { [MINE] = true, ["CAMWOW EU1 Realm 1 PvE"] = true } end }
+        AltArmy.GuildShareSettings.GetShareableCharacters = function(_, realm)
+          if realm ~= MINE then return {} end
+          return { { name = "Frell Blast", realm = MINE,
+            char = { name = "Frell Blast", guid = "Player-1-B", Professions = {} } } }
+        end
+      end)
+
+      after_each(function() AltArmy.RealmFilter = savedRF end)
+
+      it("answers a request naming another coalesced realm, echoing that realm", function()
+        Comm._DispatchReceivedMessage("CQ", { v = 2, name = "Frell Blast", realm = THEIRS, guid = "Player-1-B" },
+          "Kairu Stormhoof")
+        assert.truthy(saved.cardFor)
+        assert.are.equal("CC", sent[1].msgType)
+        assert.are.equal(THEIRS, sent[1].payload.realm)
+        Comm._DispatchReceivedMessage("RQ", { name = "Frell Blast", realm = THEIRS, guid = "Player-1-B" },
+          "Kairu Stormhoof")
+        assert.truthy(saved.recipesFor)
+      end)
+
+      it("does not answer for a realm of another group", function()
+        Comm._DispatchReceivedMessage("CQ", { v = 2, name = "Frell Blast", realm = "CAMWOW EU1 Realm 1 PvE",
+          guid = "Player-1-B" }, "Kairu Stormhoof")
+        assert.is_nil(saved.cardFor)
+      end)
+
+      it("asks for recipes naming the realm the character reports", function()
+        AltArmy.GuildShareData.GetCharacter = function() return { charRealm = THEIRS } end
+        local realOnline = Comm.IsGuildMemberOnline
+        Comm.IsGuildMemberOnline = function() return true end
+        Comm.RequestRecipesForCharacter("Kairu Stormhoof", MINE, "Kairu Stormhoof", "Player-6929-K")
+        Comm.IsGuildMemberOnline = realOnline
+        assert.are.equal("RQ", sent[1].msgType)
+        assert.are.equal(THEIRS, sent[1].payload.realm)
+      end)
+    end)
+
     it("does not answer a request whose ID belongs to another character", function()
       Comm._DispatchReceivedMessage("RQ", { name = "Frell Blast", realm = "R", guid = "Player-1-Z" }, "Peer")
       assert.is_nil(saved.recipesFor)
@@ -1178,6 +1224,100 @@ describe("GuildShareComm helpers", function()
       for _, s in ipairs(sent) do if s.msgType == "CQ" then cq = s end end
       assert.truthy(cq)
       assert.are.equal("Player-9-X", cq.payload.guid)
+    end)
+  end)
+  describe("asking again (SweepPending)", function()
+    local sent, entries, due, realOnline
+
+    before_each(function()
+      sent, entries, due = {}, {}, true
+      _G.IsInGuild = function() return true end
+      _G.GetRealmName = function() return "R" end
+      _G.GetGuildInfo = function() return "G" end
+      _G.UnitName = function() return "Me" end
+      realOnline = Comm.IsGuildMemberOnline
+      Comm.IsGuildMemberOnline = function(name) return name ~= "Gone" end
+      AltArmy.GuildShareSettings = {}
+      AltArmy.GuildShareProtocol = {
+        BuildCharCardRequest = function(name, realm, guid) return { v = 2, name = name, realm = realm, guid = guid } end,
+      }
+      AltArmy.GuildShareData = {
+        SharedCharactersInGroup = function() return entries end,
+        CardRetryDue = function() return due end,
+        GetProfessionsNeedingRecipes = function() return { "tailoring" } end,
+        MarkRecipesRequested = function() end,
+        GetCharacter = function() return nil end,
+      }
+      Comm._TestHookSend = function(msgType, payload, distribution, target)
+        sent[#sent + 1] = { msgType = msgType, payload = payload, target = target }
+      end
+    end)
+
+    after_each(function()
+      Comm._TestHookSend = nil
+      Comm.IsGuildMemberOnline = realOnline
+    end)
+
+    it("asks an online sender again for a card still missing, naming the character's realm", function()
+      entries = { { realm = "R", entry = { name = "Kairu", guid = "Player-6929-K", source = "Kairu",
+        charRealm = "R3", needsProfessionCard = true } } }
+      assert.are.equal(1, Comm.SweepPending())
+      assert.are.equal("CQ", sent[1].msgType)
+      assert.are.equal("R3", sent[1].payload.realm)
+      assert.are.equal("Kairu", sent[1].target)
+    end)
+
+    it("waits out the back-off unless forced, and skips senders offline", function()
+      due = false
+      entries = { { realm = "R", entry = { name = "Kairu", source = "Kairu", needsProfessionCard = true } },
+        { realm = "R", entry = { name = "Alt", source = "Gone", needsProfessionCard = true } } }
+      assert.are.equal(0, Comm.SweepPending())
+      assert.are.equal(1, Comm.SweepPending("Kairu", true))
+      assert.are.equal(0, Comm.SweepPending("Gone", true))
+    end)
+
+    it("asks for recipe lists once the card is in", function()
+      entries = { { realm = "R", entry = { name = "Kairu", source = "Kairu", needsProfessionCard = false } } }
+      assert.are.equal(1, Comm.SweepPending())
+      assert.are.equal("RQ", sent[1].msgType)
+    end)
+
+    it("sends at most SWEEP_MAX_REQUESTS", function()
+      for i = 1, 20 do
+        entries[i] = { realm = "R", entry = { name = "C" .. i, source = "S" .. i, needsProfessionCard = true } }
+      end
+      assert.are.equal(Comm.SWEEP_MAX_REQUESTS, Comm.SweepPending())
+    end)
+  end)
+
+  describe("numbered parts capability", function()
+    it("remembers which peers read numbered parts, from their last message", function()
+      Comm._NotePeerCapabilities({ mp = 1 }, "Kairu Stormhoof-CAMWOWUS2Realm3PvE")
+      assert.is_true(Comm._PeerReadsNumbered("Kairu Stormhoof"))
+      Comm._NotePeerCapabilities({}, "Kairu Stormhoof")
+      assert.is_false(Comm._PeerReadsNumbered("Kairu Stormhoof"))
+      assert.is_false(Comm._PeerReadsNumbered("Nobody"))
+    end)
+
+    it("stamps every outgoing message with the capability", function()
+      local got
+      Comm._TestHookSend = function(_, payload) got = payload end
+      _G.UnitGUID = function() return "Player-1-B" end
+      local realOnline = Comm.IsGuildMemberOnline
+      Comm.IsGuildMemberOnline = function() return true end
+      AltArmy.GuildShareProtocol = { BuildCharCardRequest = function() return { v = 2 } end }
+      AltArmy.GuildShareData = {}
+      Comm.RequestCharCard("X", "R", "Kairu", "Player-9-X")
+      Comm.IsGuildMemberOnline = realOnline
+      Comm._TestHookSend = nil
+      _G.UnitGUID = nil
+      assert.are.equal(Comm.MULTIPART_VERSION, got.mp)
+    end)
+
+    it("makes distinct two-character message ids", function()
+      local a, b = Comm._NewMessageId(), Comm._NewMessageId()
+      assert.are.equal(2, #a)
+      assert.are_not.equal(a, b)
     end)
   end)
 end)

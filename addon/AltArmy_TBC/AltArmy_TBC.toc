@@ -102,7 +102,9 @@ Data\Guild\GuildShareProtocol.lua
 Data\Guild\GuildShareData.lua
 Data\Guild\GuildManualGroups.lua
 Data\Guild\GuildNoteAltParser.lua
+Data\Guild\GuildShareReassembly.lua
 Data\Guild\GuildShareComm.lua
+Data\Guild\GuildShareProbe.lua
 Data\Guild\GuildLinkRead.lua
 Data\Guild\GuildTabData.lua
 Data\Guild\GuildChatMainName.lua
