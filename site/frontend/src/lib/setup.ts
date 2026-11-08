@@ -256,9 +256,7 @@ export function presetsFor(aim: Aim): Presets {
  * Where an aim keeps one of its search filters: making gold and skilling up each remember their own, so answering one
  * never overwrites the other's. `legacySearchKey` is where every filter was kept before, read while an aim has none.
  */
-export const searchKey = (scope: SearchScope, name: string) => `altarmy.search.${scope}.${name}`
-/** Whose filters a search keeps: an aim's. */
-export type SearchScope = Aim
+export const searchKey = (aim: Aim, name: string) => `altarmy.search.${aim}.${name}`
 export const legacySearchKey = (name: string) => `altarmy.search.${name}`
 
 /**

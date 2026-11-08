@@ -7,8 +7,6 @@ import {
   Group,
   Loader,
   NumberInput,
-  SegmentedControl,
-  Select,
   SimpleGrid,
   Stack,
   Text,
@@ -27,39 +25,22 @@ import {
 } from '../api/queries'
 import { goldToCopper } from '../lib/money'
 import {
+  ALL_EXITS,
   legacySearchKey,
   type ProfessionChoice,
   rankProfessions,
   rankSort,
   searchKey,
-  type SearchScope,
   type Setup as SetupAnswers,
   SKILL_EXITS,
   skillCrafters,
 } from '../lib/setup'
 import { BUILT_IN_SOURCES } from '../lib/skill'
-import { setSearchParam, useSearchParam } from '../lib/router'
 import { useStoredState } from '../lib/storage'
-import { EssencesStrip } from './EssencesStrip'
-import {
-  KIND_CHIP_LABELS,
-  KIND_CHIPS,
-  kindChipParams,
-  parseKindChip,
-  SELL_DAYS,
-  SELL_DAYS_LABELS,
-  SELL_VIA,
-  SELL_VIA_LABELS,
-  type SellDays,
-  sellViaExits,
-  parseSellVia,
-} from '../lib/strategies'
-import { topPicks } from '../lib/topPicks'
 import type { RankResult } from '../api/client'
-import { TopPicks } from './TopPicks'
 import { ProfessionIcon } from './ProfessionIcon'
 import classes from './SearchTab.module.css'
-import { type GoldSort, ResultsTable } from './ResultsTable'
+import { type GoldSort, ResultsTable, type SortOrder } from './ResultsTable'
 import { SkillWorkspace } from './SkillWorkspace'
 import { CraftsPerSession } from './CraftsPerSession'
 
@@ -108,11 +89,13 @@ const toBound = (v: number | string) => (typeof v === 'number' ? v : null)
 const scaled = (v: number | null, f: (v: number) => number) => (v === null ? null : f(v))
 
 type Filters = Omit<RankParams, 'top'>
-
-/** The gold list's orders, both the server's (over the whole ranking, not just the rows loaded), picked by its A day
- * and Each headers. */
-const goldSortSchema = z.enum(['per_day', 'likely_each'])
 const NO_RESULTS: RankResult[] = []
+
+/** The gold list's orders, all the server's (over the whole ranking, not just the rows loaded), picked by its
+ * Safe and Auction house headers; none picked: the better of the two. A stored sort from before (all sell, ROI,
+ * least spent, profit each) reads as that default. */
+const goldSortSchema = z.enum(['likely', 'safe', 'ah'])
+const sortOrderSchema = z.enum(['desc', 'asc'])
 
 /**
  * `value` once it has stopped changing for `wait` ms (typing a bound re-ranks once, not per key), except that a new
@@ -138,18 +121,15 @@ const Results = memo(function Results({
 }: {
   filters: Filters
   browsing: boolean
-  /** Re-rank the gold list by a column's header; without it, a skill-up list. */
-  onGoldSort?: (sort: GoldSort) => void
+  /** Re-rank a gold list by a column's header. */
+  onGoldSort?: (sort: GoldSort, order: SortOrder) => void
 }) {
-  const gold = onGoldSort !== undefined
   // Back to one page whenever the filters change.
   const [page, setPage] = useState({ filters, top: PAGE })
   const top = page.filters === filters ? page.top : PAGE
   const rank = useRank({ ...filters, top })
+  // a processing recipe's row carries its numbers (`process`: weighed against selling its inputs) from the server
   const results = rank.data?.results ?? NO_RESULTS
-  const picks = useMemo(() => (gold ? topPicks(results) : NO_RESULTS), [gold, results])
-  // A top pick clicked: its row in the list opens and scrolls into view.
-  const [reveal, setReveal] = useState<{ recipeId: number }>()
   const version = useDataVersion()
   const ahBlockedList = useAhBlocked().data
   const ahBlocked = useMemo(() => new Set(ahBlockedList?.items.map((i) => i.item_id)), [ahBlockedList])
@@ -174,9 +154,7 @@ const Results = memo(function Results({
   }
   return (
     <Stack>
-      {gold && <TopPicks picks={picks} items={items} onPick={(r) => setReveal({ recipeId: r.recipe_id })} />}
       <ResultsTable
-        reveal={reveal}
         results={results}
         items={items}
         classes={rank.data.classes}
@@ -198,8 +176,9 @@ const Results = memo(function Results({
         onSetAhBlocked={(itemId, blocked) => setAhBlocked({ itemId, blocked })}
         favorites={favorites}
         onSetFavorite={(recipeId, favorite) => setFavorite({ recipeId, favorite })}
-        rankBy={gold ? 'gold' : 'skill'}
+        rankBy={skill ? 'skill' : 'gold'}
         goldSort={filters.sort}
+        goldOrder={filters.order}
         onGoldSort={onGoldSort}
       />
       {total > results.length && (
@@ -257,9 +236,10 @@ function Range({ name, min, max, onMin, onMax, step }: RangeProps) {
 }
 
 /**
- * A filter of the search: kept under the aim's own key, starting from where every filter used to be kept.
+ * A filter of the search: kept under the aim's own key (`altarmy.search.gold.*`), starting from where every filter
+ * used to be kept.
  */
-function useFilter<T>(scope: SearchScope, name: string, schema: z.ZodType<T>, defaultValue: T) {
+function useFilter<T>(scope: SetupAnswers['aim'], name: string, schema: z.ZodType<T>, defaultValue: T) {
   return useStoredState(searchKey(scope, name), schema, defaultValue, legacySearchKey(name))
 }
 
@@ -268,9 +248,9 @@ function useFilter<T>(scope: SearchScope, name: string, schema: z.ZodType<T>, de
  * One aim's search, once the setup is complete and a realm is selected: its options and ranked recipes. Mounted per
  * aim (`key={aim}`), so each remembers its own filters: making gold and skilling up never overwrite each other's.
  *
- * Making gold ranks every way to make gold together (crafts, processing, essence conversions, gear bought to
- * disenchant) by what a day of it makes, the best few on top (`TopPicks`), with kind chips, Sell via, Filters (crafts
- * per session, recipes to learn) and Advanced Filters (bounds).
+ * Making gold ranks every way to make gold (crafts, processing trade goods, essence conversions and gear bought to
+ * disenchant) in one list by the profit of a session, sold safely or on the auction house, with Filters (crafts per
+ * session, recipes that could be learned) and Advanced Filters (bounds).
  *
  * Skilling up ranks every recipe the one skilled up can make or train now that still gives them a skill point, each
  * as a useful run (the crafts until it turns green, or yellow: `stop`), by what a skill point costs; what is made is
@@ -303,9 +283,7 @@ export function AimSearch({
 }) {
   const { aim } = setup
   const skill = aim === 'skill'
-  const sellVia = parseSellVia(useSearchParam('exit'))
-  const chip = parseKindChip(useSearchParam('kind'))
-  const scope: SearchScope = aim
+  const scope = aim
   // Stored as strings: sections that no longer exist (the old Characters and Time assumptions ones) are dropped,
   // not an error.
   const [stored, setOpen] = useFilter(scope, 'open', z.array(z.string()), NONE_OPEN)
@@ -313,18 +291,6 @@ export function AimSearch({
   // null until the user ticks or unticks it: then it follows whether any character can make an Arcane Salvager.
   const [salvagerPick, setSalvagerPick] = useFilter<boolean | null>(scope, 'arcaneSalvager', z.boolean().nullable(), null)
   const arcaneSalvager = SHOW_ARCANE_SALVAGER && (salvagerPick ?? salvagerDefault)
-  // Sell via Disenchant: who disenchants, when several characters can (the best by default).
-  const enchanters = useMemo(
-    () =>
-      [...(professions.find((p) => p.name.toLowerCase() === 'enchanting')?.holders ?? [])].sort(
-        (a, b) => b.rank - a.rank || a.name.localeCompare(b.name),
-      ),
-    [professions],
-  )
-  const [enchanterPick, setEnchanterPick] = useFilter<string | null>(scope, 'disenchanter', z.string().nullable(), null)
-  const disenchanter =
-    !skill && sellVia === 'disenchant' ? enchanters.find((e) => e.name === enchanterPick)?.name : undefined
-  const [sellDays, setSellDays] = useFilter<SellDays>(scope, 'sellDays', z.union([z.literal(1), z.literal(3), z.literal(7)]), 1)
   // Money in gold and ROI in percent, as typed; converted for the API below.
   const [minCost, setMinCost] = useFilter(scope, 'minCost', bound, 0)
   const [maxCost, setMaxCost] = useFilter(scope, 'maxCost', bound, null)
@@ -333,7 +299,8 @@ export function AimSearch({
   const [maxProfit, setMaxProfit] = useFilter(scope, 'maxProfit', bound, null)
   const [minRoi, setMinRoi] = useFilter(scope, 'minRoi', bound, 0)
   const [maxRoi, setMaxRoi] = useFilter(scope, 'maxRoi', bound, null)
-  const [goldSort, setGoldSort] = useFilter<RankSort>(scope, 'listSort', goldSortSchema, 'per_day')
+  const [goldSort, setGoldSort] = useFilter<RankSort>(scope, 'sort', goldSortSchema, 'likely')
+  const [goldOrder, setGoldOrder] = useFilter<SortOrder>(scope, 'order', sortOrderSchema, 'desc')
   const [learnable, setLearnable] = useFilter(scope, 'learnable', z.boolean(), false)
   // By value, not the stored object: a new but equal setup must not count as new filters (that resets paging).
   const sort = skill ? rankSort(setup) : goldSort
@@ -379,13 +346,10 @@ export function AimSearch({
             lookAhead: 0,
             sources: BUILT_IN_SOURCES,
             includeTrivial: true,
-            // the ways to sell Sell via allows, and the kinds of result its chip shows (every kind: crafts,
-            // conversions and gear bought to disenchant, ranked together)
-            exits: sellViaExits(sellVia),
-            ...kindChipParams(chip),
+            // every way to sell, side by side: the list shows playing it safe and the auction house apart; every kind
+            // of result (crafts, conversions, gear bought to disenchant) in one ranking
+            exits: [...ALL_EXITS],
             arcaneSalvager,
-            ...(disenchanter ? { disenchanter } : {}),
-            ...(sellVia === 'disenchant' ? { sellDays } : {}),
             minCost: scaled(minCost, goldToCopper),
             maxCost: scaled(maxCost, goldToCopper),
             minProfit: scaled(minProfit, goldToCopper),
@@ -396,6 +360,7 @@ export function AimSearch({
             professions: [],
             skillCrafters: [],
             sort,
+            order: goldOrder,
             runs: false,
           },
     [
@@ -410,10 +375,7 @@ export function AimSearch({
       maxRoi,
       learnable,
       sort,
-      chip,
-      sellVia,
-      disenchanter,
-      sellDays,
+      goldOrder,
       profession,
       skilled,
       climberSkill,
@@ -439,54 +401,6 @@ export function AimSearch({
 
   return (
     <>
-      {!skill && (
-        <Group gap="sm">
-          <Text size="sm">Show</Text>
-          <SegmentedControl
-            size="xs"
-            aria-label="Show"
-            value={chip}
-            onChange={(v) => setSearchParam('kind', v === 'all' ? null : v)}
-            data={KIND_CHIPS.map((k) => ({ value: k, label: KIND_CHIP_LABELS[k] }))}
-          />
-        </Group>
-      )}
-      {!skill && chip === 'convert' && <EssencesStrip />}
-      {!skill && (
-        <Group gap="sm">
-          <Text size="sm">Sell via</Text>
-          <SegmentedControl
-            size="xs"
-            aria-label="Sell via"
-            value={sellVia}
-            onChange={(v) => setSearchParam('exit', v === 'all' ? null : v)}
-            data={SELL_VIA.map((v) => ({ value: v, label: SELL_VIA_LABELS[v] }))}
-          />
-          {sellVia === 'disenchant' && enchanters.length > 1 && (
-            <Select
-              size="xs"
-              aria-label="Disenchanted by"
-              w={200}
-              allowDeselect={false}
-              value={disenchanter ?? enchanters[0]!.name}
-              onChange={(v) => setEnchanterPick(v)}
-              data={enchanters.map((e) => ({ value: e.name, label: `${e.name} (Enchanting ${e.rank})` }))}
-            />
-          )}
-          {sellVia === 'disenchant' && (
-            <>
-              <Text size="sm">Sell within</Text>
-              <SegmentedControl
-                size="xs"
-                aria-label="Sell within"
-                value={String(sellDays)}
-                onChange={(v) => setSellDays(Number(v) as SellDays)}
-                data={SELL_DAYS.map((d) => ({ value: String(d), label: SELL_DAYS_LABELS[d] }))}
-              />
-            </>
-          )}
-        </Group>
-      )}
       {!skill && (
         <Options label="Filters">
           <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xl">
@@ -570,8 +484,9 @@ export function AimSearch({
       {noPrices && <Alert color="yellow">No data collected for this auction house</Alert>}
       {!skill && (
         <Text size="sm" c="dimmed">
-          Every way to make gold, ranked by <b>what a day of it makes</b>: on the auction house only as many as sell
-          in a day, to a vendor a whole session. Click <b>Each</b> to rank by what one makes instead.
+          <b>Safe profit</b>: sold to a vendor or disenchanted, so it always sells. <b>Auction profit</b>: counts only as
+          many as its market has been taking, the rest the safe way. Ranked by the better of the two, in bold; click a
+          heading to rank by it, and again to reverse it.
         </Text>
       )}
       {climber && profession !== null ? (
@@ -587,7 +502,14 @@ export function AimSearch({
         <Results
           filters={debouncedFilters}
           browsing={browsing}
-          onGoldSort={skill ? undefined : setGoldSort}
+          onGoldSort={
+            skill
+              ? undefined
+              : (s, o) => {
+                  setGoldSort(s)
+                  setGoldOrder(o)
+                }
+          }
         />
       )}
     </>

@@ -224,8 +224,8 @@ export function SearchTab({
   // Without characters on the selected realm, every recipe is ranked for one unnamed crafter (making gold), or for
   // the character nobody uploaded (a hypothetical climb).
   const browsing = group === undefined && hypothetical === null
-  // Making gold's tab: the list of ways to make gold, or the vendor check.
-  const goldTab = view?.kind === 'gold' ? (view.tab ?? 'list') : null
+  // Making gold's tab: the gold list, or the vendor check.
+  const goldTab = view.kind === 'gold' ? (view.tab ?? 'list') : null
   const noEnchanter = !!selection && group !== undefined && !hasEnchanter(group)
   // The selection's auction house and its newest scan; undefined while the coverage is still loading.
   const house = coverage.data?.find((c) => c.auction_house_id === status.data.auction_house_id)
@@ -289,33 +289,33 @@ export function SearchTab({
         </Group>
       ) : selection ? (
         <>
-        {goldTab && (
-          // making gold's two tabs, each a path (in place of the current entry, as a filter is)
-          <Tabs
-            value={goldTab}
-            onChange={(v) => navigate(v === 'vendorcheck' ? '/profit/gold/vendorcheck' : '/profit/gold', { replace: true })}
-          >
-            <Tabs.List>
-              <Tabs.Tab value="list">Ways to make gold</Tabs.Tab>
-              <Tabs.Tab value="vendorcheck">Vendor check</Tabs.Tab>
-            </Tabs.List>
-          </Tabs>
-        )}
-        {goldTab === 'vendorcheck' ? (
-          <VendorCheck />
-        ) : (
-        <AimSearch
-          key={setup.aim}
-          setup={setup}
-          professions={professions}
-          browsing={browsing}
-          noEnchanter={noEnchanter}
-          noPrices={status.data.prices === 0}
-          salvagerDefault={characters.data?.arcane_salvager ?? false}
-          flush={characters.data ? flush : -1}
-          lastScan={lastScan}
-        />
-        )}
+          {goldTab && (
+            // Two tabs, each a path: the back button walks them like the rest of the Profit page's views.
+            <Tabs
+              value={goldTab}
+              onChange={(tab) => tab && navigate(tab === 'list' ? '/profit/gold' : `/profit/gold/${tab}`, { replace: true })}
+            >
+              <Tabs.List>
+                <Tabs.Tab value="list">Make gold</Tabs.Tab>
+                <Tabs.Tab value="vendorcheck">Vendor check</Tabs.Tab>
+              </Tabs.List>
+            </Tabs>
+          )}
+          {goldTab === 'vendorcheck' ? (
+            <VendorCheck />
+          ) : (
+            <AimSearch
+              key={setup.aim}
+              setup={setup}
+              professions={professions}
+              browsing={browsing}
+              noEnchanter={noEnchanter}
+              noPrices={status.data.prices === 0}
+              salvagerDefault={characters.data?.arcane_salvager ?? false}
+              flush={characters.data ? flush : -1}
+              lastScan={lastScan}
+            />
+          )}
         </>
       ) : (
         status.data.prices === 0 && <Alert color="yellow">No data collected for this auction house</Alert>

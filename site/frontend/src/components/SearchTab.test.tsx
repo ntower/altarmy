@@ -23,7 +23,7 @@ vi.mock('./ResultsTable', async (importOriginal) => {
 afterEach(() => {
   table.stub = false
 })
-// The gold list's tabs, chips and top picks have their own tests (GoldTabs.test.tsx).
+// The gold list's tab and the skill searches; the two tabs themselves are in GoldTabs.test.tsx.
 
 const noResults = { results: [], total: 0, items: {}, classes: {} }
 
@@ -41,9 +41,11 @@ const house = (realm: string, faction: string, prices = 10) => ({
   launch: false,
 })
 
-/** The calls made to `pathname`. */
+/** The requests to `pathname`. */
 function urls(fetch: ReturnType<typeof mockApi>, pathname: string) {
-  return fetch.mock.calls.map(([request]) => new URL(request.url)).filter((u) => u.pathname === pathname)
+  return fetch.mock.calls
+    .map(([request]) => new URL(request.url))
+    .filter((u) => u.pathname === pathname)
 }
 
 /** Open the search at `path` (most tests make gold). */
@@ -203,7 +205,7 @@ describe('SearchTab', () => {
     expect(urls(fetch, '/api/rank')).toEqual([])
   })
 
-  it('makes gold at its path, ranking by what a day makes, every way to sell', async () => {
+  it('makes gold at its path, ranking by profit, both ways to sell side by side', async () => {
     localStorage.setItem('altarmy.search.unlearned', '"soon"')
     const fetch = mockApi({
       '/api/status': status(),
@@ -214,7 +216,7 @@ describe('SearchTab', () => {
     await waitFor(() => expect(urls(fetch, '/api/rank')).toHaveLength(1))
     expect(screen.queryByRole('group', { name: 'How do you want to sell?' })).not.toBeInTheDocument()
     const [rank] = urls(fetch, '/api/rank')
-    expect(rank?.searchParams.get('sort')).toBe('per_day') // the gold list's default: what a day makes
+    expect(rank?.searchParams.get('sort')).toBe('likely') // the gold list's default: the better of the two first
     expect(rank?.searchParams.get('unlearned')).toBe('none') // only recipes they know
     expect(rank?.searchParams.has('look_ahead')).toBe(false) // nothing is trained: no look-ahead or sources
     expect(rank?.searchParams.has('sources')).toBe(false)
@@ -709,7 +711,7 @@ describe('SearchTab', () => {
     await screen.findByText(/No recipes match these filters/)
     const [rank] = urls(fetch, '/api/rank')
     expect(rank?.searchParams.toString()).toBe(
-      'game_version=forever&unlearned=none&include_trivial=true&exits=vendor&exits=disenchant&exits=ah&arcane_salvager=false&min_cost=5000&max_cost=200000&min_profit=1&max_roi=2.5&sort=per_day&top=50&price_version=0',
+      'game_version=forever&unlearned=none&include_trivial=true&exits=vendor&exits=disenchant&exits=ah&arcane_salvager=false&min_cost=5000&max_cost=200000&min_profit=1&max_roi=2.5&sort=likely&top=50&price_version=0',
     )
   })
 
@@ -1054,8 +1056,8 @@ describe('SearchTab: making gold', () => {
     watched_hours: watched,
   })
 
-  it('sorts on the server by what a day makes, else by what one makes, from the headings', async () => {
-    localStorage.setItem('altarmy.search.gold.listSort', '"spend"') // not a sort of the list: the default
+  it('sorts on the server by the headings, either way round, else by the better of the two', async () => {
+    localStorage.setItem('altarmy.search.gold.sort', '"spend"') // a sort from before: the default now
     const fetch = mockApi({
       '/api/status': status(),
       '/api/characters': characters,
@@ -1063,17 +1065,20 @@ describe('SearchTab: making gold', () => {
     })
     renderWithProviders(<SearchTab />)
     const sent = () => urls(fetch, '/api/rank').at(-1)?.searchParams
-    await screen.findByRole('button', { name: 'Sort by Each' })
-    expect(sent()?.get('sort')).toBe('per_day')
+    const sorted = () => `${sent()?.get('sort')} ${sent()?.get('order') ?? 'desc'}`
+    await screen.findByRole('button', { name: 'Sort by Safe profit' })
+    expect(sorted()).toBe('likely desc')
     expect(screen.queryByRole('combobox', { name: 'Sort by' })).not.toBeInTheDocument() // the headings do it
-    await userEvent.click(screen.getByRole('button', { name: 'Sort by Each' }))
-    await waitFor(() => expect(sent()?.get('sort')).toBe('likely_each'))
-    expect(localStorage.getItem('altarmy.search.gold.listSort')).toBe('"likely_each"')
-    await userEvent.click(screen.getByRole('button', { name: 'Sort by A day' }))
-    // ranked that way already: from the cache, so the next request shows it
+    await userEvent.click(screen.getByRole('button', { name: 'Sort by Safe profit' }))
+    await waitFor(() => expect(sorted()).toBe('safe desc'))
+    await userEvent.click(screen.getByRole('button', { name: 'Sort by Safe profit' }))
+    await waitFor(() => expect(sorted()).toBe('safe asc'))
+    expect(localStorage.getItem('altarmy.search.gold.order')).toBe('"asc"')
+    await userEvent.click(screen.getByRole('button', { name: 'Sort by Auction profit' }))
+    await waitFor(() => expect(sorted()).toBe('ah desc'))
+    expect(urls(fetch, '/api/rank').at(-1)?.searchParams.has('min_verdict')).toBe(false)
     await userEvent.click(screen.getByRole('checkbox', { name: 'Include recipes I could learn' }))
-    await waitFor(() => expect(sent()?.get('unlearned')).toBe('train'))
-    expect(sent()?.get('sort')).toBe('per_day')
+    await waitFor(() => expect(urls(fetch, '/api/rank').at(-1)?.searchParams.get('unlearned')).toBe('train'))
   })
 
   it('asks nobody to scan, and says when an item sells on the auction house', async () => {

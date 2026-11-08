@@ -30,11 +30,11 @@ const imported: UploadResult = {
   realms: [],
 }
 
-/** The calls made to `pathname`; for /api/rank the gold list's, not its second one for what processing adds. */
+/** The requests to `pathname`. */
 function paths(fetch: ReturnType<typeof mockApi>, pathname: string) {
   return fetch.mock.calls
     .map(([r]) => r)
-    .filter((r) => new URL(r.url).pathname === pathname && !new URL(r.url).searchParams.has('process'))
+    .filter((r) => new URL(r.url).pathname === pathname)
 }
 
 const cards = () => screen.queryByRole('group', { name: 'Ways to start' })
@@ -89,7 +89,7 @@ describe('ProfitPage', () => {
     expect(window.location.pathname).toBe('/profit/gold')
     await waitFor(() => expect(paths(fetch, '/api/rank')).toHaveLength(1))
     expect(screen.queryByRole('group', { name: "What's your goal?" })).not.toBeInTheDocument()
-    expect(new URL(paths(fetch, '/api/rank')[0]!.url).searchParams.get('sort')).toBe('per_day')
+    expect(new URL(paths(fetch, '/api/rank')[0]!.url).searchParams.get('sort')).toBe('likely')
     expect(JSON.parse(localStorage.getItem('altarmy.setup.g1') ?? '')).toEqual({ aim: 'gold' })
 
     // the back button asks again, the answer given marked
@@ -134,15 +134,13 @@ describe('ProfitPage', () => {
     expect(window.location.pathname).toBe('/profit/gold')
   })
 
-  it('takes the strategy pages from before the tabs to the gold list, and the old disenchant page to its filter', async () => {
+  it("takes the strategy pages' old paths to the gold list", async () => {
     mockApi({ '/api/status': status(), '/api/characters': characters, '/api/rank': noResults })
     window.history.replaceState(null, '', '/profit/gold/craft')
     renderWithProviders(<ProfitPage />)
     await waitFor(() => expect(window.location.pathname).toBe('/profit/gold'))
     act(() => navigate('/profit/gold/disenchant'))
-    await waitFor(() =>
-      expect(`${window.location.pathname}${window.location.search}`).toBe('/profit/gold?exit=disenchant'),
-    )
+    await waitFor(() => expect(`${window.location.pathname}${window.location.search}`).toBe('/profit/gold'))
   })
 
   it('skilling up goes on to which profession, at its own path', async () => {
@@ -180,11 +178,17 @@ describe('ProfitPage', () => {
     expect(await screen.findByRole('group', { name: "What's your goal?" })).toBeInTheDocument()
   })
 
-  it('takes the old vendor check path to its tab', async () => {
+  it("takes the old vendor check path to making gold's Vendor check tab, and stays there", async () => {
     navigate('/profit/vendorcheck')
-    mockApi({ '/api/status': status(), '/api/characters': characters, '/api/rank': noResults })
+    mockApi({
+      '/api/status': status(),
+      '/api/characters': characters,
+      '/api/rank': noResults,
+      '/api/vendorcheck': { realm: 'Classic Beta PvE', faction: 'Horde', items: [], total: 0, listed: 0, page: 1, page_size: 50, classes: [], qualities: [] },
+    })
     renderWithProviders(<ProfitPage />)
     await waitFor(() => expect(window.location.pathname).toBe('/profit/gold/vendorcheck'))
+    expect(await screen.findByRole('tab', { name: 'Vendor check' })).toHaveAttribute('aria-selected', 'true')
     await new Promise((r) => setTimeout(r, 50))
     expect(window.location.pathname).toBe('/profit/gold/vendorcheck')
   })

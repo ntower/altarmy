@@ -107,16 +107,6 @@ export function useVendorCheckItem(itemId: number) {
   })
 }
 
-/** The essence tiers at the selected auction house and which way converting pays (Process trade goods' strip). */
-export function useEssences() {
-  const version = useDataVersion()
-  return useQuery({
-    queryKey: ['essences', GAME_VERSION, version],
-    queryFn: () => call(client.GET('/api/essences', GV)),
-    enabled: version !== undefined,
-  })
-}
-
 /** An item's price history at the selected auction house (the Market section's History tab). */
 export function useItemMarket(itemId: number) {
   const version = useDataVersion()
@@ -185,10 +175,9 @@ export type RankParams = {
   arcaneSalvager: boolean
   /** the enchanter who disenchants everything; unset: the best of the characters */
   disenchanter?: string | undefined
-  /** only the processing recipes, each weighed against selling its inputs (the list's Processing chip, and the notes
-   * on the whole list's processing rows) */
+  /** Process trade goods: only the processing recipes, each weighed against selling its inputs */
   process?: boolean
-  /** with the disenchant exit alone: the days the materials should sell within (the Disenchant budget) */
+  /** with only the disenchant exit: the days the materials should sell within (the Disenchant budget) */
   sellDays?: number
   minCost: number | null
   maxCost: number | null
@@ -248,7 +237,6 @@ export type RankSort =
   | 'roi'
   | 'spend'
   | 'profit_each'
-  | 'likely_each'
   | 'safe'
   | 'ah'
 

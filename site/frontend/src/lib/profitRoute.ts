@@ -6,15 +6,15 @@ import { type Holder, type ProfessionChoice, professionsOf, professionsToImagine
  * /profit/skill (which profession), /profit/skill/<realm>/<character>/<profession> (one character skilling up one
  * profession: a link to it opens exactly that, switching the realm) and /profit/skill/<realm>/<profession>/<skill>
  * (a character nobody uploaded skilling up one profession from that skill; the last part is all digits, which a
- * profession's never is). Making gold has two tabs: /profit/gold, every way to make gold in one ranked list, and
- * /profit/gold/vendorcheck, what is listed at or near what a vendor pays. The strategy pages from before the tabs
- * (/profit/gold/craft, /process, /vendor, /held) go to the list, /profit/gold/disenchant to the list's Disenchant
- * filter, and /profit/vendorcheck to the vendor check's tab.
+ * profession's never is). Making gold has two tabs: /profit/gold (the gold list: every way to make gold, ranked) and
+ * /profit/gold/vendorcheck (the Vendor check). The strategy pages' paths (/profit/gold/craft, /process, /vendor,
+ * /held, /disenchant) go to the gold list, and /profit/vendorcheck, from before it was a tab, to
+ * /profit/gold/vendorcheck.
  */
 
 export type ProfitView =
   | { kind: 'start' }
-  /** without a `tab`, the list of ways to make gold */
+  /** without a `tab`, the gold list */
   | { kind: 'gold'; tab?: GoldTab }
   | { kind: 'skill' }
   /** `realm` and `profession` as slugs (`realmSlug`, `professionSlug`), `character` as named */
@@ -24,12 +24,12 @@ export type ProfitView =
   /** a path kept for old links: the page now at `to` */
   | { kind: 'moved'; to: string }
 
-/** Making gold's tabs past the list (which is /profit/gold itself). */
+/** Making gold's tabs past the gold list, each a path under /profit/gold. */
 export const GOLD_TABS = ['vendorcheck'] as const
 export type GoldTab = (typeof GOLD_TABS)[number]
 const isGoldTab = (key: string): key is GoldTab => (GOLD_TABS as readonly string[]).includes(key)
-/** The strategy pages from before the tabs, each now part of the list. */
-const OLD_STRATEGIES: ReadonlySet<string> = new Set(['craft', 'process', 'vendor', 'held'])
+/** The strategy pages that came before the two tabs: their paths go to the gold list. */
+const OLD_STRATEGIES: ReadonlySet<string> = new Set(['craft', 'process', 'vendor', 'held', 'disenchant'])
 
 /** Lower-case words joined by dashes: "Classic Beta PvE" is "classic-beta-pve", "First Aid" "first-aid". */
 const slug = (text: string) =>
@@ -49,8 +49,6 @@ export function parseProfitPath(pathname: string): ProfitView | null {
   const [first, ...rest] = parts
   if (first === undefined) return { kind: 'start' }
   if (first === 'gold' && rest.length === 0) return { kind: 'gold' }
-  if (first === 'gold' && rest.length === 1 && rest[0] === 'disenchant')
-    return { kind: 'moved', to: '/profit/gold?exit=disenchant' }
   if (first === 'gold' && rest.length === 1 && OLD_STRATEGIES.has(rest[0] ?? '')) return { kind: 'moved', to: '/profit/gold' }
   if (first === 'gold' && rest.length === 1 && isGoldTab(rest[0] ?? '')) return { kind: 'gold', tab: rest[0] as GoldTab }
   if (first === 'vendorcheck' && rest.length === 0) return { kind: 'moved', to: '/profit/gold/vendorcheck' }

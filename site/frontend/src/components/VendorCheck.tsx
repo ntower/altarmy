@@ -106,9 +106,9 @@ function FilterGroup({
 }
 
 /**
- * The vendor check (/profit/gold/vendorcheck, making gold's second tab): what the selected realm's auction house
- * lists, its cheapest listing beside what a vendor pays for it and how far apart they are, so items sold under their
- * vendor price come first and the rest follow by how close they come to it. The server
+ * The vendor check (/profit/gold/vendorcheck, making gold's second tab): what the selected realm's auction house lists, its
+ * cheapest listing beside what a vendor pays for it and how far apart they are, so items sold under their vendor
+ * price come first and the rest follow by how close they come to it. The server
  * filters, sorts and pages (`/api/vendorcheck`, 50 a page): checkboxes leave item types and qualities out
  * (remembered in localStorage), and the headers sort (a number largest first on the first click, text A first and
  * the percent from the vendor price smallest first, as it starts; another click reverses it). A change of filter or sort goes back to the first page. A row clicked opens into its
@@ -163,13 +163,11 @@ export function VendorCheck() {
 
   return (
     <Stack gap="md">
-      <div>
-        <Text c="dimmed">
-          {house
-            ? `What the auction house on ${house} lists, beside what a vendor pays for it.`
-            : 'Select a realm on the Profit page first.'}
-        </Text>
-      </div>
+      <Text c="dimmed">
+        {house
+          ? `What the auction house on ${house} lists, beside what a vendor pays for it: anything under it is a free buy and vendor.`
+          : 'Select a realm on the Profit page first.'}
+      </Text>
       {data.listed === 0 ? (
         <Text>No scan of this realm yet.</Text>
       ) : (

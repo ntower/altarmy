@@ -52,6 +52,36 @@ export function floodCheck(
   }))
 }
 
+/** What playing it safe makes for the session, and how (`vendor`, `disenchant`, or `convert`: an essence conversion's
+ * materials sell), from `RankResult.safe_profit`; null when neither a vendor nor disenchanting is open to it. */
+export function safeProfit(r: Pick<RankResult, 'safe_profit' | 'safe_exit'>): { kind: string; profit: number } | null {
+  return r.safe_profit == null ? null : { kind: r.safe_exit ?? '', profit: r.safe_profit }
+}
+
+/** What the auction house makes for the session, counting only the units its market has shown it takes (the rest
+ * at the best other exit: `RankResult.ah_profit`); null when it can't be sold there. */
+export const ahProfit = (r: Pick<RankResult, 'ah_profit'>): number | null => r.ah_profit ?? null
+
+/** How the auction house's figure was counted: `counted` of the `made` units at `price` each, the rest the safe way
+ * (`restKind`); `allSold` is what it would make if every unit sold there. Null when it can't be sold there. */
+export function ahCount(
+  r: Pick<
+    RankResult,
+    'ah_profit' | 'ah_excess_units' | 'sell_options' | 'exits' | 'output_item_id' | 'output_count' | 'crafts' | 'bonus_output'
+  >,
+  items: ItemMap,
+): { counted: number; made: number; price: number | null; restKind: string | null; allSold: number | null } | null {
+  if (r.ah_profit == null) return null
+  const made = Math.round(unitsMade(r))
+  return {
+    counted: Math.max(0, made - r.ah_excess_units),
+    made,
+    price: items[r.output_item_id]?.ah_sell_price ?? null,
+    restKind: r.ah_excess_units > 0 ? (fallback(r)?.kind ?? null) : null,
+    allSold: r.sell_options.find((o) => o.kind === 'ah')?.profit ?? null,
+  }
+}
+
 /** The line under the auction house's figure: how many the market takes of those the session makes when that is
  * fewer (`warn` when under half, or none), else how many are listed and how many the session adds. */
 export function depthNote(

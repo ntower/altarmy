@@ -181,6 +181,14 @@ export function SessionDetails({
               <MarketSummary result={shown} list={marketState.list} items={shownItems} mode="gold" />
             </Accordion.Control>
             <Accordion.Panel>
+              {result.process && (
+                // a processing recipe: what its inputs bring sold as they are (the row's own numbers, not a re-plan's)
+                <Text size="sm" mb="xs">
+                  Sell inputs instead: <Money copper={result.process.inputs_value} />;{' '}
+                  {result.process.gain < 0 ? 'processing loses ' : 'processing adds '}
+                  <Money copper={Math.abs(result.process.gain)} />.
+                </Text>
+              )}
               <MarketSection
                 result={shown}
                 items={shownItems}

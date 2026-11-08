@@ -3,6 +3,8 @@ import type { RankResult } from '../api/client'
 import { linen, makeItem } from '../test/items'
 import { robeResult } from '../test/results'
 import {
+  ahCount,
+  ahProfit,
   breakEven,
   countedOn,
   depthNote,
@@ -11,6 +13,7 @@ import {
   floodCheck,
   floor,
   materialSales,
+  safeProfit,
 } from './selling'
 
 // the robe: costs 300 to make one, a vendor pays 500, the AH nets 475 of a 500 listing
@@ -74,6 +77,12 @@ describe('the two ways to sell', () => {
   }
   const listed = { 3: makeItem({ id: 3, name: 'Green Robe', ah_quantity: 4, ah_sell_price: 1000 }) }
 
+  it('plays it safe as the server says, if it can', () => {
+    expect(safeProfit(ten)).toEqual({ kind: 'vendor', profit: 2000 })
+    expect(safeProfit({ safe_profit: null, safe_exit: null })).toBeNull()
+    expect(ahProfit({ ah_profit: null })).toBeNull()
+  })
+
   it('says how many the market takes, or how many are listed', () => {
     expect(depthNote(ten, listed)).toEqual({ text: 'market takes ~3 of 10', warn: true })
     expect(depthNote({ ...ten, ah_excess_units: 4 }, listed)).toEqual({ text: 'market takes ~6 of 10', warn: false })
@@ -81,6 +90,12 @@ describe('the two ways to sell', () => {
     expect(depthNote({ ...ten, ah_excess_units: 0 }, listed)).toEqual({ text: '4 listed · you add 10', warn: false })
     expect(depthNote({ ...ten, ah_excess_units: 0 }, {})).toBeNull()
     expect(depthNote({ ...ten, ah_profit: null }, listed)).toBeNull()
+  })
+
+  it('says how the auction house figure was counted', () => {
+    expect(ahCount(ten, listed)).toEqual({ counted: 3, made: 10, price: 1000, restKind: 'vendor', allSold: 6500 })
+    expect(ahCount({ ...ten, ah_excess_units: 0 }, listed)?.restKind).toBeNull()
+    expect(ahCount({ ...ten, ah_profit: null }, listed)).toBeNull()
   })
 
   it("shares a disenchant's sale among its materials by what each is worth, adding up", () => {

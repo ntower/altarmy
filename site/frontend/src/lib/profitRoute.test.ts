@@ -20,6 +20,10 @@ describe('the Profit page paths', () => {
     expect(parseProfitPath('/profit/skill')).toEqual({ kind: 'skill' })
     expect(parseProfitPath('/profit/vendorcheck')).toEqual({ kind: 'moved', to: '/profit/gold/vendorcheck' })
     expect(parseProfitPath('/profit/gold/vendorcheck')).toEqual({ kind: 'gold', tab: 'vendorcheck' })
+    // the strategy pages from before the two tabs: the gold list
+    for (const old of ['craft', 'process', 'vendor', 'held', 'disenchant']) {
+      expect(parseProfitPath(`/profit/gold/${old}`)).toEqual({ kind: 'moved', to: '/profit/gold' })
+    }
     expect(parseProfitPath('/profit/skill/dreamscythe-horde/Frell/first-aid')).toEqual({
       kind: 'run',
       realm: 'dreamscythe-horde',
@@ -53,6 +57,7 @@ describe('the Profit page paths', () => {
     const views: ProfitView[] = [
       { kind: 'start' },
       { kind: 'gold' },
+      { kind: 'gold', tab: 'vendorcheck' },
       { kind: 'skill' },
       { kind: 'run', realm: 'classic-beta-pve-horde', character: 'Ëlf Guy', profession: 'tailoring' },
       { kind: 'hypothetical', realm: 'classic-beta-pve-horde', profession: 'first-aid', skill: 120 },
