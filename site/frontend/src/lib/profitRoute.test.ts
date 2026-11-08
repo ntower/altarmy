@@ -19,7 +19,7 @@ describe('the Profit page paths', () => {
     expect(parseProfitPath('/profit/gold')).toEqual({ kind: 'gold' })
     expect(parseProfitPath('/profit/skill')).toEqual({ kind: 'skill' })
     expect(parseProfitPath('/profit/vendorcheck')).toEqual({ kind: 'moved', to: '/profit/gold/vendorcheck' })
-    expect(parseProfitPath('/profit/gold/vendorcheck')).toEqual({ kind: 'gold', strategy: 'vendorcheck' })
+    expect(parseProfitPath('/profit/gold/vendorcheck')).toEqual({ kind: 'gold', tab: 'vendorcheck' })
     expect(parseProfitPath('/profit/skill/dreamscythe-horde/Frell/first-aid')).toEqual({
       kind: 'run',
       realm: 'dreamscythe-horde',

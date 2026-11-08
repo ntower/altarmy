@@ -6059,25 +6059,25 @@
             }
           },
           {
-            "description": "Process trade goods: only the recipes that turn a trade good into another (`processing`), each weighed against selling its inputs (`RankResult.process`)",
+            "description": "only the recipes that turn a trade good into another (`processing`); those recipes are weighed against selling their inputs (`RankResult.process`) either way",
             "in": "query",
             "name": "process",
             "required": false,
             "schema": {
               "default": false,
-              "description": "Process trade goods: only the recipes that turn a trade good into another (`processing`), each weighed against selling its inputs (`RankResult.process`)",
+              "description": "only the recipes that turn a trade good into another (`processing`); those recipes are weighed against selling their inputs (`RankResult.process`) either way",
               "title": "Process",
               "type": "boolean"
             }
           },
           {
-            "description": "with only the disenchant exit: the days the materials should sell within, which the Disenchant budget shares out (`budget_casts`)",
+            "description": "with the disenchant exit: the days the materials should sell within, which the Disenchant budget shares out (`budget_casts`; with sort=per_day it caps a disenchant's day)",
             "in": "query",
             "name": "sell_days",
             "required": false,
             "schema": {
               "default": 1,
-              "description": "with only the disenchant exit: the days the materials should sell within, which the Disenchant budget shares out (`budget_casts`)",
+              "description": "with the disenchant exit: the days the materials should sell within, which the Disenchant budget shares out (`budget_casts`; with sort=per_day it caps a disenchant's day)",
               "maximum": 7,
               "minimum": 1,
               "title": "Sell Days",
@@ -6264,13 +6264,13 @@
             }
           },
           {
-            "description": "profit per session (the batch; all_sell is the same), per hour of play, cheapest skill point, likely profit (`likely_profit`), ROI, least spent, profit per unit made, the profit selling it all safely (a vendor or disenchanting: `safe`) or on the auction house (`ah`), those it isn't open to last, or what a day makes (`per_day`, Craft and sell)",
+            "description": "profit per session (the batch; all_sell is the same), per hour of play, cheapest skill point, likely profit (`likely_profit`), ROI, least spent, profit per unit made, the profit selling it all safely (a vendor or disenchanting: `safe`) or on the auction house (`ah`), those it isn't open to last, what a day makes (`per_day`, the gold list) or what a craft likely makes (`likely_each`, the gold list's Each)",
             "in": "query",
             "name": "sort",
             "required": false,
             "schema": {
               "default": "profit",
-              "description": "profit per session (the batch; all_sell is the same), per hour of play, cheapest skill point, likely profit (`likely_profit`), ROI, least spent, profit per unit made, the profit selling it all safely (a vendor or disenchanting: `safe`) or on the auction house (`ah`), those it isn't open to last, or what a day makes (`per_day`, Craft and sell)",
+              "description": "profit per session (the batch; all_sell is the same), per hour of play, cheapest skill point, likely profit (`likely_profit`), ROI, least spent, profit per unit made, the profit selling it all safely (a vendor or disenchanting: `safe`) or on the auction house (`ah`), those it isn't open to last, what a day makes (`per_day`, the gold list) or what a craft likely makes (`likely_each`, the gold list's Each)",
               "enum": [
                 "profit",
                 "rate",
@@ -6282,7 +6282,8 @@
                 "profit_each",
                 "safe",
                 "ah",
-                "per_day"
+                "per_day",
+                "likely_each"
               ],
               "title": "Sort",
               "type": "string"

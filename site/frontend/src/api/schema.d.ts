@@ -3271,9 +3271,9 @@ export interface operations {
                 arcane_salvager?: boolean;
                 /** @description the enchanter (one of the characters) who disenchants everything (default: the best) */
                 disenchanter?: string | null;
-                /** @description Process trade goods: only the recipes that turn a trade good into another (`processing`), each weighed against selling its inputs (`RankResult.process`) */
+                /** @description only the recipes that turn a trade good into another (`processing`); those recipes are weighed against selling their inputs (`RankResult.process`) either way */
                 process?: boolean;
-                /** @description with only the disenchant exit: the days the materials should sell within, which the Disenchant budget shares out (`budget_casts`) */
+                /** @description with the disenchant exit: the days the materials should sell within, which the Disenchant budget shares out (`budget_casts`; with sort=per_day it caps a disenchant's day) */
                 sell_days?: number;
                 /** @description copper */
                 min_cost?: number | null;
@@ -3293,8 +3293,8 @@ export interface operations {
                 professions?: string[] | null;
                 /** @description only results of these kinds (default: every one) */
                 kinds?: ("craft" | "convert" | "flip" | "enchant")[] | null;
-                /** @description profit per session (the batch; all_sell is the same), per hour of play, cheapest skill point, likely profit (`likely_profit`), ROI, least spent, profit per unit made, the profit selling it all safely (a vendor or disenchanting: `safe`) or on the auction house (`ah`), those it isn't open to last, or what a day makes (`per_day`, Craft and sell) */
-                sort?: "profit" | "rate" | "skill" | "likely" | "all_sell" | "roi" | "spend" | "profit_each" | "safe" | "ah" | "per_day";
+                /** @description profit per session (the batch; all_sell is the same), per hour of play, cheapest skill point, likely profit (`likely_profit`), ROI, least spent, profit per unit made, the profit selling it all safely (a vendor or disenchanting: `safe`) or on the auction house (`ah`), those it isn't open to last, what a day makes (`per_day`, the gold list) or what a craft likely makes (`likely_each`, the gold list's Each) */
+                sort?: "profit" | "rate" | "skill" | "likely" | "all_sell" | "roi" | "spend" | "profit_each" | "safe" | "ah" | "per_day" | "likely_each";
                 /** @description `safe` and `ah` only: best first, or worst first (those not open to it last) */
                 order?: "desc" | "asc";
                 /** @description items the user gathers: had for what selling them would make, instead of bought */

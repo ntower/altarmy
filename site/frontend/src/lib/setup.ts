@@ -2,7 +2,6 @@ import { z } from 'zod'
 import type { CharacterGroup, Selection } from '../api/client'
 import type { Exit, Unlearned } from '../api/queries'
 import { realmLabel } from './realms'
-import type { GoldStrategy } from './profitRoute'
 import { isStored, writeStored } from './storage'
 import { craftingTalents, type CraftingTalent } from './talents'
 
@@ -258,8 +257,8 @@ export function presetsFor(aim: Aim): Presets {
  * never overwrites the other's. `legacySearchKey` is where every filter was kept before, read while an aim has none.
  */
 export const searchKey = (scope: SearchScope, name: string) => `altarmy.search.${scope}.${name}`
-/** Whose filters a search keeps: an aim's, or a gold strategy's page's. */
-export type SearchScope = Aim | GoldStrategy
+/** Whose filters a search keeps: an aim's. */
+export type SearchScope = Aim
 export const legacySearchKey = (name: string) => `altarmy.search.${name}`
 
 /**

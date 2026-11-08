@@ -970,6 +970,7 @@ def craft_sale(
     market: Market,
     version: GameVersion,
     copied: int = 0,
+    casts: int | None = None,
 ) -> CraftSale:
     """`r` as the Craft and sell page shows it (see `CraftSale`). An AH sale posts at most `POST_SHARE` of
     a day's units seen bought (`prices.demand`), and `full` when the units listed at or under its price
@@ -977,7 +978,8 @@ def craft_sale(
     else pays for is `waiting`; one that makes less than a craft's time is worth (`engine.craft_value`) is
     `pennies`; one that loses is `losing`. While its AH sale counts on a launch gate (a house's first
     days), it posts at most `POST_SHARE` of the auctions that ended over the last two: `launch_prices`. What
-    it posts is shared with the `copied` others who copied its steps lately."""
+    it posts is shared with the `copied` others who copied its steps lately. A disenchant sale's day is the
+    `casts` the Disenchant budget leaves it (`disenchant_budget`) when given, else the whole session."""
     output = r.recipe.output_item_id
     item = market.items.get(output)
     sell_price = market.sell_prices.get(output)
@@ -1004,7 +1006,11 @@ def craft_sale(
         )
         if group == "paying" and r.recipe.is_flip:
             group = "buy_to_disenchant"
-        return CraftSale(each, made.profit, group, no_vendor_floor=no_floor)
+        per_day = made.profit
+        if casts is not None and made.exit == "disenchant" and made.profit > 0:
+            units = max(1, crafts * r.recipe.output_count)
+            per_day = made.profit * min(casts, units) // units
+        return CraftSale(each, per_day, group, no_vendor_floor=no_floor)
     per_unit = each / max(1, r.recipe.output_count)
     a_day = prices.demand(listing, days=1) or 0.0
     stack = prices.best_stack(listing)
@@ -1290,13 +1296,19 @@ def by_per_day(
     market: Market,
     version: GameVersion,
     copied: Mapping[int, int] | None = None,
+    budget: Mapping[int, Budget] | None = None,
 ) -> list[Result]:
-    """Best first by what a day makes (`craft_sale`, with each recipe's `copied`)."""
+    """Best first by what a day makes (`craft_sale`, with each recipe's `copied` and, from the Disenchant
+    `budget`, its casts)."""
     copied = copied or {}
-    return sorted(
-        results,
-        key=lambda r: -craft_sale(r, listings, market, version, copied.get(r.recipe.id, 0)).per_day,
-    )
+    budget = budget or {}
+
+    def per_day(r: Result) -> int:
+        b = budget.get(r.recipe.id)
+        casts = None if b is None else b.casts
+        return craft_sale(r, listings, market, version, copied.get(r.recipe.id, 0), casts).per_day
+
+    return sorted(results, key=lambda r: -per_day(r))
 
 
 def by_likely(
@@ -1305,6 +1317,18 @@ def by_likely(
     """`results` by likely profit (`likely`), best first; ties keep their order."""
     worth = {
         id(r): likely(r, listings, market.sell_prices.get(r.recipe.output_item_id)).profit for r in results
+    }
+    return sorted(results, key=lambda r: -worth[id(r)])
+
+
+def by_likely_each(
+    results: Iterable[Result], listings: Mapping[int, prices.Listing], market: Market
+) -> list[Result]:
+    """`results` by what a craft likely makes (`likely` over the crafts: `CraftSale.each`), best first; ties
+    keep their order."""
+    worth = {
+        id(r): likely(r, listings, market.sell_prices.get(r.recipe.output_item_id)).profit // max(1, r.crafts)
+        for r in results
     }
     return sorted(results, key=lambda r: -worth[id(r)])
 

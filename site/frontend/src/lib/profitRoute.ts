@@ -6,16 +6,16 @@ import { type Holder, type ProfessionChoice, professionsOf, professionsToImagine
  * /profit/skill (which profession), /profit/skill/<realm>/<character>/<profession> (one character skilling up one
  * profession: a link to it opens exactly that, switching the realm) and /profit/skill/<realm>/<profession>/<skill>
  * (a character nobody uploaded skilling up one profession from that skill; the last part is all digits, which a
- * profession's never is). With the strategy picker (`STRATEGY_PICKER`), /profit/gold/<strategy> is one way to make
- * gold (`lib/strategies.ts`); /profit/gold/disenchant, from before disenchanting became a filter, goes to
- * /profit/gold/craft?exit=disenchant, and /profit/vendorcheck, from before the vendor check was a strategy, to
- * /profit/gold/vendorcheck.
+ * profession's never is). Making gold has two tabs: /profit/gold, every way to make gold in one ranked list, and
+ * /profit/gold/vendorcheck, what is listed at or near what a vendor pays. The strategy pages from before the tabs
+ * (/profit/gold/craft, /process, /vendor, /held) go to the list, /profit/gold/disenchant to the list's Disenchant
+ * filter, and /profit/vendorcheck to the vendor check's tab.
  */
 
 export type ProfitView =
   | { kind: 'start' }
-  /** without a `strategy`, the picker (or, without `STRATEGY_PICKER`, the one gold list) */
-  | { kind: 'gold'; strategy?: GoldStrategy }
+  /** without a `tab`, the list of ways to make gold */
+  | { kind: 'gold'; tab?: GoldTab }
   | { kind: 'skill' }
   /** `realm` and `profession` as slugs (`realmSlug`, `professionSlug`), `character` as named */
   | { kind: 'run'; realm: string; character: string; profession: string }
@@ -24,10 +24,12 @@ export type ProfitView =
   /** a path kept for old links: the page now at `to` */
   | { kind: 'moved'; to: string }
 
-/** The ways to make gold that have a page (`lib/strategies.ts`). */
-export const GOLD_STRATEGY_KEYS = ['craft', 'process', 'vendor', 'vendorcheck', 'held'] as const
-export type GoldStrategy = (typeof GOLD_STRATEGY_KEYS)[number]
-const isStrategy = (key: string): key is GoldStrategy => (GOLD_STRATEGY_KEYS as readonly string[]).includes(key)
+/** Making gold's tabs past the list (which is /profit/gold itself). */
+export const GOLD_TABS = ['vendorcheck'] as const
+export type GoldTab = (typeof GOLD_TABS)[number]
+const isGoldTab = (key: string): key is GoldTab => (GOLD_TABS as readonly string[]).includes(key)
+/** The strategy pages from before the tabs, each now part of the list. */
+const OLD_STRATEGIES: ReadonlySet<string> = new Set(['craft', 'process', 'vendor', 'held'])
 
 /** Lower-case words joined by dashes: "Classic Beta PvE" is "classic-beta-pve", "First Aid" "first-aid". */
 const slug = (text: string) =>
@@ -48,8 +50,9 @@ export function parseProfitPath(pathname: string): ProfitView | null {
   if (first === undefined) return { kind: 'start' }
   if (first === 'gold' && rest.length === 0) return { kind: 'gold' }
   if (first === 'gold' && rest.length === 1 && rest[0] === 'disenchant')
-    return { kind: 'moved', to: '/profit/gold/craft?exit=disenchant' }
-  if (first === 'gold' && rest.length === 1 && isStrategy(rest[0] ?? '')) return { kind: 'gold', strategy: rest[0] as GoldStrategy }
+    return { kind: 'moved', to: '/profit/gold?exit=disenchant' }
+  if (first === 'gold' && rest.length === 1 && OLD_STRATEGIES.has(rest[0] ?? '')) return { kind: 'moved', to: '/profit/gold' }
+  if (first === 'gold' && rest.length === 1 && isGoldTab(rest[0] ?? '')) return { kind: 'gold', tab: rest[0] as GoldTab }
   if (first === 'vendorcheck' && rest.length === 0) return { kind: 'moved', to: '/profit/gold/vendorcheck' }
   if (first !== 'skill') return null
   if (rest.length === 0) return { kind: 'skill' }
@@ -72,7 +75,7 @@ export function profitPath(view: ProfitView): string {
     case 'start':
       return '/profit'
     case 'gold':
-      return view.strategy ? `/profit/gold/${view.strategy}` : '/profit/gold'
+      return view.tab ? `/profit/gold/${view.tab}` : '/profit/gold'
     case 'moved':
       return view.to
     case 'skill':

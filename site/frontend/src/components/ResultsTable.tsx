@@ -1,21 +1,13 @@
-import { Fragment, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { ActionIcon, Menu, Table, Text, Tooltip, UnstyledButton } from '@mantine/core'
+import { Fragment, useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { ActionIcon, Badge, Menu, Table, Text, Tooltip, UnstyledButton } from '@mantine/core'
 import { AnimatePresence, motion } from 'motion/react'
 import type { ItemMap, Learn, RankResult } from '../api/client'
 import { useEvaluations, type EvaluateParams } from '../api/queries'
 import { choose, type Choices, type PlanEditing } from '../lib/choices'
 import { confidenceTitle } from '../lib/confidence'
 import { formatRoi } from '../lib/money'
-import { EXIT_SHORT } from '../lib/exits'
-import { ahCount, ahProfit, depthNote, safeProfit } from '../lib/selling'
 import { craftUntil, perPoint } from '../lib/skill'
-import {
-  byGroup,
-  byProcessGroup,
-  CRAFT_GROUP_LABELS,
-  PROCESS_GROUP_LABELS,
-  PROCESS_GROUPS,
-} from '../lib/strategies'
+import { byGroup, NOT_WORTH_SHORT, PROCESS_GROUP_LABELS, type ProcessGroup, WORTH_GROUPS } from '../lib/strategies'
 import { CharacterClasses } from '../lib/characterClasses'
 import { CharacterName } from './CharacterName'
 import { DisenchantLabel, ItemLink, RecipeTooltip } from './ItemTooltip'
@@ -34,36 +26,24 @@ const columnsFor = (rankBy: RankBy | undefined): string[] =>
   rankBy === 'skill'
     ? ['Recipe', PER_POINT, CRAFT_UNTIL, 'Investment', 'Learn']
     : rankBy === 'gold'
-      ? ['', 'Recipe', SAFE, AUCTION]
-      : rankBy === 'craft'
-        ? ['', 'Craft', WHAT_TO_DO, EACH]
-        : rankBy === 'process'
-          ? ['', 'Process', BUY_UP_TO, INPUTS_INSTEAD, EACH]
-          : ['', PROFIT, 'Investment', 'ROI', 'Recipe', 'Crafter', 'Sell via']
-/** Craft and sell's columns: what to do with a craft, and what one likely makes. */
+      ? ['', 'What', WHAT_TO_DO, A_DAY, EACH]
+      : ['', PROFIT, 'Investment', 'ROI', 'Recipe', 'Crafter', 'Sell via']
+/** The gold list's columns: what to do, what a day of it makes, and what one makes. */
 const WHAT_TO_DO = 'What to do'
+const A_DAY = 'A day'
 const EACH = 'Each'
-/** Process trade goods' columns: the most the main input may cost, and what selling the inputs would bring. */
-const BUY_UP_TO = 'Buy up to'
-const INPUTS_INSTEAD = 'Sell inputs instead'
 /** How far a skill-up run goes: "110 (~17 crafts)". */
 const CRAFT_UNTIL = 'Craft until'
-/** A gold list's two ways to sell, side by side: playing it safe (the better of a vendor and disenchanting) and the
- * auction house, each the session's profit selling everything that way. */
-const SAFE = 'Safe profit'
-const AUCTION = 'Auction profit'
-/** The server's sort for each of them: a header click re-ranks the whole list, not just the rows loaded, best
- * first; another click on it, worst first, and so on. */
-export type GoldSort = 'safe' | 'ah' | 'likely'
-export type SortOrder = 'desc' | 'asc'
-const GOLD_SORT: Readonly<Record<string, GoldSort>> = { [SAFE]: 'safe', [AUCTION]: 'ah' }
+/** The gold list's server sorts, each picked by its header: what a day makes (the default), or what one makes. The
+ * server ranks the whole list, not just the rows loaded, best first. */
+export type GoldSort = 'per_day' | 'likely_each'
+const GOLD_SORT: Readonly<Record<string, GoldSort>> = { [A_DAY]: 'per_day', [EACH]: 'likely_each' }
 const GOLD_HEADER_TITLE: Readonly<Record<string, string>> = {
-  [SAFE]: 'Sell to a vendor, or disenchant and auction the materials: it always sells, and you are never left holding stock',
-  [AUCTION]:
-    'Sell on the auction house, counting only as many as its market has shown it takes (the rest the safe way). Often more, but less sure',
+  [A_DAY]: 'What doing it makes in a day: on the auction house, only as many as sell in a day; a vendor buys any number',
+  [EACH]: 'What one craft (or one item bought) makes',
 }
-/** A gold list's money columns: room for -999g 99s 99c and the line under it. */
-const GOLD_MONEY_WIDTH = 150
+/** The gold list's money columns: room for -999g 99s 99c and the line under it. */
+const GOLD_MONEY_WIDTH = 130
 /** Sell via column text per exit; unknown exits show as-is. */
 const EXIT_LABELS: Readonly<Record<string, string>> = {
   ah: 'Auction',
@@ -96,7 +76,7 @@ const NUMERIC_COLUMNS: ReadonlySet<string> = new Set(['Investment', PROFIT, 'ROI
 const MONEY_COLUMNS: ReadonlySet<string> = new Set(['Investment', PROFIT, PER_POINT])
 const MONEY_WIDTH = 110
 /** A gold list's first column: the ▸ and a flag or two, no wider. */
-const FLAGS_WIDTH = 56
+const FLAGS_WIDTH = 64
 /** Skilling up: each column's width (px), Learn taking what is left. Craft until is no wider than its text needs;
  * the room it would otherwise take goes to the money and the recipe, not to Learn. */
 const SKILL_WIDTHS: Readonly<Record<string, number>> = {
@@ -118,14 +98,12 @@ const COLUMN_HIDDEN: Readonly<Record<string, string | undefined>> = {
 }
 /** What the server ranks by here (the whole ranking, not just this page): profit per session, best first; the
  * cost of an expected skill point, cheapest first; or a gold list (sorted by the server: its headers don't sort). */
-export type RankBy = 'profit' | 'skill' | 'gold' | 'craft' | 'process'
+export type RankBy = 'profit' | 'skill' | 'gold'
 /** The column showing each ranking, and whether the server's order is largest first on it. */
 const RANK_COLUMN: Readonly<Record<RankBy, Sort | null>> = {
   profit: { column: PROFIT, descending: true },
   skill: { column: PER_POINT, descending: false },
-  gold: null,
-  craft: null, // by what a day makes, in its groups (`byGroup`)
-  process: null, // likewise, in its groups (`byProcessGroup`)
+  gold: null, // by the server's gold sort, what is worth doing now first
 }
 
 type Sort = { column: string; descending: boolean }
@@ -226,182 +204,6 @@ function RecipeLine({ result: r }: { result: RankResult }) {
 /** What needs no profession, in the recipe line's place of one. */
 const KIND_SHORT: Readonly<Record<string, string>> = { convert: 'Essence conversion', flip: 'Buy and disenchant' }
 
-/** How playing it safe sells, in the small text under its figure. */
-const SAFE_NOTES: Readonly<Record<string, string>> = {
-  vendor: 'vendor',
-  disenchant: 'disenchant',
-  convert: 'essences sell',
-}
-
-/** A gold row's two profits, which pays more, and what to say under and about each. */
-type TwoWays = {
-  safe: number | null
-  ah: number | null
-  /** the better of the two (safe on a tie); none when neither is open to the row */
-  primary: 'safe' | 'ah' | null
-  safeNote: string | null
-  /** what a disenchant yields, for the safe figure's tooltip */
-  safeWhy: string | null
-  ahNote: { text: string; warn: boolean } | null
-}
-
-function twoWays(r: RankResult, items: ItemMap): TwoWays {
-  const safe = safeProfit(r)
-  const ah = ahProfit(r)
-  const primary =
-    safe === null && ah === null ? null : ah === null || (safe !== null && safe.profit >= ah) ? 'safe' : 'ah'
-  const materials =
-    safe?.kind === 'disenchant'
-      ? (r.exits.find((e) => e.kind === 'disenchant')?.materials ?? [])
-          .toSorted((a, b) => (b.value ?? 0) - (a.value ?? 0))
-          .map((m) => m.name)
-      : []
-  return {
-    safe: safe?.profit ?? null,
-    ah,
-    primary,
-    safeNote: safe && (SAFE_NOTES[safe.kind] ?? safe.kind),
-    safeWhy: materials.length
-      ? `Disenchants into ${materials.join(', ')}, valued at what they sell for on the auction house`
-      : null,
-    ahNote: depthNote(r, items),
-  }
-}
-
-/** How the auction house's figure was counted, for its tooltip. */
-function AhWhy({ result: r, items }: { result: RankResult; items: ItemMap }) {
-  const count = ahCount(r, items)
-  if (!count) return null
-  const at = count.price != null && (
-    <>
-      {' '}
-      at <Money copper={count.price} /> each
-    </>
-  )
-  if (count.counted === count.made)
-    return (
-      <>
-        Counts all {count.made} sold on the auction house{at}, after its cut.
-      </>
-    )
-  const rest = count.restKind ? `go to ${(EXIT_SHORT[count.restKind] ?? count.restKind).toLowerCase()}` : 'are worth nothing'
-  return (
-    <>
-      Counts {count.counted} of {count.made} sold on the auction house{at}: as many as its market has shown it takes.
-      The other {count.made - count.counted} {rest}.
-      {count.allSold != null && (
-        <>
-          {' '}
-          If all {count.made} sold there: <Money copper={count.allSold} signed />.
-        </>
-      )}
-    </>
-  )
-}
-
-/** One profit: the better of a row's two in bold, the other muted (a loss stays red); a dash when the row can't sell
- * that way. */
-function Profit({
-  profit,
-  primary,
-  padded = false,
-}: {
-  profit: number | null
-  primary: boolean
-  /** lined up in a column */
-  padded?: boolean
-}) {
-  return profit === null ? (
-    <Text span c="dimmed" title="Can't be sold this way">
-      –
-    </Text>
-  ) : (
-    <Text
-      span
-      ff="monospace"
-      fw={primary ? 700 : 400}
-      c={profit < 0 ? 'red' : primary ? 'teal' : 'dimmed'}
-      className={primary ? classes.figure : `${classes.figure} ${classes.secondary}`}
-    >
-      <Money copper={profit} padded={padded} />
-    </Text>
-  )
-}
-
-/** A figure with its explanation on hover, focus or tap, when there is one. */
-function Explained({ why, children }: { why: ReactNode; children: ReactNode }) {
-  return why ? (
-    <Tooltip label={why} multiline maw={300} withArrow openDelay={200}>
-      <span className={classes.explained}>{children}</span>
-    </Tooltip>
-  ) : (
-    children
-  )
-}
-
-/** The line under the auction house's figure; orange when the market takes under half of what the session makes. */
-function AhNote({ note }: { note: { text: string; warn: boolean } }) {
-  return (
-    <Text span inherit c={note.warn ? 'orange' : undefined}>
-      {note.text}
-    </Text>
-  )
-}
-
-/** A gold row's two profit cells, each with its note in small text under it (under the recipe, below `xs`). */
-function GoldCells({ ways, result, items }: { ways: TwoWays; result: RankResult; items: ItemMap }) {
-  return (
-    <>
-      <Table.Td ta="right" className={classes.hideBelowXs}>
-        <Explained why={ways.safeWhy}>
-          <Profit profit={ways.safe} primary={ways.primary === 'safe'} padded />
-        </Explained>
-        {ways.safeNote && (
-          <Text size="xs" c="dimmed" className={classes.cellNote}>
-            {ways.safeNote}
-          </Text>
-        )}
-      </Table.Td>
-      <Table.Td ta="right" className={classes.hideBelowXs}>
-        <Explained why={ways.ah === null ? null : <AhWhy result={result} items={items} />}>
-          <Profit profit={ways.ah} primary={ways.primary === 'ah'} padded />
-        </Explained>
-        {ways.ahNote && (
-          <Text size="xs" c="dimmed" className={classes.cellNote}>
-            <AhNote note={ways.ahNote} />
-          </Text>
-        )}
-      </Table.Td>
-    </>
-  )
-}
-
-/** Below `xs`, where the two columns give way: both profits on one line under the recipe, the better in bold, and
- * the auction house's note on its own line. */
-function PhoneProfits({ ways }: { ways: TwoWays }) {
-  return (
-    <div className={classes.onlyBelowXs}>
-      <span className={`${classes.figure} ${classes.phoneSafe}`}>
-        <Text span size="xs" c="dimmed">
-          Safe
-        </Text>{' '}
-        <Profit profit={ways.safe} primary={ways.primary === 'safe'} />
-      </span>{' '}
-      <span className={classes.figure}>
-        <Text span size="xs" c="dimmed">
-          AH
-        </Text>{' '}
-        <Profit profit={ways.ah} primary={ways.primary === 'ah'} />
-      </span>
-      {ways.ahNote && (
-        <Text size="xs" c="dimmed">
-          <AhNote note={ways.ahNote} />
-        </Text>
-      )}
-    </div>
-  )
-}
-
 /** What to do with a craft, in words: post it (how many, in what stacks, at what price) or sell it another way;
  * and under it what that rests on. */
 function craftWhat(r: RankResult, items: ItemMap): { action: ReactNode; basis: string | null } {
@@ -452,74 +254,111 @@ function craftWhat(r: RankResult, items: ItemMap): { action: ReactNode; basis: s
   }
   return {
     action: verb[r.likely_exit] ?? exitLabel(r.likely_exit),
-    basis: r.group === 'waiting' ? "AH: not proven here yet" : r.group === 'full' ? 'AH: more listed than sells a day' : null,
+    basis:
+      r.group === 'waiting'
+        ? 'AH: not proven here yet'
+        : r.group === 'full'
+          ? 'AH: more listed than sells a day'
+          : r.group === 'pennies'
+            ? "less than a craft's time is worth"
+            : r.group === 'losing'
+              ? 'loses money: craft to order only'
+              : null,
   }
 }
 
-/** A Process trade goods row's cells: the most its main input may cost, what selling the inputs as they are would
- * bring (and what processing adds), and what a craft likely makes. */
-function ProcessCells({ result: r, items }: { result: RankResult; items: ItemMap }) {
+/** What processing does, by its group: "smelting adds 9s". */
+const PROCESS_VERB: Readonly<Record<ProcessGroup, string>> = {
+  smelt: 'smelting',
+  leather: 'tanning',
+  cloth: 'weaving',
+  essence: 'combining',
+}
+
+/** A processing row's note: what processing adds over selling the inputs as they are, and the most its main input
+ * may cost. */
+function ProcessNote({ result: r, items }: { result: RankResult; items: ItemMap }) {
   const p = r.process
-  const main = p?.main_input != null ? items[p.main_input]?.name : undefined
+  if (!p) return null
+  const main = p.main_input != null ? items[p.main_input]?.name : undefined
+  return (
+    <Text size="xs" c={p.gain < 0 ? 'red' : 'dimmed'}>
+      {PROCESS_VERB[p.group]} {p.gain < 0 ? 'loses' : 'adds'} <Money copper={Math.abs(p.gain)} />
+      {p.buy_up_to != null && (
+        <>
+          {' · buy '}
+          {main ?? 'the input'} up to <Money copper={p.buy_up_to} /> each
+        </>
+      )}
+    </Text>
+  )
+}
+
+/** What to do with a gold row, in words, with what that rests on (and, processing, what it adds) under it: the list's
+ * What to do, and a top pick's lines. */
+export function WhatToDo({ result: r, items }: { result: RankResult; items: ItemMap }) {
+  const { action, basis } = craftWhat(r, items)
   return (
     <>
-      <Table.Td ta="right" ff="monospace">
-        {p?.buy_up_to != null ? <Money copper={p.buy_up_to} padded /> : '–'}
-        {main && (
-          <Text size="xs" c="dimmed">
-            per {main}
-          </Text>
-        )}
-      </Table.Td>
-      <Table.Td ta="right" ff="monospace">
-        {p ? <Money copper={p.inputs_value} padded /> : '–'}
-        {p && (
-          <Text size="xs" c={p.gain < 0 ? 'red' : 'dimmed'}>
-            {p.gain < 0 ? 'processing loses ' : 'processing adds '}
-            <Money copper={Math.abs(p.gain)} />
-          </Text>
-        )}
-      </Table.Td>
-      <Table.Td ta="right" ff="monospace" c={r.likely_each < 0 ? 'red' : 'teal'}>
-        <Money copper={r.likely_each} padded />
-        {r.post_units ? (
-          <Text size="xs" c="dimmed">
-            x{r.post_units} = <Money copper={r.per_day} />
-          </Text>
-        ) : null}
-      </Table.Td>
+      <Text size="sm">{action}</Text>
+      {basis && (
+        <Text size="xs" c="dimmed">
+          {basis}
+        </Text>
+      )}
+      <ProcessNote result={r} items={items} />
     </>
   )
 }
 
-/** A Craft and sell row's two cells: what to do, and what a craft likely makes (with a day's posts under it). */
-function CraftCells({ result: r, items }: { result: RankResult; items: ItemMap }) {
-  const { action, basis } = craftWhat(r, items)
+/** The gold list's cells: what to do (and what that rests on), what a day of it makes, and what one makes. */
+function GoldCells({ result: r, items }: { result: RankResult; items: ItemMap }) {
   return (
     <>
       <Table.Td>
-        <Text size="sm">{action}</Text>
-        {basis && (
-          <Text size="xs" c="dimmed">
-            {basis}
-          </Text>
-        )}
+        <WhatToDo result={r} items={items} />
       </Table.Td>
-      <Table.Td ta="right" ff="monospace" c={r.likely_each < 0 ? 'red' : 'teal'}>
-        <Money copper={r.likely_each} padded />
-        {r.post_units ? (
-          <Text size="xs" c="dimmed">
-            x{r.post_units} = <Money copper={r.per_day} />
-          </Text>
-        ) : null}
+      <Table.Td ta="right" ff="monospace">
+        <Text span inherit fw={700} c={r.per_day < 0 ? 'red' : 'teal'}>
+          <Money copper={r.per_day} padded />
+        </Text>
         {r.deposit_est ? (
           <Text size="xs" c="dimmed" title="Estimated until the deposit is checked in game">
             less <Money copper={r.deposit_est} /> deposit
           </Text>
         ) : null}
       </Table.Td>
+      <Table.Td ta="right" ff="monospace" c={r.likely_each < 0 ? 'red' : 'dimmed'} className={classes.hideBelowXs}>
+        <Money copper={r.likely_each} padded />
+        {r.post_units ? (
+          <Text size="xs" c="dimmed">
+            x{r.post_units}
+          </Text>
+        ) : null}
+      </Table.Td>
     </>
   )
+}
+
+/** A gold row's tag beside its name: what kind of thing to do, where it is not an ordinary craft. */
+function KindTag({ result: r }: { result: RankResult }) {
+  const label = r.process ? PROCESS_GROUP_LABELS[r.process.group] : r.kind === 'convert' ? 'Essence' : null
+  return label ? (
+    <Badge size="xs" variant="light" color="gray" ml={6}>
+      {label}
+    </Badge>
+  ) : null
+}
+
+/** The gold list's folded section: what isn't worth doing now, and how many of each reason. */
+const NOT_WORTH = 'later'
+function notWorthLabel(rows: readonly RankResult[]): string {
+  const later = rows.filter((r) => !WORTH_GROUPS.has(r.group))
+  const counts = (['pennies', 'waiting', 'full', 'losing'] as const)
+    .map((g) => [g, later.filter((r) => r.group === g).length] as const)
+    .filter(([, n]) => n > 0)
+    .map(([g, n]) => `${NOT_WORTH_SHORT[g]} ${n}`)
+  return `Not worth it right now (${later.length})${counts.length ? `: ${counts.join(' · ')}` : ''}`
 }
 
 /** How a recipe is learned, in a word: known, or where the climber learns it (and who already knows it). */
@@ -649,9 +488,9 @@ export function ResultsTable({
   learn = NO_LEARN,
   onOpen,
   goldSort,
-  goldOrder = 'desc',
   onGoldSort,
   watchedHours = 0,
+  reveal,
 }: {
   results: RankResult[]
   items: ItemMap
@@ -677,10 +516,11 @@ export function ResultsTable({
   /** A gold list's server sort, shown on the Safe or Auction house header (neither when ranked by the better of the
    * two), and re-ranking by a header: clicking the sorted one again goes back to the better of the two. */
   goldSort?: string
-  goldOrder?: SortOrder
-  onGoldSort?: (sort: GoldSort, order: SortOrder) => void
+  onGoldSort?: (sort: GoldSort) => void
   /** The hours the auction house was watched this week, for what an expanded row's market says was seen sold. */
   watchedHours?: number
+  /** A row to open and scroll to (a top pick clicked): each new object opens it again. */
+  reveal?: { recipeId: number } | undefined
 }) {
   const actions = Boolean(onSetAhBlocked || onSetFavorite)
   const shownColumns = columnsFor(rankBy)
@@ -693,13 +533,23 @@ export function ResultsTable({
       else next.add(id)
       return next
     })
+  // A new reveal opens its row (while rendering, so it shows open at once) and then scrolls to it.
+  const [revealed, setRevealed] = useState(reveal)
+  if (reveal !== revealed) {
+    setRevealed(reveal)
+    if (reveal) setOpen((prev) => new Set(prev).add(reveal.recipeId))
+  }
+  useEffect(() => {
+    if (!reveal) return
+    document
+      .querySelector(`[data-recipe-row="${reveal.recipeId}"]`)
+      ?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+  }, [reveal])
   const [sort, setSort] = useState<Sort | null>(null)
   // With no column picked here, the server's order shows on the column it ranked by.
   const shownSort: Sort | null = sort ?? (rankBy ? RANK_COLUMN[rankBy] : null)
   const gold = rankBy === 'gold'
   const skill = rankBy === 'skill'
-  const craft = rankBy === 'craft'
-  const process = rankBy === 'process'
   const sortBy = (column: string) =>
     setSort(
       shownSort?.column === column
@@ -717,20 +567,17 @@ export function ResultsTable({
     () => Object.assign({}, rankItems, ...Object.values(evaluations).map((e) => e.data?.items ?? {})) as ItemMap,
     [rankItems, evaluations],
   )
-  const rows = useMemo(
-    () =>
-      rankBy === 'craft'
-        ? byGroup(sorted(current, null, favorites))
-        : rankBy === 'process'
-          ? byProcessGroup(sorted(current, null, favorites))
-          : sorted(current, sort, favorites),
-    [current, sort, favorites, rankBy],
-  )
-  // Craft and sell's groups: what pays is open, the rest folded until asked for; Process trade goods' all open.
-  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(() => new Set(['paying', 'buy_to_disenchant', ...PROCESS_GROUPS]))
-  const groupOf = (r: RankResult): string | null => (craft ? r.group : process ? (r.process?.group ?? '') : null)
-  const groupLabel = (g: string): string =>
-    craft ? CRAFT_GROUP_LABELS[g as RankResult['group']] : (PROCESS_GROUP_LABELS[g as keyof typeof PROCESS_GROUP_LABELS] ?? 'Other')
+  // The gold list: what is worth doing now in the server's order (favorites first), then the rest, folded, in their
+  // groups' order.
+  const rows = useMemo(() => {
+    if (rankBy !== 'gold') return sorted(current, sort, favorites)
+    const ordered = sorted(current, null, favorites)
+    return [...ordered.filter((r) => WORTH_GROUPS.has(r.group)), ...byGroup(ordered.filter((r) => !WORTH_GROUPS.has(r.group)))]
+  }, [current, sort, favorites, rankBy])
+  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(() => new Set())
+  // Only the folded section has a heading: what is worth doing shows without one.
+  const groupOf = (r: RankResult): string | null => (gold && !WORTH_GROUPS.has(r.group) ? NOT_WORTH : null)
+  const groupLabel = (): string => notWorthLabel(rows)
   const editing = (id: number): PlanEditing => {
     const evaluation = evaluations[id]
     return {
@@ -752,24 +599,24 @@ export function ResultsTable({
               {shownColumns.map((c) => {
                 const goldColumn = gold ? GOLD_SORT[c] : undefined
                 if (goldColumn) {
-                  const on = goldSort === goldColumn
+                  const on = (goldSort ?? 'per_day') === goldColumn
                   return (
                     <Table.Th
                       key={c}
-                      className={classes.hideBelowXs}
+                      className={c === EACH ? classes.hideBelowXs : undefined}
                       w={GOLD_MONEY_WIDTH}
                       ta="right"
-                      aria-sort={!on ? 'none' : goldOrder === 'asc' ? 'ascending' : 'descending'}
+                      aria-sort={on ? 'descending' : 'none'}
                       title={GOLD_HEADER_TITLE[c]}
                     >
                       <UnstyledButton
                         className={`${classes.sort} ${classes.goldSort}`}
                         aria-label={`Sort by ${c}`}
-                        onClick={() => onGoldSort?.(goldColumn, on && goldOrder === 'desc' ? 'asc' : 'desc')}
+                        onClick={() => onGoldSort?.(goldColumn)}
                       >
                         {c}
                         <span className={classes.arrow} data-active={on || undefined}>
-                          {on && goldOrder === 'asc' ? '▲' : '▼'}
+                          ▼
                         </span>
                       </UnstyledButton>
                     </Table.Th>
@@ -826,7 +673,6 @@ export function ResultsTable({
               // Measured only when the row's place in the order changes, so expanding a row above doesn't
               // slide the rows below it.
               const reorder = { layout: 'position', layoutDependency: index, transition: REORDER } as const
-              const ways = gold ? twoWays(r, items) : null
               const recipeCell = (
                 <Table.Td>
                   {r.kind === 'flip' && (
@@ -848,13 +694,12 @@ export function ResultsTable({
                       />
                     }
                   />
-                  {ways && (
+                  {gold && (
                     <>
+                      <KindTag result={r} />
                       <RecipeLine result={r} />
-                      <PhoneProfits ways={ways} />
                     </>
                   )}
-                  {(craft || process) && <RecipeLine result={r} />}
                 </Table.Td>
               )
               const group = groupOf(r)
@@ -877,8 +722,7 @@ export function ResultsTable({
                           }
                         >
                           <Text span size="sm" fw={500}>
-                            {folded ? '▸' : '▾'} {groupLabel(group!)} (
-                            {rows.filter((x) => groupOf(x) === group).length})
+                            {folded ? '▸' : '▾'} {groupLabel()}
                           </Text>
                         </UnstyledButton>
                       </Table.Td>
@@ -888,6 +732,7 @@ export function ResultsTable({
                   <>
                   <MotionTr
                     {...reorder}
+                    data-recipe-row={r.recipe_id}
                     onClick={() => (onOpen ? onOpen(r) : toggle(r.recipe_id))}
                     // a row that opens elsewhere is a button of its own (it has no ▸)
                     {...(onOpen && {
@@ -920,7 +765,7 @@ export function ResultsTable({
                             ★
                           </Flag>
                         )}
-                        {!gold && r.confidence && r.confidence.level !== 'high' && (
+                        {r.confidence && r.confidence.level !== 'high' && (
                           <Flag
                             color={r.confidence.level === 'low' ? 'orange' : 'yellow'}
                             label={`${r.confidence.level === 'low' ? 'Low' : 'Medium'} price confidence`}
@@ -929,12 +774,12 @@ export function ResultsTable({
                             ?
                           </Flag>
                         )}
-                        {!gold && r.slow && r.days_to_sell != null && (
+                        {r.slow && r.days_to_sell != null && (
                           <Flag color="orange" label="Slow to sell" why={slowTitle(r.days_to_sell)}>
                             ⚠
                           </Flag>
                         )}
-                        {craft && r.launch_prices && (
+                        {gold && r.launch_prices && (
                           <Flag
                             color="blue"
                             label="Launch prices"
@@ -943,7 +788,7 @@ export function ResultsTable({
                             L
                           </Flag>
                         )}
-                        {craft && r.copied > 0 && (
+                        {gold && r.copied > 0 && (
                           <Flag
                             color="blue"
                             label="Others copied this"
@@ -952,7 +797,7 @@ export function ResultsTable({
                             ⇉
                           </Flag>
                         )}
-                        {craft && r.no_vendor_floor && (
+                        {gold && r.no_vendor_floor && (
                           <Flag color="orange" label="No vendor floor" why="A vendor pays nothing for it: unsold, it is worth nothing">
                             !
                           </Flag>
@@ -969,20 +814,10 @@ export function ResultsTable({
                         )}
                       </Table.Td>
                     )}
-                    {ways ? (
+                    {gold ? (
                       <>
                         {recipeCell}
-                        <GoldCells ways={ways} result={r} items={items} />
-                      </>
-                    ) : craft ? (
-                      <>
-                        {recipeCell}
-                        <CraftCells result={r} items={items} />
-                      </>
-                    ) : process ? (
-                      <>
-                        {recipeCell}
-                        <ProcessCells result={r} items={items} />
+                        <GoldCells result={r} items={items} />
                       </>
                     ) : skill ? (
                       <>
@@ -1000,8 +835,8 @@ export function ResultsTable({
                         <Table.Td c={r.roi < 0 ? 'red' : undefined}>{formatRoi(r.roi)}</Table.Td>
                       </>
                     )}
-                    {!skill && !gold && !craft && !process && recipeCell}
-                    {gold || craft || process ? null : rankBy === 'skill' ? (
+                    {!skill && !gold && recipeCell}
+                    {gold ? null : rankBy === 'skill' ? (
                       <Table.Td className={COLUMN_HIDDEN.Learn}>
                         {learn[r.recipe_id] && !r.crafters.includes(r.crafter) ? (
                           <LearnTooltip learn={learn[r.recipe_id]}>{learnLabel(r, learn[r.recipe_id])}</LearnTooltip>
@@ -1035,7 +870,7 @@ export function ResultsTable({
                         )}
                       </Table.Td>
                     )}
-                    {rankBy !== 'skill' && !gold && !craft && (
+                    {rankBy !== 'skill' && !gold && (
                       <Table.Td className={COLUMN_HIDDEN['Sell via']}>{exitLabel(r.best_exit)}</Table.Td>
                     )}
                     {actions && (
@@ -1063,7 +898,7 @@ export function ResultsTable({
                               editing={editing(r.recipe_id)}
                               params={params}
                               choices={choices[r.recipe_id]}
-                              market={gold || craft}
+                              market={gold}
                               watchedHours={watchedHours}
                             />
                           </motion.div>

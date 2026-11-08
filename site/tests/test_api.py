@@ -2439,8 +2439,9 @@ def test_rank_processes_only_the_listed_recipes_against_selling_their_inputs(
     listed = tmp_path / "processing.csv"
     listed.write_text("spell_id,group,note\n900,cloth,the robe, as if it were a bolt\n")
     monkeypatch.setattr(type(versions.get(FOREVER)), "processing_csv", property(lambda self: listed))
-    assert client.get("/api/rank").json()["results"][0]["process"] is None
-    (r,) = client.get("/api/rank", params={"process": True}).json()["results"]
+    every = client.get("/api/rank").json()["results"]
+    assert [x["process"]["group"] for x in every if x["process"]] == ["cloth"]  # noted in any rank
+    (r,) = client.get("/api/rank", params={"process": True}).json()["results"]  # only processing
     p = r["process"]
     assert (p["group"], p["main_input"], p["uses"]) == ("cloth", 1, 0)
     assert p["gain"] == r["revenue"] - p["inputs_value"]  # sold as ranked: no listings to cap it
@@ -2453,13 +2454,15 @@ def test_essences_lists_each_tier_and_which_way_converting_pays(
     assert body == {"tiers": [], "items": {}}  # the fixture's game data has no essences
 
 
-def test_rank_shares_the_disenchant_budget_out_with_only_that_exit(
+def test_rank_shares_the_disenchant_budget_out_whenever_it_may_disenchant(
     client: TestClient, priced: Connection
 ) -> None:
     add_disenchant(priced, 1.0, 100, 100)  # robe -> 100 linen
     with_enchanter(priced)
-    (r,) = client.get("/api/rank").json()["results"]
-    assert r["budget_casts"] is None  # every exit: no budget
+    (r,) = client.get("/api/rank", params={"exits": ["vendor"]}).json()["results"]
+    assert r["budget_casts"] is None  # no disenchanting: no budget
+    (r,) = client.get("/api/rank", params={"exits": ["vendor", "disenchant"]}).json()["results"]
+    assert r["budget_casts"] == r["crafts"]  # disenchant among the exits
     (r,) = client.get("/api/rank", params={"exits": ["disenchant"], "sell_days": 3}).json()["results"]
     assert r["budget_casts"] == r["crafts"]  # no scan says how much linen sells: room for all
     assert r["needs_skill"] is None

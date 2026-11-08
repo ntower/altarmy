@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useState } from 'react'
-import { Alert, Group, Loader, Select, Stack } from '@mantine/core'
+import { Alert, Group, Loader, Select, Stack, Tabs } from '@mantine/core'
 import type { Selection } from '../api/client'
 import {
   useCharacters,
@@ -13,12 +13,8 @@ import {
 import { hypotheticalPath, parseProfitPath, resolveHypothetical, resolveRun, runPath } from '../lib/profitRoute'
 import { fromKey, realmOptions, toKey } from '../lib/realms'
 import { navigate, usePath } from '../lib/router'
-import { StrategyBar, StrategyPicker } from './StrategyPicker'
-import { VendorRuns } from './VendorRuns'
-import { WhatIHold } from './WhatIHold'
 import { VendorCheck } from './VendorCheck'
 import { useSession } from '../lib/session'
-import { useFeatures } from '../lib/useFeatures'
 import {
   CLIMBER_NAME,
   hasEnchanter,
@@ -74,7 +70,6 @@ export function SearchTab({
   onUploadCharacters?: () => void
 }) {
   const { uid } = useSession()
-  const { strategyPicker } = useFeatures()
   const path = usePath()
   const view = parseProfitPath(path)
   const status = useStatus()
@@ -229,8 +224,8 @@ export function SearchTab({
   // Without characters on the selected realm, every recipe is ranked for one unnamed crafter (making gold), or for
   // the character nobody uploaded (a hypothetical climb).
   const browsing = group === undefined && hypothetical === null
-  // A way to make gold with its own page (`STRATEGY_PICKER`): the strategy bar over its search.
-  const strategy = strategyPicker && view?.kind === 'gold' ? view.strategy : undefined
+  // Making gold's tab: the list of ways to make gold, or the vendor check.
+  const goldTab = view?.kind === 'gold' ? (view.tab ?? 'list') : null
   const noEnchanter = !!selection && group !== undefined && !hasEnchanter(group)
   // The selection's auction house and its newest scan; undefined while the coverage is still loading.
   const house = coverage.data?.find((c) => c.auction_house_id === status.data.auction_house_id)
@@ -292,21 +287,25 @@ export function SearchTab({
         <Group justify="center" py="xl">
           <Loader aria-label="Switching realm" />
         </Group>
-      ) : selection && setup.aim === 'gold' && strategyPicker && view?.kind === 'gold' && !view.strategy ? (
-        <StrategyPicker />
       ) : selection ? (
         <>
-        {strategy && <StrategyBar current={strategy} />}
-        {strategy === 'vendor' ? (
-          <VendorRuns />
-        ) : strategy === 'vendorcheck' ? (
+        {goldTab && (
+          // making gold's two tabs, each a path (in place of the current entry, as a filter is)
+          <Tabs
+            value={goldTab}
+            onChange={(v) => navigate(v === 'vendorcheck' ? '/profit/gold/vendorcheck' : '/profit/gold', { replace: true })}
+          >
+            <Tabs.List>
+              <Tabs.Tab value="list">Ways to make gold</Tabs.Tab>
+              <Tabs.Tab value="vendorcheck">Vendor check</Tabs.Tab>
+            </Tabs.List>
+          </Tabs>
+        )}
+        {goldTab === 'vendorcheck' ? (
           <VendorCheck />
-        ) : strategy === 'held' ? (
-          <WhatIHold />
         ) : (
         <AimSearch
-          key={`${setup.aim}-${strategy ?? ''}`}
-          strategy={strategy}
+          key={setup.aim}
           setup={setup}
           professions={professions}
           browsing={browsing}

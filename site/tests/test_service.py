@@ -1710,6 +1710,34 @@ def test_the_disenchant_budget_spends_each_materials_room_once() -> None:
     assert (week[a.recipe.id].casts, week[b.recipe.id].casts) == (10, 10)
 
 
+def test_a_disenchants_day_is_what_its_budget_leaves_it() -> None:
+    market = de_budget_market()
+    a, b = (market.evaluate(r, crafts=10) for r in market.recipes)
+    assert a is not None and b is not None
+    dust = prices.Listing(100, 2, (book.Level(100, 2, 2),), 10.0, prices.BLIZZARD, True)
+    version = versions.get(FOREVER)
+    whole = service.craft_sale(a, {DUST_ITEM: dust}, market, version)
+    assert whole.per_day > 0  # no budget: the whole session
+    capped = service.craft_sale(a, {DUST_ITEM: dust}, market, version, casts=4)
+    assert capped.per_day == whole.per_day * 4 // 10  # 4 of its 10 casts' dust sells in a day
+    assert capped.each == whole.each  # a craft still makes what it makes
+    assert service.craft_sale(b, {DUST_ITEM: dust}, market, version, casts=0).per_day == 0
+    # ranked by a day, the budget's caps count
+    budget = service.disenchant_budget([a, b], {DUST_ITEM: dust}, market, days=1, enchanting=300)
+    ranked = service.by_per_day([b, a], {DUST_ITEM: dust}, market, version, budget=budget)
+    assert ranked[0] is a
+
+
+def test_each_ranks_by_what_a_craft_likely_makes() -> None:
+    market = de_budget_market()
+    a, b = (market.evaluate(r, crafts=10) for r in market.recipes)
+    assert a is not None and b is not None
+    version = versions.get(FOREVER)
+    ranked = service.by_likely_each([a, b], {}, market)
+    eaches = [service.craft_sale(r, {}, market, version).each for r in ranked]
+    assert eaches == sorted(eaches, reverse=True)  # the Each column, best first
+
+
 def test_the_disenchant_budget_says_what_skill_an_item_needs() -> None:
     market = de_budget_market(enchanting=30)
     (a, b) = (market.evaluate(r, crafts=1) for r in market.recipes)

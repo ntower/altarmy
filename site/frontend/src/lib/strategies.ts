@@ -1,66 +1,34 @@
-import type { Exit, RankKind } from '../api/queries'
+import type { Exit, RankKind, RankParams } from '../api/queries'
 import type { RankResult } from '../api/client'
-import type { Features } from './useFeatures'
-import type { GoldStrategy } from './profitRoute'
 import { ALL_EXITS } from './setup'
 
 /*
- * The ways to make gold, each a page at /profit/gold/<key> (`STRATEGY_PICKER`): the picker's cards, the strategy
- * bar's tabs and the router all read this list, so they can't disagree.
+ * The list of ways to make gold (/profit/gold): crafts, processing, essence conversions and gear bought to
+ * disenchant, ranked together by what a day makes, with chips to narrow it to one kind and Sell via to one way of
+ * selling.
  */
 
-export type StrategySpec = {
-  key: GoldStrategy
-  title: string
-  /** what it is, in a line */
-  blurb: string
-  /** what the player does */
-  errand: string
-  /** the flag that offers it, if any (an admin gets every one) */
-  feature?: keyof Features
+/** The list's kind chips: every kind, or one of them. */
+export const KIND_CHIPS = ['all', 'craft', 'process', 'flip', 'convert'] as const
+export type KindChip = (typeof KIND_CHIPS)[number]
+export const KIND_CHIP_LABELS: Readonly<Record<KindChip, string>> = {
+  all: 'All',
+  craft: 'Crafts',
+  process: 'Processing',
+  flip: 'Buy & disenchant',
+  convert: 'Essences',
 }
 
-export const GOLD_STRATEGIES: readonly StrategySpec[] = [
-  {
-    key: 'craft',
-    title: 'Craft and sell',
-    blurb: 'Make what your characters know; post it, vendor it or disenchant it, whichever pays.',
-    errand: "You'll buy reagents, craft, then post or vendor",
-  },
-  {
-    key: 'process',
-    title: 'Process trade goods',
-    blurb: 'Smelt, tan or weave, or sell the raw goods: whichever pays after the cut.',
-    errand: "You'll buy or gather raw goods, process them, then post",
-    feature: 'processing',
-  },
-  {
-    key: 'vendor',
-    title: 'Vendor runs',
-    blurb: 'Buy what is listed under what a vendor pays, or buy from vendors what the auction house pays more for.',
-    errand: "You'll buy on the auction house or from vendors, then sell the other way",
-    feature: 'vendorRuns',
-  },
-  {
-    key: 'vendorcheck',
-    title: 'Vendor price check',
-    blurb: 'Everything listed, by how far its price is from what a vendor pays: what is listed under it first.',
-    errand: "You'll buy what is listed under its vendor price and sell it to a vendor",
-  },
-  {
-    key: 'held',
-    title: 'What I hold',
-    blurb: "What your characters' bags and banks hold, and what each thing is worth: vendor it, post it or keep it.",
-    errand: "You'll clear out your bags and bank",
-    feature: 'whatIHold',
-  },
-]
+/** The chip in the URL's `kind`; anything else is All. */
+export const parseKindChip = (param: string | null): KindChip =>
+  (KIND_CHIPS as readonly string[]).includes(param ?? '') ? (param as KindChip) : 'all'
 
-/** The strategies offered now, with these flags (`useFeatures`). */
-export const liveStrategies = (features: Features): StrategySpec[] =>
-  GOLD_STRATEGIES.filter((s) => !s.feature || features[s.feature])
+/** The rank parameters a chip narrows the list with: Processing is the server's processing recipes alone (each
+ * weighed against selling its inputs); the others one kind of result (filtered after the server's cache, so cheap). */
+export const kindChipParams = (chip: KindChip): Pick<RankParams, 'kinds' | 'process'> =>
+  chip === 'all' ? {} : chip === 'process' ? { process: true } : { kinds: [chip] satisfies RankKind[] }
 
-/** Craft and sell's one filter: every way to sell, or only one of them (`?exit=`). */
+/** The list's Sell via filter: every way to sell, or only one of them (`?exit=`). */
 export const SELL_VIA = ['all', 'vendor', 'ah', 'disenchant'] as const
 export type SellVia = (typeof SELL_VIA)[number]
 export const SELL_VIA_LABELS: Readonly<Record<SellVia, string>> = {
@@ -77,10 +45,8 @@ export const parseSellVia = (param: string | null): SellVia =>
 /** The exits a Sell via choice ranks with. */
 export const sellViaExits = (via: SellVia): Exit[] => (via === 'all' ? [...ALL_EXITS] : [via])
 
-/** The kinds of result a Sell via choice shows: crafts, and with Disenchant also gear bought to disenchant. */
-export const sellViaKinds = (via: SellVia): RankKind[] => (via === 'disenchant' ? ['craft', 'flip'] : ['craft'])
-
-/** Craft and sell's groups, in the order they are shown; only the first is open at first. */
+/** The server's groups of a result, in the order they are shown: the first two are worth doing, the rest fold away
+ * under "Not worth it right now". */
 export type CraftGroup = RankResult['group']
 export const CRAFT_GROUPS: readonly CraftGroup[] = ['paying', 'buy_to_disenchant', 'pennies', 'waiting', 'full', 'losing']
 export const CRAFT_GROUP_LABELS: Readonly<Record<CraftGroup, string>> = {
@@ -92,14 +58,25 @@ export const CRAFT_GROUP_LABELS: Readonly<Record<CraftGroup, string>> = {
   losing: 'Loses money: craft to order only',
 }
 
+/** The groups worth doing now: the list shows them open, and the top picks come from them. */
+export const WORTH_GROUPS: ReadonlySet<CraftGroup> = new Set(['paying', 'buy_to_disenchant'])
+/** The short name of each group not worth doing now, for the folded section's heading and a row's note. */
+export const NOT_WORTH_SHORT: Readonly<Record<CraftGroup, string>> = {
+  paying: 'Pays',
+  buy_to_disenchant: 'Buy to disenchant',
+  pennies: 'Pennies',
+  waiting: 'Waiting',
+  full: 'Full',
+  losing: 'Losing',
+}
+
 /** The results in their groups' order, each group in the order the server ranked it (by what a day makes). */
 export function byGroup<T extends Pick<RankResult, 'group'>>(results: readonly T[]): T[] {
   return CRAFT_GROUPS.flatMap((g) => results.filter((r) => r.group === g))
 }
 
-/** Process trade goods' groups, in the order they are shown, all open. */
+/** The processing groups (smelting, leather, cloth, essences): a tag on a processing row. */
 export type ProcessGroup = NonNullable<RankResult['process']>['group']
-export const PROCESS_GROUPS: readonly ProcessGroup[] = ['smelt', 'leather', 'cloth', 'essence']
 export const PROCESS_GROUP_LABELS: Readonly<Record<ProcessGroup, string>> = {
   smelt: 'Smelting',
   leather: 'Leather',
@@ -107,15 +84,7 @@ export const PROCESS_GROUP_LABELS: Readonly<Record<ProcessGroup, string>> = {
   essence: 'Essences',
 }
 
-/** Processing results in their groups' order, each in the order the server ranked it; those of no group last. */
-export function byProcessGroup<T extends Pick<RankResult, 'process'>>(results: readonly T[]): T[] {
-  return [
-    ...PROCESS_GROUPS.flatMap((g) => results.filter((r) => r.process?.group === g)),
-    ...results.filter((r) => !r.process),
-  ]
-}
-
-/** Craft and sell's Disenchant: the days its materials should sell within, which the budget shares out. */
+/** The list's Disenchant: the days its materials should sell within, which the budget shares out. */
 export const SELL_DAYS = [1, 3, 7] as const
 export type SellDays = (typeof SELL_DAYS)[number]
 export const SELL_DAYS_LABELS: Readonly<Record<SellDays, string>> = { 1: 'A day', 3: '3 days', 7: 'A week' }

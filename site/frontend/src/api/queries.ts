@@ -117,17 +117,6 @@ export function useEssences() {
   })
 }
 
-/** Vendor runs at the selected auction house: what is listed under what a vendor pays, and what vendors sell for less
- * than it pays, by zone. */
-export function useVendorRuns() {
-  const version = useDataVersion()
-  return useQuery({
-    queryKey: ['vendor-runs', GAME_VERSION, version],
-    queryFn: () => call(client.GET('/api/vendor-runs', GV)),
-    enabled: version !== undefined,
-  })
-}
-
 /** An item's price history at the selected auction house (the Market section's History tab). */
 export function useItemMarket(itemId: number) {
   const version = useDataVersion()
@@ -196,9 +185,10 @@ export type RankParams = {
   arcaneSalvager: boolean
   /** the enchanter who disenchants everything; unset: the best of the characters */
   disenchanter?: string | undefined
-  /** Process trade goods: only the processing recipes, each weighed against selling its inputs */
+  /** only the processing recipes, each weighed against selling its inputs (the list's Processing chip, and the notes
+   * on the whole list's processing rows) */
   process?: boolean
-  /** with only the disenchant exit: the days the materials should sell within (the Disenchant budget) */
+  /** with the disenchant exit alone: the days the materials should sell within (the Disenchant budget) */
   sellDays?: number
   minCost: number | null
   maxCost: number | null
@@ -258,6 +248,7 @@ export type RankSort =
   | 'roi'
   | 'spend'
   | 'profit_each'
+  | 'likely_each'
   | 'safe'
   | 'ah'
 
@@ -743,29 +734,6 @@ export function useSetAhBlocked() {
       return queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'rank' || q.queryKey[0] === 'evaluate' })
     },
     onError: showError('Could not update the auction house list'),
-  })
-}
-
-/** What the selected realm's characters hold, and what to do with it (What I hold). */
-export function useHoldings() {
-  const version = useDataVersion()
-  return useQuery({
-    queryKey: ['holdings', GAME_VERSION, version],
-    queryFn: () => call(client.GET('/api/holdings', GV)),
-    enabled: version !== undefined,
-  })
-}
-
-/** Keep an item whatever it would sell for, or no longer; What I hold is fetched again. */
-export function useSetKept() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: ({ itemId, kept }: { itemId: number; kept: boolean }) => {
-      const params = { params: { path: { item_id: itemId }, query: { game_version: GAME_VERSION } } }
-      return call(kept ? client.PUT('/api/kept/{item_id}', params) : client.DELETE('/api/kept/{item_id}', params))
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['holdings', GAME_VERSION] }),
-    onError: showError('Could not update the items you keep'),
   })
 }
 

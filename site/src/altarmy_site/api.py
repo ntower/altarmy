@@ -458,13 +458,14 @@ class RankResult(BaseModel):
     no_vendor_floor: bool = False  # a vendor pays nothing for what it makes
     launch_prices: bool = False  # its AH sale counts on the house's first days' sales: a launch price
     copied: int = 0  # others who copied its steps at this house in the last day: its posts are shared
-    # Craft and sell's Disenchant budget (`/api/rank` with only the disenchant exit, `disenchant_budget`):
-    # the casts whose materials the market takes within `sell_days`, what an item bought to disenchant is
-    # worth paying at most, and the Enchanting skill its disenchant needs when the enchanter lacks it
+    # The Disenchant budget (`/api/rank` with the disenchant exit, `disenchant_budget`): the casts whose
+    # materials the market takes within `sell_days` (a disenchant's `per_day` counts only those), what an
+    # item bought to disenchant is worth paying at most, and the Enchanting skill its disenchant needs when
+    # the enchanter lacks it
     budget_casts: int | None = None
     pay_at_most: int | None = None
     needs_skill: int | None = None
-    # Process trade goods (`/api/rank`'s `process`): how processing compares with selling the inputs
+    # a processing recipe's (`processing`): how processing compares with selling the inputs
     process: ProcessOut | None = None
     # the skill the recipe is learned at (0: a trainer's, at no skill DB2 knows) and where it turns yellow
     # and grey (green halfway between); 0 when unknown
@@ -1256,8 +1257,8 @@ def get_rank(
     process: Annotated[
         bool,
         Query(
-            description="Process trade goods: only the recipes that turn a trade good into another "
-            "(`processing`), each weighed against selling its inputs (`RankResult.process`)"
+            description="only the recipes that turn a trade good into another (`processing`); those recipes "
+            "are weighed against selling their inputs (`RankResult.process`) either way"
         ),
     ] = False,
     sell_days: Annotated[
@@ -1265,8 +1266,8 @@ def get_rank(
         Query(
             ge=1,
             le=7,
-            description="with only the disenchant exit: the days the materials should sell within, which the "
-            "Disenchant budget shares out (`budget_casts`)",
+            description="with the disenchant exit: the days the materials should sell within, which the "
+            "Disenchant budget shares out (`budget_casts`; with sort=per_day it caps a disenchant's day)",
         ),
     ] = 1,
     min_cost: Annotated[int | None, Query(description="copper")] = None,
@@ -1299,12 +1300,14 @@ def get_rank(
             "safe",
             "ah",
             "per_day",
+            "likely_each",
         ],
         Query(
             description="profit per session (the batch; all_sell is the same), per hour of play, cheapest "
             "skill point, likely profit (`likely_profit`), ROI, least spent, profit per unit made, the "
             "profit selling it all safely (a vendor or disenchanting: `safe`) or on the auction house "
-            "(`ah`), those it isn't open to last, or what a day makes (`per_day`, Craft and sell)"
+            "(`ah`), those it isn't open to last, what a day makes (`per_day`, the gold list) or what a "
+            "craft likely makes (`likely_each`, the gold list's Each)"
         ),
     ] = "profit",
     order: Annotated[
@@ -1419,11 +1422,7 @@ def get_rank(
     gather = service.gather_values(base, gathered) if gathered else None
     climb_costs = _climb_learn_costs(state, s, skill_name, skilled) if run is not None else None
     enchanter = _disenchanter(chars, disenchanter)
-    groups = (
-        processing.recipe_groups(base.recipes, processing.for_path(s.version.processing_csv))
-        if process
-        else {}
-    )
+    groups = processing.recipe_groups(base.recipes, processing.for_path(s.version.processing_csv))
 
     def key_of(learning: engine.Learning, run: engine.SkillRuns | None) -> tuple[Hashable, ...]:
         return (
@@ -1479,12 +1478,12 @@ def get_rank(
         matches = _ranked(state, (key, sort), s.token, ordered)
     elif sort == "likely":  # cheap: ordered per request
         matches = service.by_likely(matches, s.listings, base)
+    elif sort == "likely_each":
+        matches = service.by_likely_each(matches, s.listings, base)
     elif sort == "ah":
         matches = service.by_ah(matches, s.listings, base, ascending=order == "asc")
     elif sort == "safe":
         matches = service.by_safe(matches, ascending=order == "asc")
-    elif sort == "per_day":
-        matches = service.by_per_day(matches, s.listings, base, s.version, s.copies)
     elif sort in ("roi", "spend", "profit_each"):
         matches = {"roi": service.by_roi, "spend": service.by_spend, "profit_each": service.by_profit_each}[
             sort
@@ -1498,8 +1497,8 @@ def get_rank(
         matches = [r for r in matches if r.recipe.skill_name.lower() in wanted]
     if kinds:
         matches = [r for r in matches if r.recipe.kind in kinds]
-    if s.favorites and sort != "skill":  # a climb goes cheapest point first, favorite or not
-        matches = service.favorites_first(matches, s.favorites)
+    # what the market takes of each disenchant's materials (order-free, so before sorting); a day of
+    # disenchanting is only that much
     budget = (
         service.disenchant_budget(
             matches,
@@ -1508,13 +1507,27 @@ def get_rank(
             sell_days,
             service.enchanter_skill(service.as_crafters(chars), enchanter),
         )
-        if set(exits) == {"disenchant"}
+        if "disenchant" in exits
         else {}
     )
+    if sort == "per_day":  # cheap: ordered per request, after the filters so the budget sees what is shown
+        matches = service.by_per_day(matches, s.listings, base, s.version, s.copies, budget)
+    if s.favorites and sort != "skill":  # a climb goes cheapest point first, favorite or not
+        matches = service.favorites_first(matches, s.favorites)
     results = matches[:top]
     crafters = altarmy.crafters(chars)
     costs = _learn_costs(state, s, results)
-    out = [_result_out(r, base, crafters, s, costs.get(r.recipe.id, 0)) for r in results]
+    out = [
+        _result_out(
+            r,
+            base,
+            crafters,
+            s,
+            costs.get(r.recipe.id, 0),
+            None if (b := budget.get(r.recipe.id)) is None else b.casts,
+        )
+        for r in results
+    ]
     if budget:
         out = [
             o.model_copy(
@@ -1524,7 +1537,7 @@ def get_rank(
             else o
             for o in out
         ]
-    if process:
+    if any(r.recipe.id in groups for r in results):  # processing, weighed against selling its inputs
         uses = service.reagent_uses(base.recipes)
         out = [
             o.model_copy(update={"process": _process_out(r, groups, s, base, uses)})
@@ -2261,7 +2274,9 @@ def _result_out(
     crafters: dict[int, list[str]],
     s: Selected,
     learn_cost: int | None = 0,
+    casts: int | None = None,
 ) -> RankResult:
+    """`r` as /api/rank returns it; `casts`: what the Disenchant budget leaves a disenchant (`craft_sale`)."""
     listings = s.listings
     per_city = _cities_out(r, base, s.cities)
     sure = service.price_confidence(r, listings, s.watched)
@@ -2269,7 +2284,7 @@ def _result_out(
     likely = service.likely(r, listings, sell_price)
     safe = service.safe_profit(r)
     ah = service.ah_sale(r, listings, sell_price)
-    craft = service.craft_sale(r, listings, base, s.version, s.copies.get(r.recipe.id, 0))
+    craft = service.craft_sale(r, listings, base, s.version, s.copies.get(r.recipe.id, 0), casts)
     t = r.timing
 
     def faction(who: str, item_id: int, percent: int) -> str:

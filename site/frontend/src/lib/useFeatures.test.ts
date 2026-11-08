@@ -1,23 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import { featuresFor } from './useFeatures'
 
-vi.mock('./features', () => ({
-  MAKE_GOLD: false,
-  STRATEGY_PICKER: false,
-  PROCESSING: true,
-  VENDOR_RUNS: false,
-  WHAT_I_HOLD: true,
-}))
+vi.mock('./features', () => ({ MAKE_GOLD: false }))
 
 describe('featuresFor', () => {
   it('follows the flags for anyone but an admin', () => {
-    expect(featuresFor(false)).toEqual({
-      makeGold: false,
-      strategyPicker: false,
-      processing: true,
-      vendorRuns: false,
-      whatIHold: true,
-    })
+    expect(featuresFor(false)).toEqual({ makeGold: false })
   })
 
   it('switches every flag on for an admin', () => {

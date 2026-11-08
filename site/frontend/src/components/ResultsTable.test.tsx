@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
@@ -987,57 +988,41 @@ describe('ResultsTable: a gold list', () => {
   }
   const cells = () => within(screen.getAllByRole('row')[1]!).getAllByRole('cell')
 
-  it('shows the recipe, then what playing it safe and the auction house make, the better in bold', () => {
+  it('shows what to do, then what a day of it makes in bold, then what one makes', () => {
     renderWithProviders(<ResultsTable results={[posted]} items={market} rankBy="gold" />)
     const headers = screen.getAllByRole('columnheader').map((h) => h.textContent)
-    expect(headers).toEqual(['', 'Recipe', 'Safe profit▼', 'Auction profit▼'])
-    const [, recipe, safe, ah] = cells()
-    expect(shown(safe!)).toBe('20 _0vendor') // 2000 copper: 20 silver
-    expect(shown(ah!)).toBe('25 _0market takes ~1 of 10') // counts on what the market takes
-    expect(within(ah!).getByText('25').closest('[class*="secondary"]')).toBeNull()
-    expect(within(safe!).getByText('20').closest('[class*="secondary"]')).not.toBeNull()
-    expect(within(recipe!).getByText(/Tailoring · .*10 crafts · spend/)).toBeInTheDocument()
-    expect(within(recipe!).getByText('Tailor Guy')).toBeInTheDocument()
-    expect(screen.queryByText('Unproven', { exact: false })).not.toBeInTheDocument() // no verdict chip
-    expect(screen.queryByLabelText(/price confidence/)).not.toBeInTheDocument()
+    expect(headers).toEqual(['', 'What', 'What to do', 'A day▼', 'Each▼'])
+    const [, what, todo, day, each] = cells()
+    expect(within(what!).getByText(/Tailoring · .*10 crafts · spend/)).toBeInTheDocument()
+    expect(within(what!).getByText('Tailor Guy')).toBeInTheDocument()
+    expect(shown(todo!)).toBe('Post them')
+    expect(shown(day!)).toBe('2 _0') // per_day: 200 copper
+    expect(within(day!).getByText('2').closest('[style*="font-weight: 700"], [style*="--text-fw: 700"]')).not.toBeNull()
+    expect(shown(each!)).toBe('20')
   })
 
-  it('says how many the market takes, in orange under half, or how many are listed', () => {
-    const note = (r: RankResult) => {
-      const { unmount } = renderWithProviders(<ResultsTable results={[r]} items={market} rankBy="gold" />)
-      const ah = cells()[3]!
-      const text = within(ah).getByText(/listed|takes|buyers/)
-      const got = { text: shown(text), orange: text.closest('[style*="orange"]') !== null }
-      unmount()
-      return got
+  it('says how many to post, in what stacks and at what price, and what that rests on', () => {
+    const posting: RankResult = { ...posted, post_units: 3, post_stack: 5, post_price: 1000, deposit_est: 30 }
+    const sold = { ...market, '3': { ...market['3'], sold_7d: 14, ah_quantity: 4 } }
+    renderWithProviders(<ResultsTable results={[posting]} items={sold} rankBy="gold" />)
+    const [, , todo, day, each] = cells()
+    expect(shown(todo!)).toBe('Post 3, in stacks of 5 at 10 0~2 sold a day · 4 listed')
+    expect(within(day!).getByText(/less/)).toHaveTextContent('less 30 deposit')
+    expect(within(each!).getByText('x3')).toBeInTheDocument()
+  })
+
+  it('tags an essence conversion and a processing recipe, and says what processing adds', () => {
+    const essence: RankResult = { ...posted, recipe_id: 1, kind: 'convert', profession: '' }
+    const bar: RankResult = {
+      ...posted,
+      recipe_id: 2,
+      process: { group: 'smelt', inputs_value: 500, gain: 300, buy_up_to: 70, main_input: 1, uses: 12 },
     }
-    expect(note(posted)).toEqual({ text: 'market takes ~1 of 10', orange: true })
-    expect(note({ ...posted, ah_depth_units: 7, ah_excess_units: 3 })).toEqual({
-      text: 'market takes ~7 of 10',
-      orange: false,
-    })
-    expect(note({ ...posted, ah_depth_units: 0, ah_excess_units: 10 })).toEqual({
-      text: 'no buyers shown yet',
-      orange: true,
-    })
-    expect(note({ ...posted, ah_depth_units: 10, ah_excess_units: 0 })).toEqual({
-      text: '1 listed · you add 10',
-      orange: false,
-    })
-  })
-
-  it('shows a dash where a way to sell is not open to the recipe', () => {
-    const vendorOnly: RankResult = { ...posted, ah_profit: null, sell_options: [{ kind: 'vendor', profit: 2000 }] }
-    renderWithProviders(<ResultsTable results={[vendorOnly]} items={market} rankBy="gold" />)
-    expect(shown(cells()[3]!)).toBe('–')
-  })
-
-  it('names an essence conversion safe', () => {
-    const essence: RankResult = { ...posted, kind: 'convert', profession: '', safe_exit: 'convert', ah_profit: null }
-    renderWithProviders(<ResultsTable results={[essence]} items={market} rankBy="gold" />)
-    const [, recipe, safe] = cells()
-    expect(shown(safe!)).toBe('20 _0essences sell')
-    expect(within(recipe!).getByText(/Essence conversion · /)).toBeInTheDocument()
+    renderWithProviders(<ResultsTable results={[essence, bar]} items={market} rankBy="gold" />)
+    expect(screen.getByText('Essence')).toBeInTheDocument()
+    expect(screen.getByText(/Essence conversion · /)).toBeInTheDocument()
+    expect(screen.getByText('Smelting')).toBeInTheDocument()
+    expect(shown(screen.getByText(/smelting adds/))).toBe('smelting adds 3 0 · buy Linen Cloth up to 70 each')
   })
 
   it('warns when an auction house sale may take long', () => {
@@ -1045,46 +1030,44 @@ describe('ResultsTable: a gold list', () => {
       <ResultsTable results={[{ ...posted, slow: true, days_to_sell: 9.6 }]} items={market} rankBy="gold" />,
     )
     expect(screen.getByText('slow: ~10 days')).toHaveAttribute('title', expect.stringMatching(/about 10 days/))
+    expect(screen.getByLabelText('Slow to sell')).toBeInTheDocument()
   })
 
-  it('puts both profits on one line under the recipe for phones', () => {
-    renderWithProviders(<ResultsTable results={[posted]} items={market} rankBy="gold" />)
-    const phone = cells()[1]!.querySelector('[class*="onlyBelowXs"]')
-    expect(shown(phone)).toBe('Safe 20 0 AH 25 0market takes ~1 of 10')
-  })
-
-  it('re-ranks the whole list on the server by a header, best first, and reverses it on another click', async () => {
+  it('re-ranks the whole list on the server by what a day or one makes', async () => {
     const onGoldSort = vi.fn()
-    const table = (sort: string, order?: 'asc' | 'desc') =>
+    const table = (sort?: string) =>
       renderWithProviders(
-        <ResultsTable
-          results={[posted]}
-          items={market}
-          rankBy="gold"
-          goldSort={sort}
-          goldOrder={order}
-          onGoldSort={onGoldSort}
-        />,
+        <ResultsTable results={[posted]} items={market} rankBy="gold" goldSort={sort} onGoldSort={onGoldSort} />,
       )
-    const header = () => screen.getByRole('columnheader', { name: /Auction profit/ })
-    const click = (name: string) => userEvent.click(screen.getByRole('button', { name: `Sort by ${name}` }))
-    let shown = table('likely')
-    expect(header()).toHaveAttribute('aria-sort', 'none')
-    await click('Auction profit')
-    expect(onGoldSort).toHaveBeenLastCalledWith('ah', 'desc')
-    shown.unmount()
-    shown = table('ah', 'desc')
-    expect(header()).toHaveAttribute('aria-sort', 'descending')
-    await click('Auction profit')
-    expect(onGoldSort).toHaveBeenLastCalledWith('ah', 'asc')
-    await click('Safe profit') // another header: best first
-    expect(onGoldSort).toHaveBeenLastCalledWith('safe', 'desc')
-    shown.unmount()
-    table('ah', 'asc')
-    expect(header()).toHaveAttribute('aria-sort', 'ascending')
-    expect(header()).toHaveTextContent('Auction profit▲')
-    await click('Auction profit')
-    expect(onGoldSort).toHaveBeenLastCalledWith('ah', 'desc')
+    const header = (name: RegExp) => screen.getByRole('columnheader', { name })
+    let rendered = table()
+    expect(header(/A day/)).toHaveAttribute('aria-sort', 'descending') // the default
+    expect(header(/Each/)).toHaveAttribute('aria-sort', 'none')
+    await userEvent.click(screen.getByRole('button', { name: 'Sort by Each' }))
+    expect(onGoldSort).toHaveBeenLastCalledWith('likely_each')
+    rendered.unmount()
+    rendered = table('likely_each')
+    expect(header(/Each/)).toHaveAttribute('aria-sort', 'descending')
+    await userEvent.click(screen.getByRole('button', { name: 'Sort by A day' }))
+    expect(onGoldSort).toHaveBeenLastCalledWith('per_day')
+  })
+
+  it('opens a row when told to reveal it', async () => {
+    mockApi({})
+    function Revealing() {
+      const [reveal, setReveal] = useState<{ recipeId: number }>()
+      return (
+        <>
+          <button onClick={() => setReveal({ recipeId: posted.recipe_id })}>reveal</button>
+          <ResultsTable results={[posted]} items={market} rankBy="gold" reveal={reveal} />
+        </>
+      )
+    }
+    renderWithProviders(<Revealing />)
+    const toggle = () => screen.getByRole('button', { name: 'Details for Green Robe' })
+    expect(toggle()).toHaveAttribute('aria-expanded', 'false')
+    await userEvent.click(screen.getByRole('button', { name: 'reveal' }))
+    expect(toggle()).toHaveAttribute('aria-expanded', 'true')
   })
 
   it('opens with the totals by the copies, then Market (summed up) and Steps closed around the open Flowchart', async () => {
