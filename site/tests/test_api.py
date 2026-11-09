@@ -119,9 +119,15 @@ def test_empty_db(client: TestClient, database: db.Database) -> None:
     assert client.get("/api/rank").json()["results"] == []
 
 
+@pytest.fixture(autouse=True)
+def _plan_crafts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Puts back what `one_craft` changes after each test."""
+    monkeypatch.setattr(service, "PLAN_CRAFTS", service.PLAN_CRAFTS)
+
+
 def one_craft(client: TestClient) -> None:
-    """Rank and evaluate single crafts (a batch of 1), for tests about prices rather than sessions."""
-    assert client.put("/api/time", json={"config": {"batch": 1}}).is_success
+    """Rank and evaluate single crafts (sessions of 1), for tests about prices rather than sessions."""
+    service.PLAN_CRAFTS = 1
 
 
 def test_rank_known_recipes(client: TestClient, priced: Connection) -> None:
@@ -1626,7 +1632,7 @@ def test_rank_pages_through_one_search(
     assert len(calls) == 3  # sorting by rate reuses the ranking
     client.get("/api/rank", params={"top": 1, "sort": "skill"})
     assert len(calls) == 3  # so does sorting by skill
-    client.put("/api/time", json={"config": {"batch": 3}})
+    client.put("/api/time", json={"config": {"ah_search": 3}})
     client.get("/api/rank", params={"top": 1})
     assert len(calls) == 4  # plans depend on the time settings
 
@@ -2115,7 +2121,8 @@ def test_time_settings_round_trip(client: TestClient, priced: Connection, cities
     put = client.put("/api/time", json={"city": "Thunder Bluff", "config": {"batch": 5, "time_value": 10**6}})
     assert put.status_code == 200
     assert (put.json()["city"], put.json()["active"]) == ("Thunder Bluff", "Thunder Bluff")
-    assert (put.json()["config"]["batch"], put.json()["config"]["time_value"]) == (5, 10**6)
+    # the batch is always PLAN_CRAFTS: one saved is ignored
+    assert (put.json()["config"]["batch"], put.json()["config"]["time_value"]) == (service.PLAN_CRAFTS, 10**6)
     assert client.get("/api/time").json() == put.json()
     for bad in [
         {"city": "Atlantis"},
@@ -2165,12 +2172,17 @@ def test_rank_times_anywhere_without_presets(client: TestClient, priced: Connect
 def test_evaluate_uses_the_time_settings(client: TestClient, priced: Connection, cities: Path) -> None:
     client.put("/api/time", json={"city": "Thunder Bluff", "config": {"batch": 4}})
     body = client.post("/api/evaluate", json={"recipe_id": 100, "choices": {}}).json()
-    assert (body["result"]["timing"]["city"], body["result"]["crafts"]) == ("Thunder Bluff", 4)
+    # the city is the user's; the session is always PLAN_CRAFTS, whatever batch was saved
+    assert (body["result"]["timing"]["city"], body["result"]["crafts"]) == (
+        "Thunder Bluff",
+        service.PLAN_CRAFTS,
+    )
 
 
 def test_guests_keep_their_own_time_settings(client: TestClient, conn: Connection) -> None:
-    assert client.put("/api/time", json={"config": {"batch": 2}}, headers=FREE).status_code == 200
-    assert client.get("/api/time", headers=FREE).json()["config"]["batch"] == 2
+    assert client.put("/api/time", json={"config": {"time_value": 2}}, headers=FREE).status_code == 200
+    assert client.get("/api/time", headers=FREE).json()["config"]["time_value"] == 2
+    assert client.get("/api/time").json()["config"]["time_value"] != 2
 
 
 def test_evaluate_plans_a_session_spelled_out(client: TestClient, priced: Connection, cities: Path) -> None:

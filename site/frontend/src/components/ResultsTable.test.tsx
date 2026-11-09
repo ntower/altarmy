@@ -992,11 +992,13 @@ describe('ResultsTable: a gold list', () => {
     const headers = screen.getAllByRole('columnheader').map((h) => h.textContent)
     expect(headers).toEqual(['', 'Recipe', 'Safe profit▼', 'Auction profit▼'])
     const [, recipe, safe, ah] = cells()
-    expect(shown(safe!)).toBe('20 _0vendor') // 2000 copper: 20 silver
-    expect(shown(ah!)).toBe('25 _0market takes ~1 of 10') // counts on what the market takes
-    expect(within(ah!).getByText('25').closest('[class*="secondary"]')).toBeNull()
-    expect(within(safe!).getByText('20').closest('[class*="secondary"]')).not.toBeNull()
-    expect(within(recipe!).getByText(/Tailoring · .*10 crafts · spend/)).toBeInTheDocument()
+    // per craft: the session's 2000 copper over its 10 crafts, 2 silver
+    expect(shown(safe!)).toBe('2 _0vendor')
+    expect(shown(ah!)).toBe('2 50market takes ~1 of 10') // counts on what the market takes
+    expect(within(ah!).getByText('50').closest('[class*="secondary"]')).toBeNull()
+    expect(within(safe!).getByText('2').closest('[class*="secondary"]')).not.toBeNull()
+    expect(within(recipe!).getByText(/Tailoring · .*spend.* each/)).toBeInTheDocument()
+    expect(within(recipe!).getByText('avg of 10 crafts')).toBeInTheDocument()
     expect(within(recipe!).getByText('Tailor Guy')).toBeInTheDocument()
     expect(screen.queryByText('Unproven', { exact: false })).not.toBeInTheDocument() // no verdict chip
     expect(screen.queryByLabelText(/price confidence/)).not.toBeInTheDocument()
@@ -1036,7 +1038,7 @@ describe('ResultsTable: a gold list', () => {
     const essence: RankResult = { ...posted, kind: 'convert', profession: '', safe_exit: 'convert', ah_profit: null }
     renderWithProviders(<ResultsTable results={[essence]} items={market} rankBy="gold" />)
     const [, recipe, safe] = cells()
-    expect(shown(safe!)).toBe('20 _0essences sell')
+    expect(shown(safe!)).toBe('2 _0essences sell')
     expect(within(recipe!).getByText(/Essence conversion · /)).toBeInTheDocument()
   })
 
@@ -1050,7 +1052,7 @@ describe('ResultsTable: a gold list', () => {
   it('puts both profits on one line under the recipe for phones', () => {
     renderWithProviders(<ResultsTable results={[posted]} items={market} rankBy="gold" />)
     const phone = cells()[1]!.querySelector('[class*="onlyBelowXs"]')
-    expect(shown(phone)).toBe('Safe 20 0 AH 25 0market takes ~1 of 10')
+    expect(shown(phone)).toBe('Safe 2 0 AH 2 50market takes ~1 of 10')
   })
 
   it('re-ranks the whole list on the server by a header, best first, and reverses it on another click', async () => {

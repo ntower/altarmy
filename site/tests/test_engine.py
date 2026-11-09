@@ -374,6 +374,8 @@ def test_filters_bounds_are_inclusive_and_optional() -> None:
     assert Filters(min_roi=0.6, max_roi=0.7).accepts(res)
     assert not Filters(min_roi=0.7).accepts(res)
     assert not Filters(max_roi=0.6).accepts(res)
+    session = must_evaluate_n(make_market({LINEN: 20, THREAD: 100}), ROBE, 4)  # bounds are per craft
+    assert Filters(min_cost=300, max_cost=300, min_profit=200, max_profit=200).accepts(session)
 
 
 def test_recipes_for_professions_ignores_case() -> None:
@@ -411,12 +413,17 @@ def test_recipes_for_characters_known_trainable_or_whole_professions() -> None:
 
     assert names("none") == ["Robe"]
     assert names("train") == ["Robe"]
-    assert names(Learning("train", 19)) == ["Robe"]
+    # with a look-ahead the tailor could take up Enchanting too, from 0: Dust needs no skill
+    assert names(Learning("train", 19)) == ["Robe", "Dust"]
     assert names(Learning("train", 20)) == [
         "Robe",
         "Bolt",
+        "Dust",
     ]  # its pattern requires 70; the cloak is yellow from 71
-    assert names(Learning("train", 20, frozenset({"trainer"}))) == ["Robe"]  # not what recipe items teach
+    assert names(Learning("train", 20, frozenset({"trainer"}))) == [
+        "Robe",
+        "Dust",
+    ]  # not what recipe items teach
     assert names("all") == ["Robe", "Bolt", "Cloak"]
 
 
@@ -438,6 +445,24 @@ def test_can_learn_to_train_needs_the_profession_within_the_look_ahead() -> None
     assert can_learn(bolt, crafter("Ready", ("Tailoring", 70)), "train")
     assert not can_learn(bolt, crafter("Past", ("Tailoring", 300)), "none")
     assert not can_learn(bolt, crafter("Smith", ("Blacksmithing", 300)), soon)
+
+
+def test_a_look_ahead_counts_a_profession_they_lack_as_skill_0() -> None:
+    linen = Recipe(11, "Bolt", BOLT, skill_name="Tailoring", learn_skill=1)
+    wool = Recipe(12, "Wool", BOLT, skill_name="Tailoring", learn_skill=10)
+    smith = crafter("Smith", ("Blacksmithing", 300))
+    assert not can_learn(linen, smith, "train")  # no look-ahead: only their own professions, as before
+    assert can_learn(linen, smith, Learning("train", 1))
+    assert can_learn(wool, smith, Learning("train", 10)) and not can_learn(wool, smith, Learning("train", 9))
+    assert not can_learn(linen, smith, Learning("all"))  # every recipe of the professions they have
+    # two primary professions already: no third, but a secondary one any time
+    full = crafter("Full", ("Blacksmithing", 300), ("Mining", 300), ("Cooking", 10))
+    assert not can_learn(linen, full, Learning("train", 50))
+    snack = Recipe(13, "Snack", BOLT, skill_name="First Aid", learn_skill=1)
+    assert can_learn(snack, full, Learning("train", 1))
+    poison = Recipe(14, "Poison", BOLT, skill_name="Poisons", learn_skill=1)
+    assert not can_learn(poison, smith, Learning("train", 50))  # a rogue's, not a profession to take up
+    assert recipes_for_characters([linen, wool, poison], [smith], Learning("train", 5)) == [linen]
 
 
 def test_can_learn_to_train_only_from_the_chosen_sources() -> None:

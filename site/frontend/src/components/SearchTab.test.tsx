@@ -690,11 +690,11 @@ describe('SearchTab', () => {
       '/api/rank': noResults,
     })
     renderWithProviders(<SearchTab />)
-    expect(await screen.findByLabelText('Min cost (gold)')).toHaveValue('0.5')
+    expect(await screen.findByLabelText('Min cost per craft (gold)')).toHaveValue('0.5')
     // neither price confidence nor the sale verdict filters any more: the two ways to sell show side by side
     expect(screen.queryByLabelText('Minimum sale verdict', { selector: 'input' })).not.toBeInTheDocument()
-    expect(screen.getByLabelText('Max cost (gold)')).toHaveValue('20')
-    expect(screen.getByLabelText('Min profit (gold)')).toHaveValue('0.0001')
+    expect(screen.getByLabelText('Max cost per craft (gold)')).toHaveValue('20')
+    expect(screen.getByLabelText('Min profit per craft (gold)')).toHaveValue('0.0001')
     expect(screen.getByLabelText('Min ROI (%)')).toHaveValue('')
     // no Sell via: making gold sells every way, and the stored exits are passed over
     expect(screen.queryByRole('checkbox', { name: 'Auction house' })).not.toBeInTheDocument()
@@ -802,73 +802,6 @@ describe('SearchTab', () => {
       expect(localStorage.getItem('altarmy.search.arcaneSalvager')).toBe('false')
     },
   )
-
-  it('saves the crafts per session on the server, then ranks again, and shows no time settings', async () => {
-    const config = {
-      ah_search: 8,
-      ah_buy: 4,
-      ah_post: 6,
-      vendor_buy: 2,
-      vendor_sell: 1.5,
-      mail_send: 8,
-      mail_attach: 2,
-      mail_open: 3,
-      mail_attachments: 12,
-      switch_character: 45,
-      disenchant: 3.5,
-      craft_overhead: 0.5,
-      batch: 10,
-      time_value: 0,
-      run_speed: 7,
-      detour: 1.3,
-    }
-    const city = (name: string, faction: string) => ({
-      name,
-      faction,
-      hub: 'Auctioneer',
-      locations: 9,
-      vendors: 3,
-    })
-    const settings = {
-      cities: [city('Orgrimmar', 'Horde'), city('Thunder Bluff', 'Horde')],
-      city: null,
-      active: null,
-      config,
-      defaults: config,
-    }
-    // The server answers with what it stored.
-    const saved: object[] = []
-    const fetch = mockApi({
-      '/api/status': status(),
-      '/api/characters': characters,
-      '/api/rank': noResults,
-      '/api/time': async (_: URL, request: Request) => {
-        if (request.method !== 'PUT') return settings
-        const body = (await request.json()) as {
-          city: string | null
-          config: object
-        }
-        saved.push(body)
-        return {
-          ...settings,
-          city: body.city,
-          config: { ...config, ...body.config },
-        }
-      },
-    })
-    renderWithProviders(<SearchTab />)
-    // Crafts per session is one of the search's options; the other time settings are not shown.
-    const batch = await screen.findByLabelText('Crafts per session')
-    expect(screen.queryByRole('button', { name: 'Time assumptions' })).not.toBeInTheDocument()
-    for (const gone of ['Craft Location', 'Open a mail', 'Run speed (yards per second)']) {
-      expect(screen.queryByLabelText(gone)).not.toBeInTheDocument()
-    }
-    const ranked = urls(fetch, '/api/rank').length
-    fireEvent.change(batch, { target: { value: '5' } })
-    await waitFor(() => expect(saved).toEqual([{ city: null, config: { batch: 5 } }]), { timeout: 3000 })
-    await waitFor(() => expect(urls(fetch, '/api/rank').length).toBeGreaterThan(ranked))
-    expect(batch).toHaveValue('5')
-  })
 
   it('folds the options into a closed Filters section on small screens', async () => {
     const real = window.matchMedia
@@ -1040,7 +973,7 @@ describe('SearchTab', () => {
       '/api/rank': noResults,
     })
     renderWithProviders(<SearchTab />)
-    const maxProfit = await screen.findByLabelText('Max profit (gold)')
+    const maxProfit = await screen.findByLabelText('Max profit per craft (gold)')
     expect(maxProfit).toHaveValue('')
     fireEvent.change(maxProfit, { target: { value: '40' } })
     expect(localStorage.getItem('altarmy.search.gold.maxProfit')).toBe('40')
@@ -1079,6 +1012,14 @@ describe('SearchTab: making gold', () => {
     expect(urls(fetch, '/api/rank').at(-1)?.searchParams.has('min_verdict')).toBe(false)
     await userEvent.click(screen.getByRole('checkbox', { name: 'Include recipes I could learn' }))
     await waitFor(() => expect(urls(fetch, '/api/rank').at(-1)?.searchParams.get('unlearned')).toBe('train'))
+    expect(urls(fetch, '/api/rank').at(-1)?.searchParams.get('look_ahead')).toBe('0') // what they can learn now
+    // the slider: recipes up to that many skill points away count too
+    const slider = screen.getByRole('slider', { name: 'Skill points ahead' })
+    slider.focus()
+    await userEvent.keyboard('{ArrowRight}{ArrowRight}')
+    await waitFor(() => expect(urls(fetch, '/api/rank').at(-1)?.searchParams.get('look_ahead')).toBe('10'))
+    expect(screen.getByText('Or after gaining up to 10 skill points')).toBeInTheDocument()
+    expect(localStorage.getItem('altarmy.search.gold.lookAhead')).toBe('10')
   })
 
   it('asks nobody to scan, and says when an item sells on the auction house', async () => {

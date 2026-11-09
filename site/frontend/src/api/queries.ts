@@ -1,4 +1,3 @@
-import { useDebouncedCallback } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
 import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect } from 'react'
@@ -10,8 +9,6 @@ import {
   type ProfessionRank,
   type Selection,
   type Status,
-  type TimeConfig,
-  type TimeSettings,
 } from './client'
 import { GAME_VERSION } from '../lib/gameVersion'
 import type { Choices } from '../lib/choices'
@@ -644,62 +641,6 @@ export function useAhBlocked() {
     queryKey: ['ah-blocked', GAME_VERSION],
     queryFn: () => call(client.GET('/api/ah-blocked', GV)),
   })
-}
-
-/** The user's time settings: where plans are timed, seconds per action, what an hour is worth. */
-const TIME_KEY = ['time', GAME_VERSION]
-
-export function useTime() {
-  return useQuery({
-    queryKey: TIME_KEY,
-    queryFn: () => call(client.GET('/api/time', GV)),
-    // Changes only through `useSetTime` (which stores the answer) or a new selection (which refetches everything).
-    staleTime: Infinity,
-  })
-}
-
-/** Save the city (null: the faction's default) and the settings that differ from the defaults; searches and
- * re-costed plans are refetched, since plans depend on them. */
-export function useSetTime() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (body: { city: string | null; config: Partial<TimeConfig> }) =>
-      call(client.PUT('/api/time', { ...GV, body: { city: body.city, config: body.config as Record<string, number> } })),
-    onSuccess: (settings) => {
-      // The cached city and config are what the user has edited since (`useEditTime`), so never older than the answer.
-      queryClient.setQueryData<TimeSettings>(TIME_KEY, (shown) =>
-        shown ? { ...settings, city: shown.city, config: shown.config } : settings,
-      )
-      return queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'rank' || q.queryKey[0] === 'evaluate' })
-    },
-    onError: showError('Could not save the time settings'),
-  })
-}
-
-/** The config's settings that differ from the defaults: what is saved. */
-function changes(config: TimeConfig, defaults: TimeConfig): Partial<TimeConfig> {
-  return Object.fromEntries(
-    Object.entries(config).filter(([key, value]) => value !== defaults[key as keyof TimeConfig]),
-  ) as Partial<TimeConfig>
-}
-
-/**
- * Edit the time settings. The cached settings are the draft every editor shares (only the options' Crafts per session
- * for now): an edit shows at once, and a moment after the last one the settings are saved as the cache then holds
- * them, so one editor never undoes another's change.
- */
-export function useEditTime() {
-  const queryClient = useQueryClient()
-  const setTime = useSetTime()
-  const save = useDebouncedCallback(() => {
-    const shown = queryClient.getQueryData<TimeSettings>(TIME_KEY)
-    if (shown) setTime.mutate({ city: shown.city, config: changes(shown.config, shown.defaults) })
-  }, 600)
-  const edit = (next: { city: string | null; config: TimeConfig }) => {
-    queryClient.setQueryData<TimeSettings>(TIME_KEY, (shown) => shown && { ...shown, ...next })
-    save()
-  }
-  return { edit, saving: setTime.isPending }
 }
 
 /** Never sell an item on the AH, or allow it again; searches and re-costed plans are refetched. */

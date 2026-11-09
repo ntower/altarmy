@@ -32,7 +32,7 @@ const columnsFor = (rankBy: RankBy | undefined): string[] =>
 /** How far a skill-up run goes: "110 (~17 crafts)". */
 const CRAFT_UNTIL = 'Craft until'
 /** A gold list's two ways to sell, side by side: playing it safe (the better of a vendor and disenchanting) and the
- * auction house, each the session's profit selling everything that way. */
+ * auction house, each the profit a craft selling everything that way: the session's over its crafts (`perCraft`). */
 const SAFE = 'Safe profit'
 const AUCTION = 'Auction profit'
 /** The server's sort for each of them: a header click re-ranks the whole list, not just the rows loaded, best
@@ -41,9 +41,9 @@ export type GoldSort = 'safe' | 'ah' | 'likely'
 export type SortOrder = 'desc' | 'asc'
 const GOLD_SORT: Readonly<Record<string, GoldSort>> = { [SAFE]: 'safe', [AUCTION]: 'ah' }
 const GOLD_HEADER_TITLE: Readonly<Record<string, string>> = {
-  [SAFE]: 'Sell to a vendor, or disenchant and auction the materials: it always sells, and you are never left holding stock',
+  [SAFE]: 'Per craft: sell to a vendor, or disenchant and auction the materials. It always sells, and you are never left holding stock',
   [AUCTION]:
-    'Sell on the auction house, counting only as many as its market has shown it takes (the rest the safe way). Often more, but less sure',
+    'Per craft: sell on the auction house, counting only as many as its market has shown it takes (the rest the safe way). Often more, but less sure',
 }
 /** A gold list's money columns: room for -999g 99s 99c and the line under it. */
 const GOLD_MONEY_WIDTH = 150
@@ -179,8 +179,12 @@ function SkillCells({ result: r }: { result: RankResult }) {
   )
 }
 
-/** A gold row's line under its recipe: who makes it, the session's crafts and what they spend; and, when its AH sale
- * may take long, how long. */
+/** A copper figure of a session as a craft's share of it: the gold list's rows are planned as a session (so reagents
+ * are bought up their ladders and the market's depth counts), then shown per craft. */
+const perCraft = (copper: number, r: Pick<RankResult, 'crafts'>): number => Math.round(copper / Math.max(1, r.crafts))
+
+/** A gold row's line under its recipe: who makes it, what a craft spends, and the session its figures are averaged
+ * over; and, when its AH sale may take long, how long. */
 function RecipeLine({ result: r }: { result: RankResult }) {
   const what = r.profession || KIND_SHORT[r.kind]
   const who = r.crafter && (r.crafters.includes(r.crafter) || needsNoRecipe(r)) ? r.crafter : null
@@ -192,7 +196,10 @@ function RecipeLine({ result: r }: { result: RankResult }) {
           <CharacterName name={who} /> ·{' '}
         </>
       )}
-      {r.crafts} {r.kind === 'flip' ? 'bought' : r.crafts === 1 ? 'craft' : 'crafts'} · spend <Money copper={r.cost} />
+      spend <Money copper={perCraft(r.cost, r)} /> each ·{' '}
+      <span title="The figures are per craft: their share of a session planned at this many, so reagents are bought up their listings and the market's depth counts">
+        avg of {r.crafts} {r.kind === 'flip' ? 'bought' : r.crafts === 1 ? 'craft' : 'crafts'}
+      </span>
       {r.slow && r.days_to_sell != null && (
         <>
           {' · '}
@@ -268,8 +275,8 @@ function twoWays(r: RankResult, items: ItemMap): TwoWays {
           .map((m) => m.name)
       : []
   return {
-    safe: safe?.profit ?? null,
-    ah,
+    safe: safe ? perCraft(safe.profit, r) : null,
+    ah: ah === null ? null : perCraft(ah, r),
     primary,
     safeNote: safe && (SAFE_NOTES[safe.kind] ?? safe.kind),
     safeWhy: materials.length
@@ -289,21 +296,22 @@ function AhWhy({ result: r, items }: { result: RankResult; items: ItemMap }) {
       at <Money copper={count.price} /> each
     </>
   )
+  const session = `Of the ${count.made} made by ${r.crafts} ${r.crafts === 1 ? 'craft' : 'crafts'}`
   if (count.counted === count.made)
     return (
       <>
-        Counts all {count.made} sold on the auction house{at}, after its cut.
+        {session}, counts all sold on the auction house{at}, after its cut.
       </>
     )
   const rest = count.restKind ? `go to ${(EXIT_SHORT[count.restKind] ?? count.restKind).toLowerCase()}` : 'are worth nothing'
   return (
     <>
-      Counts {count.counted} of {count.made} sold on the auction house{at}: as many as its market has shown it takes.
-      The other {count.made - count.counted} {rest}.
+      {session}, counts {count.counted} sold on the auction house{at}: as many as its market has shown it takes. The
+      other {count.made - count.counted} {rest}.
       {count.allSold != null && (
         <>
           {' '}
-          If all {count.made} sold there: <Money copper={count.allSold} signed />.
+          If all sold there: <Money copper={perCraft(count.allSold, r)} signed /> a craft.
         </>
       )}
     </>

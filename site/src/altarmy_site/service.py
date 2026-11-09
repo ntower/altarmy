@@ -1314,9 +1314,11 @@ def by_per_day(
 def by_likely(
     results: Iterable[Result], listings: Mapping[int, prices.Listing], market: Market
 ) -> list[Result]:
-    """`results` by likely profit (`likely`), best first; ties keep their order."""
+    """`results` by likely profit a craft (`likely` over the crafts, as the gold list shows it), best first;
+    ties keep their order."""
     worth = {
-        id(r): likely(r, listings, market.sell_prices.get(r.recipe.output_item_id)).profit for r in results
+        id(r): likely(r, listings, market.sell_prices.get(r.recipe.output_item_id)).profit / max(1, r.crafts)
+        for r in results
     }
     return sorted(results, key=lambda r: -worth[id(r)])
 
@@ -1507,7 +1509,7 @@ def by_profit_each(results: Iterable[Result]) -> list[Result]:
 
 
 def _by_worth(
-    results: Iterable[Result], worth: Callable[[Result], int | None], ascending: bool = False
+    results: Iterable[Result], worth: Callable[[Result], float | None], ascending: bool = False
 ) -> list[Result]:
     """`results` by `worth`, best first (worst first when `ascending`); those it is None for last either way;
     ties keep their order."""
@@ -1518,12 +1520,12 @@ def _by_worth(
 
 
 def by_safe(results: Iterable[Result], ascending: bool = False) -> list[Result]:
-    """`results` by what playing it safe makes (`safe_profit`), best first (worst first when `ascending`);
-    those it isn't open to last."""
+    """`results` by what playing it safe makes a craft (`safe_profit` over the crafts), best first (worst
+    first when `ascending`); those it isn't open to last."""
 
-    def worth(r: Result) -> int | None:
+    def worth(r: Result) -> float | None:
         safe = safe_profit(r)
-        return None if safe is None else safe[1]
+        return None if safe is None else safe[1] / max(1, r.crafts)
 
     return _by_worth(results, worth, ascending)
 
@@ -1534,12 +1536,12 @@ def by_ah(
     market: Market,
     ascending: bool = False,
 ) -> list[Result]:
-    """`results` by what the auction house makes counting only what its market takes (`ah_sale`), best
-    first (worst first when `ascending`); those it can't be sold there last."""
+    """`results` by what the auction house makes a craft counting only what its market takes (`ah_sale` over
+    the crafts), best first (worst first when `ascending`); those it can't be sold there last."""
 
-    def worth(r: Result) -> int | None:
+    def worth(r: Result) -> float | None:
         sale = ah_sale(r, listings, market.sell_prices.get(r.recipe.output_item_id))
-        return None if sale is None else sale.profit
+        return None if sale is None else sale.profit / max(1, r.crafts)
 
     return _by_worth(results, worth, ascending)
 
@@ -1914,6 +1916,12 @@ def default_city(cities: Mapping[str, timing.CityMap], faction: str) -> timing.C
     return (preferred or allowed or [timing.ANYWHERE])[0]
 
 
+PLAN_CRAFTS = 10
+"""The crafts every ranked session plans (no setting changes it): enough to buy up the reagents' ladders and
+meet the output's market depth, so a row's figures, shown per craft, are an honest average, not the first
+craft's best case."""
+
+
 def time_model(
     conn: Connection,
     user_uid: str,
@@ -1922,9 +1930,11 @@ def time_model(
     faction: str,
 ) -> TimeModel:
     """The user's time settings: their saved city if a `faction` character crafts there, else whichever of
-    the faction's cities is fastest for each plan (the default), and their config overrides."""
+    the faction's cities is fastest for each plan (the default), and their config overrides, the batch
+    always `PLAN_CRAFTS`."""
     saved = users.get_settings(conn, user_uid, game_version)
-    config = timing.config_from_json(saved.time_config)
+    # every list plans the same session, whatever batch was saved before the setting was dropped
+    config = replace(timing.config_from_json(saved.time_config), batch=PLAN_CRAFTS)
     allowed = faction_cities(cities, faction)
     if saved.time_city in {c.name for c in allowed}:
         return TimeModel(config, cities[saved.time_city])

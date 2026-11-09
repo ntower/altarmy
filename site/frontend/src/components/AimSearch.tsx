@@ -8,12 +8,14 @@ import {
   Loader,
   NumberInput,
   SimpleGrid,
+  Slider,
   Stack,
   Text,
   useMantineTheme,
 } from '@mantine/core'
 import { z } from 'zod'
 import {
+  MAX_LOOK_AHEAD,
   type RankParams,
   type RankSort,
   useAhBlocked,
@@ -42,7 +44,6 @@ import { ProfessionIcon } from './ProfessionIcon'
 import classes from './SearchTab.module.css'
 import { type GoldSort, ResultsTable, type SortOrder } from './ResultsTable'
 import { SkillWorkspace } from './SkillWorkspace'
-import { CraftsPerSession } from './CraftsPerSession'
 
 /** Results per page: the first request asks for this many, and each "Show more" for this many more. */
 const PAGE = 50
@@ -249,14 +250,44 @@ function useFilter<T>(scope: SetupAnswers['aim'], name: string, schema: z.ZodTyp
  * aim (`key={aim}`), so each remembers its own filters: making gold and skilling up never overwrite each other's.
  *
  * Making gold ranks every way to make gold (crafts, processing trade goods, essence conversions and gear bought to
- * disenchant) in one list by the profit of a session, sold safely or on the auction house, with Filters (crafts per
- * session, recipes that could be learned) and Advanced Filters (bounds).
+ * disenchant) in one list by the profit of a craft (averaged over the server's session), sold safely or on the auction house,
+ * with Filters (recipes that could be learned) and Advanced Filters (bounds, per craft).
  *
  * Skilling up ranks every recipe the one skilled up can make or train now that still gives them a skill point, each
  * as a useful run (the crafts until it turns green, or yellow: `stop`), by what a skill point costs; what is made is
  * sold to a vendor or disenchanted, else kept. Its Options (`SkillOptions`, on the page's top row): what may teach the recipes, where a run stops
  * and, for Enchanting and Engineering, casts made for the skill point alone.
  */
+/** How many skill points short of a recipe a character may be for it to count as one they could learn: 0, those
+ * they can learn now. Held while dragged, applied when let go. */
+function LookAheadSlider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const [shown, setShown] = useState(value)
+  useEffect(() => setShown(value), [value])
+  return (
+    <Stack gap={4} pl={34}>
+      <Text size="sm">
+        {shown === 0
+          ? 'Only what they can learn now'
+          : `Or after gaining up to ${shown} skill ${shown === 1 ? 'point' : 'points'}`}
+      </Text>
+      <Text size="xs" c="dimmed">
+        A profession a character doesn't have counts as skill 0 (at most two primary professions)
+      </Text>
+      <Slider
+        thumbLabel="Skill points ahead"
+        min={0}
+        max={MAX_LOOK_AHEAD}
+        step={5}
+        value={shown}
+        onChange={setShown}
+        onChangeEnd={onChange}
+        marks={[0, 10, 20, 30, 40, 50].map((v) => ({ value: v, label: String(v) }))}
+        mb="md"
+      />
+    </Stack>
+  )
+}
+
 export function AimSearch({
   setup,
   professions,
@@ -302,6 +333,9 @@ export function AimSearch({
   const [goldSort, setGoldSort] = useFilter<RankSort>(scope, 'sort', goldSortSchema, 'likely')
   const [goldOrder, setGoldOrder] = useFilter<SortOrder>(scope, 'order', sortOrderSchema, 'desc')
   const [learnable, setLearnable] = useFilter(scope, 'learnable', z.boolean(), false)
+  // with recipes I could learn: how many skill points short of a recipe still counts (a profession the character
+  // lacks counts as skill 0)
+  const [lookAhead, setLookAhead] = useFilter(scope, 'lookAhead', z.number().int().min(0).max(MAX_LOOK_AHEAD), 0)
   // By value, not the stored object: a new but equal setup must not count as new filters (that resets paging).
   const sort = skill ? rankSort(setup) : goldSort
   const [profession = null] = rankProfessions(setup)
@@ -343,7 +377,7 @@ export function AimSearch({
         : {
             // The recipes the characters know (and, if asked, can train now), trivial or not.
             unlearned: learnable ? 'train' : 'none',
-            lookAhead: 0,
+            lookAhead: learnable ? lookAhead : 0,
             sources: BUILT_IN_SOURCES,
             includeTrivial: true,
             // every way to sell, side by side: the list shows playing it safe and the auction house apart; every kind
@@ -374,6 +408,7 @@ export function AimSearch({
       minRoi,
       maxRoi,
       learnable,
+      lookAhead,
       sort,
       goldOrder,
       profession,
@@ -403,18 +438,16 @@ export function AimSearch({
     <>
       {!skill && (
         <Options label="Filters">
-          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xl">
-            <CraftsPerSession />
-            <Stack gap="md">
-              <Checkbox
-                label="Include recipes I could learn"
-                description="Recipes a character can train or buy the pattern for now"
-                checked={learnable}
-                onChange={(e) => setLearnable(e.currentTarget.checked)}
-              />
-              {salvager}
-            </Stack>
-          </SimpleGrid>
+          <Stack gap="md">
+            <Checkbox
+              label="Include recipes I could learn"
+              description="Recipes a character can train or buy the pattern for now"
+              checked={learnable}
+              onChange={(e) => setLearnable(e.currentTarget.checked)}
+            />
+            {learnable && <LookAheadSlider value={lookAhead} onChange={setLookAhead} />}
+            {salvager}
+          </Stack>
         </Options>
       )}
       {!skill && lastScan !== undefined && (
@@ -458,7 +491,7 @@ export function AimSearch({
                 <Stack>
                   <SimpleGrid cols={{ base: 1, sm: 3, lg: 1 }}>
                     <Range
-                      name="cost (gold)"
+                      name="cost per craft (gold)"
                       min={minCost}
                       max={maxCost}
                       onMin={setMinCost}
@@ -466,7 +499,7 @@ export function AimSearch({
                       step={1}
                     />
                     <Range
-                      name="profit (gold)"
+                      name="profit per craft (gold)"
                       min={minProfit}
                       max={maxProfit}
                       onMin={setMinProfit}
@@ -484,7 +517,8 @@ export function AimSearch({
       {noPrices && <Alert color="yellow">No data collected for this auction house</Alert>}
       {!skill && (
         <Text size="sm" c="dimmed">
-          <b>Safe profit</b>: sold to a vendor or disenchanted, so it always sells. <b>Auction profit</b>: counts only as
+          Figures are per craft, averaged over the crafts under each recipe. <b>Safe profit</b>: sold to a vendor or
+          disenchanted, so it always sells. <b>Auction profit</b>: counts only as
           many as its market has been taking, the rest the safe way. Ranked by the better of the two, in bold; click a
           heading to rank by it, and again to reverse it.
         </Text>

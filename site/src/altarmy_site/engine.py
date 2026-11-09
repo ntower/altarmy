@@ -42,6 +42,24 @@ ARCANE_SALVAGER_BONUS = 0.10
 # all of their professions'.
 Unlearned = Literal["none", "train", "all"]
 MAX_LOOK_AHEAD = 50  # the most skill a recipe "to train" may need beyond what the character has
+# The professions a character may take up (`can_learn` with a look-ahead, from skill 0): any number of the
+# secondary ones, at most `MAX_PRIMARY` of the primary ones (gathering counts); Poisons is neither.
+PRIMARY_PROFESSIONS = frozenset(
+    {
+        "alchemy",
+        "blacksmithing",
+        "enchanting",
+        "engineering",
+        "herbalism",
+        "jewelcrafting",
+        "leatherworking",
+        "mining",
+        "skinning",
+        "tailoring",
+    }
+)
+SECONDARY_PROFESSIONS = frozenset({"cooking", "first aid", "fishing"})
+MAX_PRIMARY = 2
 # What teaches a recipe: a profession trainer (no item teaches its spell), a recipe item that can be traded,
 # or only recipe items that bind on pickup.
 Source = Literal["trainer", "recipe", "bop"]
@@ -167,6 +185,18 @@ class Crafter:
     def has(self, profession: str) -> bool:
         return self.skill(profession) is not None
 
+    def could_take_up(self, profession: str) -> bool:
+        """Whether they could learn `profession`, which they don't have: a secondary one always, a primary
+        one while they have fewer than `MAX_PRIMARY`."""
+        name = profession.lower()
+        if self.has(name):
+            return False
+        if name in SECONDARY_PROFESSIONS:
+            return True
+        return (
+            name in PRIMARY_PROFESSIONS and sum(p in PRIMARY_PROFESSIONS for p in self._skills) < MAX_PRIMARY
+        )
+
     def skill(self, profession: str) -> tuple[int, int] | None:
         """Their (rank, max rank) in `profession`; None if they don't have it."""
         return self._skills.get(profession.lower())
@@ -200,13 +230,20 @@ class Learning:
 def can_learn(recipe: Recipe, crafter: Crafter, unlearned: Learning | Unlearned) -> bool:
     """Whether `crafter` counts as able to craft `recipe` without having learned it: never with "none"; with
     "train" if one of the chosen sources teaches it and their skill in its profession is at most the
-    look-ahead below its `required_skill`; with "all" if they have its profession."""
+    look-ahead below its `required_skill`, a profession they don't have counting as skill 0 when there is a
+    look-ahead and they could take it up (`Crafter.could_take_up`); with "all" if they have its profession."""
     learning = Learning.of(unlearned)
     if learning.unlearned == "none":
         return False
     skill = crafter.skill(recipe.skill_name)
     if skill is None:
-        return False
+        if (
+            learning.unlearned != "train"
+            or not learning.look_ahead
+            or not crafter.could_take_up(recipe.skill_name)
+        ):
+            return False
+        skill = (0, 0)
     if learning.unlearned == "all":
         return True
     return recipe.source in learning.sources and recipe.required_skill <= skill[0] + learning.look_ahead
@@ -1001,7 +1038,8 @@ class Result:
 
 @dataclass(frozen=True)
 class Filters:
-    """Inclusive bounds on a result's cost and profit (copper) and ROI (0.5 = 50%); None is unbounded."""
+    """Inclusive bounds on a result's cost and profit a craft (copper; a session's over its crafts) and ROI
+    (0.5 = 50%); None is unbounded."""
 
     min_cost: int | None = None
     max_cost: int | None = None
@@ -1014,9 +1052,10 @@ class Filters:
         def within(value: float, lo: float | None, hi: float | None) -> bool:
             return (lo is None or value >= lo) and (hi is None or value <= hi)
 
+        crafts = max(1, r.crafts)
         return (
-            within(r.cost, self.min_cost, self.max_cost)
-            and within(r.profit, self.min_profit, self.max_profit)
+            within(r.cost / crafts, self.min_cost, self.max_cost)
+            and within(r.profit / crafts, self.min_profit, self.max_profit)
             and within(r.roi, self.min_roi, self.max_roi)
         )
 
@@ -2456,11 +2495,16 @@ def recipes_for_characters(
     """
     known = frozenset().union(*(c.known_spells for c in crafters))
     learning = Learning.of(unlearned)
-    # only a character with a recipe's profession can learn it (`can_learn`): each is asked about those alone
+    # only a character with a recipe's profession can learn it (`can_learn`): each is asked about those alone,
+    # unless a look-ahead lets them take up a profession they don't have
     holders: dict[str, list[Crafter]] = {}
     for c in crafters:
         for p in {p.lower() for p, _, _ in c.professions}:
             holders.setdefault(p, []).append(c)
+    if learning.unlearned == "train" and learning.look_ahead:
+        holders = {p: list(crafters) for p in PRIMARY_PROFESSIONS | SECONDARY_PROFESSIONS} | {
+            p: list(crafters) for p in holders
+        }
     lowered: dict[str, str] = {}
     out = []
     for r in recipes:

@@ -517,7 +517,8 @@ def test_time_model_follows_the_users_settings(conn: Connection, cities: Path) -
     assert service.time_model(conn, ME, FOREVER, maps, "Alliance").city.name == "Stormwind"
     users.update_settings(conn, ME, FOREVER, time_city="Thunder Bluff", time_config='{"batch": 5}')
     model = service.time_model(conn, ME, FOREVER, maps, "Horde")
-    assert (model.city.name, model.config.batch) == ("Thunder Bluff", 5)
+    # a batch saved before the setting was dropped is ignored: every list plans the same session
+    assert (model.city.name, model.config.batch) == ("Thunder Bluff", service.PLAN_CRAFTS)
     users.update_settings(conn, ME, FOREVER, time_city="Booty Bay")  # neutral: never used
     assert service.time_model(conn, ME, FOREVER, maps, "Horde").city.name == "Orgrimmar"
     with pytest.raises(ValueError, match="Booty Bay"):
@@ -1360,8 +1361,9 @@ def test_the_gold_sorts() -> None:
     assert [r.recipe.id for r in service.by_safe([a, b, c])] == [2, 1, 3]  # c has no safe exit: last
     assert [r.recipe.id for r in service.by_safe([a, b, c], ascending=True)] == [1, 2, 3]  # still last
     nowhere = engine.Market({}, [], {})
-    assert [r.recipe.id for r in service.by_ah([a, b, c], {}, nowhere)] == [3, 1, 2]
-    assert [r.recipe.id for r in service.by_ah([a, b, c], {}, nowhere, ascending=True)] == [1, 3, 2]
+    # per craft: c's 900 over its 10 crafts is less than a's 500 over one
+    assert [r.recipe.id for r in service.by_ah([a, b, c], {}, nowhere)] == [1, 3, 2]
+    assert [r.recipe.id for r in service.by_ah([a, b, c], {}, nowhere, ascending=True)] == [3, 1, 2]
     assert (service.safe_profit(b), service.safe_profit(c)) == (("disenchant", 300), None)
     assert service.at_least_verdict("likely", "steady") and not service.at_least_verdict("likely", "unproven")
 
