@@ -27,6 +27,7 @@ When you change **user-visible** behavior, update the matching docs in the **sam
 | [WOW_FOREVER_COMPATIBILITY_RESEARCH.md](WOW_FOREVER_COMPATIBILITY_RESEARCH.md) | Log of the addon's WoW Forever compatibility work, from the research ahead of its beta to what is still open |
 | [WOW_FOREVER_COMPAT.md](WOW_FOREVER_COMPAT.md)                                 | Audit: do the optional third-party addon integrations still work on WoW Forever                              |
 | [WOW_FOREVER_NATIVE_UI_RESEARCH.md](WOW_FOREVER_NATIVE_UI_RESEARCH.md)         | Research: matching Forever's built-in UI look via Blizzard templates/atlases (TBC + Forever availability)    |
+| [GAMEPAD_RESEARCH.md](GAMEPAD_RESEARCH.md)                                     | Research: gamepad APIs per client, how other addons support pads, what AltArmy's UI would need to change     |
 | [REFACTORING_OPPORTUNITIES.md](REFACTORING_OPPORTUNITIES.md)                   | Code-review snapshot of remaining refactors                                                                  |
 
 ## Data layer (next to code)
