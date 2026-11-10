@@ -1,7 +1,7 @@
 -- AltArmy TBC — DataStore module: level-up milestones, death log, one-time backfill.
 -- Requires DataStore.lua (core) loaded first.
 -- luacheck: globals GetRealZoneText GetMoney GetXPExhaustion RequestTimePlayed C_Timer C_AddOns IsAddOnLoaded
--- luacheck: globals UnitGUID UnitLevel UnitName GetRealmName RXPCTrackingData NITdatabase ChatFrame_DisplayTimePlayed
+-- luacheck: globals UnitGUID UnitLevel UnitName GetRealmName RXPCTrackingData NITdatabase CHAT_FRAMES NUM_CHAT_WINDOWS
 
 if not AltArmy or not AltArmy.DataStore then return end
 
@@ -37,61 +37,88 @@ local RXP_BACKFILL_MAX_RETRIES = 5
 
 local LEVEL_HISTORY_DEBUG_PREFIX = "|cff00ccff[Alt Army:LevelHistory]|r "
 
--- Silence /played chat spam from internal RequestTimePlayed calls (RXP-style hook).
-local reportPlayedTimeToChat = true
-local suppressPlayedChatCount = 0
-local PLAYED_CHAT_SUPPRESS_RESET_DELAY = 3
-local hookedChatFrame_DisplayTimePlayed = nil
-local playedTimeChatHookInstalled = false
+-- Our own /played requests are kept out of chat by unregistering TIME_PLAYED_MSG on the chat frames
+-- until the answer has come (our DataStore frame still gets it). Nothing of Blizzard's is replaced:
+-- Forever's chat calls ChatFrameUtil.DisplayTimePlayed from ChatFrameMixin, not the old global, and
+-- replacing Blizzard functions on 12.0 clients taints.
+local PLAYED_EVENT = "TIME_PLAYED_MSG"
+local PLAYED_CHAT_MUTE_TIMEOUT = 10
+local mutedChatFrames = {}
+local pendingPlayedRequests = 0
+local playedMuteGeneration = 0
 
-local function InstallPlayedTimeChatSuppressor()
-    if playedTimeChatHookInstalled then return true end
-    if not ChatFrame_DisplayTimePlayed then return false end
-
-    hookedChatFrame_DisplayTimePlayed = ChatFrame_DisplayTimePlayed
-    ChatFrame_DisplayTimePlayed = function(...)
-        if suppressPlayedChatCount > 0 then
-            suppressPlayedChatCount = suppressPlayedChatCount - 1
-            if C_Timer and C_Timer.After then
-                C_Timer.After(PLAYED_CHAT_SUPPRESS_RESET_DELAY, function()
-                    if suppressPlayedChatCount <= 0 then
-                        reportPlayedTimeToChat = true
-                    end
-                end)
-            elseif suppressPlayedChatCount <= 0 then
-                reportPlayedTimeToChat = true
-            end
-            return
+local function ChatFrames()
+    local list = {}
+    if type(CHAT_FRAMES) == "table" then
+        for _, name in ipairs(CHAT_FRAMES) do
+            local f = _G[name]
+            if f then list[#list + 1] = f end
         end
-        if reportPlayedTimeToChat then
-            return hookedChatFrame_DisplayTimePlayed(...)
-        end
-        if C_Timer and C_Timer.After then
-            C_Timer.After(PLAYED_CHAT_SUPPRESS_RESET_DELAY, function()
-                reportPlayedTimeToChat = true
-            end)
-        else
-            reportPlayedTimeToChat = true
+    else
+        for i = 1, (NUM_CHAT_WINDOWS or 10) do
+            local f = _G["ChatFrame" .. i]
+            if f then list[#list + 1] = f end
         end
     end
-    playedTimeChatHookInstalled = true
-    return true
+    return list
+end
+
+local function UnmutePlayedChat()
+    for _, f in ipairs(mutedChatFrames) do
+        if f.IsEventRegistered and not f:IsEventRegistered(PLAYED_EVENT) then
+            pcall(f.RegisterEvent, f, PLAYED_EVENT)
+        end
+    end
+    mutedChatFrames = {}
+    pendingPlayedRequests = 0
+    playedMuteGeneration = playedMuteGeneration + 1
+end
+
+local function MutePlayedChat()
+    if #mutedChatFrames > 0 then return end
+    for _, f in ipairs(ChatFrames()) do
+        if f.IsEventRegistered and f.UnregisterEvent and f:IsEventRegistered(PLAYED_EVENT) then
+            f:UnregisterEvent(PLAYED_EVENT)
+            mutedChatFrames[#mutedChatFrames + 1] = f
+        end
+    end
+    if #mutedChatFrames > 0 and C_Timer and C_Timer.After then
+        local generation = playedMuteGeneration
+        C_Timer.After(PLAYED_CHAT_MUTE_TIMEOUT, function()
+            if generation == playedMuteGeneration then UnmutePlayedChat() end
+        end)
+    end
+end
+
+--- Called with every TIME_PLAYED_MSG: once each request has its answer, the chat frames get the event back
+--- (next frame, so they don't receive the one being delivered now).
+local function OnPlayedAnswered()
+    if pendingPlayedRequests <= 0 then return end
+    pendingPlayedRequests = pendingPlayedRequests - 1
+    if pendingPlayedRequests > 0 then return end
+    if C_Timer and C_Timer.After then
+        local generation = playedMuteGeneration
+        C_Timer.After(0, function()
+            if generation == playedMuteGeneration then UnmutePlayedChat() end
+        end)
+    else
+        UnmutePlayedChat()
+    end
 end
 
 function DS:RequestTimePlayedSilently()
     if not RequestTimePlayed then return end
-    InstallPlayedTimeChatSuppressor()
-    suppressPlayedChatCount = suppressPlayedChatCount + 1
-    reportPlayedTimeToChat = false
+    MutePlayedChat()
+    pendingPlayedRequests = pendingPlayedRequests + 1
     RequestTimePlayed()
 end
 
-function DS._GetReportPlayedTimeToChat()
-    return reportPlayedTimeToChat
+function DS._GetPlayedChatMuted()
+    return #mutedChatFrames
 end
 
-function DS._GetSuppressPlayedChatCount()
-    return suppressPlayedChatCount
+function DS._GetPendingPlayedRequests()
+    return pendingPlayedRequests
 end
 
 local function GetAccountData()
@@ -139,10 +166,9 @@ function DS._ResetLevelHistoryTestState()
     rxpBackfillRetryScheduled = false
     DS._pendingLevelUp = nil
     DS._playedBaseline = nil
-    reportPlayedTimeToChat = true
-    suppressPlayedChatCount = 0
-    playedTimeChatHookInstalled = false
-    hookedChatFrame_DisplayTimePlayed = nil
+    mutedChatFrames = {}
+    pendingPlayedRequests = 0
+    playedMuteGeneration = playedMuteGeneration + 1
 end
 
 function DS._SetLevelHistoryTestRxpAddonEnabled(enabled)
@@ -494,7 +520,28 @@ function DS:RefinePlayedForLevel(char, level, authoritativePlayedTotal)
     return true
 end
 
+--- Played time is asked once a session (and on each level-up): at the first login. A /reload keeps
+--- the session, so the answer saved with its time (`char.playedAt`, cleared at login so it is always
+--- this session's) gives the baseline again without asking; other loading screens ask only when no
+--- answer came yet.
+function DS:OnEnteringWorldPlayed(isInitialLogin, isReloadingUi)
+    local char = GetActiveChar()
+    if isInitialLogin then
+        if char then char.playedAt = nil end
+        DS:RequestTimePlayedSilently()
+        return
+    end
+    if isReloadingUi and char and type(char.played) == "number" and type(char.playedAt) == "number" then
+        DS._playedBaseline = { totalPlayed = char.played, wallClock = char.playedAt }
+        return
+    end
+    if not DS._playedBaseline then
+        DS:RequestTimePlayedSilently()
+    end
+end
+
 function DS:OnTimePlayedMessage(totalTimePlayed, _timePlayedThisLevel)
+    OnPlayedAnswered()
     if type(totalTimePlayed) ~= "number" then return end
 
     DS:UpdatePlayedBaseline(totalTimePlayed)
@@ -997,16 +1044,6 @@ if rxpAddonFrame then
                 DS:RunLevelHistoryBackfill()
             end
         end
-    end)
-end
-
-InstallPlayedTimeChatSuppressor()
-
-local playedTimeHookFrame = CreateFrame and CreateFrame("Frame")
-if playedTimeHookFrame then
-    playedTimeHookFrame:RegisterEvent("PLAYER_LOGIN")
-    playedTimeHookFrame:SetScript("OnEvent", function()
-        InstallPlayedTimeChatSuppressor()
     end)
 end
 

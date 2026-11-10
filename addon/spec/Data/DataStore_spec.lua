@@ -731,6 +731,31 @@ describe("DataStore", function()
       DS.RunLevelHistoryBackfill = function() end
     end)
 
+    it("hands PLAYER_ENTERING_WORLD's login and reload flags to the played-time check", function()
+      local got
+      DS.OnEnteringWorldPlayed = function(_, isInitialLogin, isReloadingUi)
+        got = { isInitialLogin, isReloadingUi }
+      end
+      eventHandler(nil, "PLAYER_ENTERING_WORLD", false, true)
+      assert.are.same({ false, true }, got)
+    end)
+
+    it("does not ask for played time on PLAYER_ALIVE", function()
+      local asked = false
+      DS.OnEnteringWorldPlayed = function() asked = true end
+      DS.RequestTimePlayedSilently = function() asked = true end
+      eventHandler(nil, "PLAYER_ALIVE")
+      assert.is_false(asked)
+    end)
+
+    it("saves when the played time was answered", function()
+      _G.time = function() return 1700000000 end
+      eventHandler(nil, "TIME_PLAYED_MSG", 5000, 120)
+      local char = DS:GetCurrentCharacter()
+      assert.are.equal(5000, char.played)
+      assert.are.equal(1700000000, char.playedAt)
+    end)
+
     it("does not scan equipment immediately on PLAYER_ENTERING_WORLD", function()
       assert.is_function(eventHandler)
       eventHandler(nil, "PLAYER_ENTERING_WORLD")

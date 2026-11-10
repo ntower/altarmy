@@ -819,10 +819,10 @@ frame:SetScript("OnEvent", function(_, event, ...)
             DS:MigrateRecipePrimaryIds()
         end
         if DS.ScanCharacter then DS:ScanCharacter() end
-        if DS.RequestTimePlayedSilently then
-            DS:RequestTimePlayedSilently()
-        elseif RequestTimePlayed then
-            RequestTimePlayed()
+        -- Played time: asked at login, not on every loading screen or resurrection (see
+        -- DataStoreLevelHistory's OnEnteringWorldPlayed). PEW's args are isInitialLogin, isReloadingUi.
+        if event == "PLAYER_ENTERING_WORLD" and DS.OnEnteringWorldPlayed then
+            DS:OnEnteringWorldPlayed(addonName, a1)
         end
         local char = GetCurrentCharTable()
         if char then
@@ -1179,6 +1179,7 @@ frame:SetScript("OnEvent", function(_, event, ...)
         local char = GetCurrentCharTable()
         if char and totalTimePlayed and type(totalTimePlayed) == "number" then
             char.played = totalTimePlayed
+            char.playedAt = time and time() or nil
             if type(timePlayedThisLevel) == "number" then
                 char.playedThisLevel = timePlayedThisLevel
             end

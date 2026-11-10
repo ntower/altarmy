@@ -112,7 +112,7 @@ read_globals = {
     "GetSavedInstanceInfo",
     "NUM_CHAT_WINDOWS",
     "ChatTypeGroup",
-    "ChatFrame_DisplayTimePlayed",
+    "CHAT_FRAMES",
     "GetNumSkillLines",
     "GetSkillLineInfo",
     "GetProfessions",

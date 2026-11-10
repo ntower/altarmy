@@ -277,44 +277,164 @@ describe("DataStoreLevelHistory", function()
       DS._ResetLevelHistoryTestState()
     end)
 
-    it("requests played time without allowing chat output", function()
-      local requested = false
-      _G.RequestTimePlayed = function()
-        requested = true
-      end
-      _G.ChatFrame_DisplayTimePlayed = function() end
+    local function makeChatFrame(registered)
+      local events = {}
+      if registered then events.TIME_PLAYED_MSG = true end
+      return {
+        events = events,
+        IsEventRegistered = function(self, e) return self.events[e] == true end,
+        RegisterEvent = function(self, e) self.events[e] = true end,
+        UnregisterEvent = function(self, e) self.events[e] = nil end,
+      }
+    end
 
-      DS:RequestTimePlayedSilently()
+    local requests, timers, savedTimer
 
-      assert.is_true(requested)
-      assert.is_false(DS._GetReportPlayedTimeToChat())
-      assert.are.equal(1, DS._GetSuppressPlayedChatCount())
+    before_each(function()
+      requests = 0
+      timers = {}
+      savedTimer = _G.C_Timer
+      _G.C_Timer = nil
+      _G.CHAT_FRAMES = nil
+      _G.NUM_CHAT_WINDOWS = 2
+      _G.ChatFrame1 = makeChatFrame(true)
+      _G.ChatFrame2 = makeChatFrame(false)
+      _G.RequestTimePlayed = function() requests = requests + 1 end
     end)
 
-    it("suppresses chat output via ChatFrame_DisplayTimePlayed hook", function()
-      local displayed = false
-      _G.ChatFrame_DisplayTimePlayed = function()
-        displayed = true
-      end
-      _G.RequestTimePlayed = function() end
-
-      DS:RequestTimePlayedSilently()
-      assert.are.equal(1, DS._GetSuppressPlayedChatCount())
-
-      _G.ChatFrame_DisplayTimePlayed(5000, 120)
-
-      assert.is_false(displayed)
-      assert.are.equal(0, DS._GetSuppressPlayedChatCount())
+    after_each(function()
+      _G.C_Timer = savedTimer
+      _G.ChatFrame1, _G.ChatFrame2, _G.NUM_CHAT_WINDOWS = nil, nil, nil
+      DS._ResetLevelHistoryTestState()
     end)
 
-    it("OnTimePlayedMessage processes data without consuming suppress count", function()
-      _G.RequestTimePlayed = function() end
-      DS:RequestTimePlayedSilently()
-      assert.are.equal(1, DS._GetSuppressPlayedChatCount())
+    local function collectTimers()
+      _G.C_Timer = { After = function(delay, fn) timers[#timers + 1] = { delay = delay, fn = fn } end }
+    end
 
+    it("requests played time with the chat frames' event unregistered", function()
+      DS:RequestTimePlayedSilently()
+
+      assert.are.equal(1, requests)
+      assert.is_false(_G.ChatFrame1:IsEventRegistered("TIME_PLAYED_MSG"))
+      assert.is_false(_G.ChatFrame2:IsEventRegistered("TIME_PLAYED_MSG"))
+      assert.are.equal(1, DS._GetPlayedChatMuted())
+      assert.are.equal(1, DS._GetPendingPlayedRequests())
+    end)
+
+    it("gives the chat frames the event back once answered, not ones that never had it", function()
+      DS:RequestTimePlayedSilently()
       DS:OnTimePlayedMessage(5000, 120)
 
-      assert.are.equal(1, DS._GetSuppressPlayedChatCount())
+      assert.is_true(_G.ChatFrame1:IsEventRegistered("TIME_PLAYED_MSG"))
+      assert.is_false(_G.ChatFrame2:IsEventRegistered("TIME_PLAYED_MSG"))
+      assert.are.equal(0, DS._GetPlayedChatMuted())
+    end)
+
+    it("reads CHAT_FRAMES when the client has it", function()
+      _G.CHAT_FRAMES = { "ChatFrame2", "ChatFrame1" }
+      DS:RequestTimePlayedSilently()
+      assert.is_false(_G.ChatFrame1:IsEventRegistered("TIME_PLAYED_MSG"))
+      _G.CHAT_FRAMES = nil
+    end)
+
+    it("registers again on the next frame, not while the answer is delivered", function()
+      collectTimers()
+      DS:RequestTimePlayedSilently()
+      DS:OnTimePlayedMessage(5000, 120)
+
+      assert.is_false(_G.ChatFrame1:IsEventRegistered("TIME_PLAYED_MSG"))
+      local nextFrame = timers[#timers]
+      assert.are.equal(0, nextFrame.delay)
+      nextFrame.fn()
+      assert.is_true(_G.ChatFrame1:IsEventRegistered("TIME_PLAYED_MSG"))
+    end)
+
+    it("stays muted until every request is answered", function()
+      DS:RequestTimePlayedSilently()
+      DS:RequestTimePlayedSilently()
+      assert.are.equal(2, requests)
+
+      DS:OnTimePlayedMessage(5000, 120)
+      assert.is_false(_G.ChatFrame1:IsEventRegistered("TIME_PLAYED_MSG"))
+
+      DS:OnTimePlayedMessage(5000, 120)
+      assert.is_true(_G.ChatFrame1:IsEventRegistered("TIME_PLAYED_MSG"))
+    end)
+
+    it("unmutes after the timeout when no answer comes", function()
+      collectTimers()
+      DS:RequestTimePlayedSilently()
+
+      local timeout = timers[1]
+      assert.is_true(timeout.delay > 0)
+      timeout.fn()
+
+      assert.is_true(_G.ChatFrame1:IsEventRegistered("TIME_PLAYED_MSG"))
+      assert.are.equal(0, DS._GetPendingPlayedRequests())
+    end)
+
+    it("leaves a /played typed later alone", function()
+      DS:RequestTimePlayedSilently()
+      DS:OnTimePlayedMessage(5000, 120)
+      DS:OnTimePlayedMessage(5100, 220)
+
+      assert.is_true(_G.ChatFrame1:IsEventRegistered("TIME_PLAYED_MSG"))
+      assert.are.equal(0, DS._GetPendingPlayedRequests())
+    end)
+  end)
+
+  describe("OnEnteringWorldPlayed", function()
+    local requests
+
+    before_each(function()
+      DS._ResetLevelHistoryTestState()
+      requests = 0
+      _G.RequestTimePlayed = function() requests = requests + 1 end
+    end)
+
+    after_each(function()
+      DS._ResetLevelHistoryTestState()
+    end)
+
+    it("asks at the first login and forgets the last session's answer time", function()
+      local char = makeChar({ played = 5000 })
+      char.playedAt = 100
+      DS._SetLevelHistoryTestChar(char)
+
+      DS:OnEnteringWorldPlayed(true, false)
+
+      assert.are.equal(1, requests)
+      assert.is_nil(char.playedAt)
+    end)
+
+    it("restores the baseline on a reload without asking", function()
+      local now = 1700000000
+      _G.time = function() return now end
+      local char = makeChar({ played = 5000 })
+      char.playedAt = now - 600
+      DS._SetLevelHistoryTestChar(char)
+
+      DS:OnEnteringWorldPlayed(false, true)
+
+      assert.are.equal(0, requests)
+      assert.are.equal(5600, DS:GetDerivedPlayedTotal())
+    end)
+
+    it("asks on a reload when this session has no answer saved", function()
+      DS._SetLevelHistoryTestChar(makeChar({ played = 5000 }))
+      DS:OnEnteringWorldPlayed(false, true)
+      assert.are.equal(1, requests)
+    end)
+
+    it("asks on another loading screen only without a baseline", function()
+      DS._SetLevelHistoryTestChar(makeChar({ played = 5000 }))
+      DS:OnEnteringWorldPlayed(false, false)
+      assert.are.equal(1, requests)
+
+      DS:UpdatePlayedBaseline(5000)
+      DS:OnEnteringWorldPlayed(false, false)
+      assert.are.equal(1, requests)
     end)
   end)
 
