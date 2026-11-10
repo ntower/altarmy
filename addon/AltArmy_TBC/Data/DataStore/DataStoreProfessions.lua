@@ -897,6 +897,23 @@ DS.NO_RECIPE_PROFESSION_KEYS_TRADESKILLUI_FALLBACK = {
     riding = true,
 }
 
+-- Professions whose window may truly list no learned recipes: on WoW Forever the gathering skills and
+-- Fishing got new (camp) recipes that come later, not with the skill. A scan of one of these finding none
+-- (`recipesScannedAt` with no recipes) is a full answer; any other profession's empty list is taken for
+-- a window that hasn't finished loading, so it is still asked for.
+DS.RECIPES_MAY_BE_NONE_KEYS = {
+    fishing = true,
+    skinning = true,
+    herbalism = true,
+    mining = true,
+}
+
+--- True when profNameOrKey (matched case-insensitively) may have no learned recipes at all.
+function DS.ProfessionMayHaveNoRecipes(profNameOrKey)
+    if type(profNameOrKey) ~= "string" then return false end
+    return DS.RECIPES_MAY_BE_NONE_KEYS[profNameOrKey:lower()] == true
+end
+
 --- True when profNameOrKey (matched case-insensitively) has no recipe window to open on whichever
 --- recipe-scan API is currently active.
 function DS.ProfessionHasNoRecipeWindow(profNameOrKey)
@@ -1044,7 +1061,16 @@ local function ScanRecipesViaTradeSkillUI(char)
     ApplyProfessionRank(prof, info.skillLevel, info.maxSkillLevel)
 
     local recipeIDs = C_TradeSkillUI.GetAllRecipeIDs()
-    if not recipeIDs or #recipeIDs == 0 then return nil end
+    if not recipeIDs or #recipeIDs == 0 then
+        -- The player's own window listing nothing (a new Fishing skill on WoW Forever): recorded, and for a
+        -- profession that may have no recipes (DS.ProfessionMayHaveNoRecipes) that is the answer, so the
+        -- Summary stops asking for the window. Nothing stored is touched, in case the list just hasn't come
+        -- yet; the scan that follows it stores the recipes.
+        if recipeIDs and not next(prof.Recipes or {}) then
+            prof.recipesScannedAt = time()
+        end
+        return nil
+    end
     local learned, learnedIDs = {}, {}
     for _, recipeID in ipairs(recipeIDs) do
         local recipeInfo = C_TradeSkillUI.GetRecipeInfo(recipeID)
@@ -1112,6 +1138,8 @@ function DS:ScanRecipes()
     if not tradeskillName then return end
 
     char.lastUpdate = time()
+    local scannedProf = char.Professions[tradeskillName]
+    if scannedProf then scannedProf.recipesScannedAt = time() end
     char.dataVersions = char.dataVersions or {}
     char.dataVersions.professions = DATA_VERSIONS.professions
     self:ScanCooldownSpecializations(char)
@@ -1166,6 +1194,7 @@ function DS:ScanCraftRecipes()
         end
     end
     char.lastUpdate = time()
+    prof.recipesScannedAt = time()
     char.dataVersions = char.dataVersions or {}
     char.dataVersions.professions = DATA_VERSIONS.professions
     if self.ScanCraftCooldownExpiry then
@@ -1309,6 +1338,19 @@ function DS:GetNumRecipes(char, profName)
     local n = 0
     for _ in pairs(prof.Recipes) do n = n + 1 end
     return n
+end
+
+--- Whether a profession's recipes still need reading from its window: marked stale after a recipe was
+--- learned, or none stored, unless it is one that may have none (DS.ProfessionMayHaveNoRecipes: a new
+--- Fishing skill on WoW Forever) and its window was scanned (`recipesScannedAt`).
+function DS:ProfessionNeedsRecipeScan(char, profName)
+    if not char or not profName then return false end
+    local needing = char.professionsNeedingRecipeScan
+    if type(needing) == "table" and needing[profName] then return true end
+    if self:GetNumRecipes(char, profName) > 0 then return false end
+    local prof = char.Professions and char.Professions[profName]
+    local scanned = type(prof) == "table" and prof.recipesScannedAt
+    return not (scanned and DS.ProfessionMayHaveNoRecipes(profName))
 end
 
 function DS:IsRecipeKnown(char, profName, spellID)

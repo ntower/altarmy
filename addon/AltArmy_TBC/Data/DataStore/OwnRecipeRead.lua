@@ -257,9 +257,7 @@ end
 local function isStale(name)
     local char = DS._GetCurrentCharTable and DS._GetCurrentCharTable()
     if not char then return true end
-    local needing = char.professionsNeedingRecipeScan
-    if type(needing) == "table" and needing[name] then return true end
-    return DS:GetNumRecipes(char, name) == 0
+    return DS:ProfessionNeedsRecipeScan(char, name)
 end
 
 local function isOwnQueued(name)

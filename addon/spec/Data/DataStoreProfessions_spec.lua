@@ -752,6 +752,41 @@ describe("DataStoreProfessions", function()
       assert.is_nil(char.Professions.Leatherworking.Recipes[200])
     end)
 
+    it("records the scan of a window with no learned recipes", function()
+      _G.time = function() return 1000 end
+      mockTradeSkillUI({
+        recipeIDs = { 200 },
+        recipes = {
+          [200] = { recipeID = 200, categoryID = 1, name = "Unlearned Recipe", learned = false, relativeDifficulty = 3 },
+        },
+      })
+      DS:ScanRecipes()
+      local prof = _G.AltArmyTBC_Data.Characters.TestRealm.TestPlayer.Professions.Leatherworking
+      assert.are.same({}, prof.Recipes)
+      assert.are.equal(1000, prof.recipesScannedAt)
+    end)
+
+    it("takes a scan with no recipes as the answer only for professions that may have none", function()
+      local char = { Professions = {
+        Fishing = { rank = 1, maxRank = 75, Recipes = {}, recipesScannedAt = 1000 },
+        Alchemy = { rank = 1, maxRank = 75, Recipes = {}, recipesScannedAt = 1000 },
+        Mining = { rank = 1, maxRank = 75, Recipes = {} },
+      } }
+      assert.is_false(DS:ProfessionNeedsRecipeScan(char, "Fishing"))
+      assert.is_true(DS:ProfessionNeedsRecipeScan(char, "Alchemy"))
+      assert.is_true(DS:ProfessionNeedsRecipeScan(char, "Mining"))
+      char.professionsNeedingRecipeScan = { Fishing = true }
+      assert.is_true(DS:ProfessionNeedsRecipeScan(char, "Fishing"))
+    end)
+
+    it("records the scan of a window listing nothing, keeping no recipes", function()
+      _G.time = function() return 1000 end
+      mockTradeSkillUI({ professionName = "Fishing", skillLevel = 1, maxSkillLevel = 75, recipeIDs = {} })
+      DS:ScanRecipes()
+      local prof = _G.AltArmyTBC_Data.Characters.TestRealm.TestPlayer.Professions.Fishing
+      assert.are.equal(1000, prof.recipesScannedAt)
+    end)
+
     it("updates profession rank from GetBaseProfessionInfo", function()
       mockTradeSkillUI({ professionName = "Cooking", skillLevel = 150, maxSkillLevel = 375, recipeIDs = {} })
       DS:ScanRecipes()

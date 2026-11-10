@@ -452,7 +452,12 @@ local function appendRecipeMissingInstructions(out, char, DS, isCurrent)
             if not (DS.ProfessionHasNoRecipeWindow and DS.ProfessionHasNoRecipeWindow(profName))
                 and not (type(profName) == "string" and NO_WINDOW_TO_OPEN[profName:lower()]) then
                 local rank = (prof and prof.rank) or 0
-                local needsOpen = (rank > 0 and DS:GetNumRecipes(char, profName) == 0)
+                -- A window scanned with no learned recipes (recipesScannedAt) needs nothing more, but only
+                -- for a profession that may have none (Forever's gathering skills and Fishing); a crafting
+                -- profession's empty list is a window that hadn't finished loading.
+                local scanned = type(prof) == "table" and prof.recipesScannedAt
+                    and DS.ProfessionMayHaveNoRecipes and DS.ProfessionMayHaveNoRecipes(profName)
+                local needsOpen = (rank > 0 and not scanned and DS:GetNumRecipes(char, profName) == 0)
                     or (type(needingRescan) == "table" and needingRescan[profName])
                 if needsOpen and readAtLogin and R.CanRead and R.CanRead(profName) then
                     addUniqueInstruction(out, "* Log in with this character")

@@ -573,6 +573,64 @@ describe("SummaryData", function()
       assert.is_true(found, "expected an instruction containing 'Alchemy'")
     end)
 
+    local function mayHaveNone(profName) return profName == "Fishing" end
+
+    it("does not warn about a profession that may have no recipes, scanned with none", function()
+      local char = {
+        dataVersions = { character = 1, professions = 1 },
+        Professions = { Fishing = { rank = 1, maxRank = 75, Recipes = {}, recipesScannedAt = 1700000000 } },
+      }
+      DS.GetCharacter = function(_, _name, _realm) return char end
+      DS.HasModuleData = function(_, c, mod) return (c.dataVersions and c.dataVersions[mod]) == 1 end
+      DS.GetProfessions = function(_, c) return c.Professions or {} end
+      DS.GetNumRecipes = function() return 0 end
+      DS.ProfessionHasNoRecipeWindow = function(profName) return profName == "Riding" end
+      DS.ProfessionMayHaveNoRecipes = mayHaveNone
+      local out = SD.GetMissingDataInfo("Frelblast", "Realm1")
+      for _, line in ipairs(out.instructions) do
+        assert.is_nil(line:find("Fishing"), "unexpected " .. line)
+      end
+    end)
+
+    it("still warns about a crafting profession scanned with no recipes (not finished loading)", function()
+      local char = {
+        dataVersions = { character = 1, professions = 1 },
+        Professions = { Alchemy = { rank = 1, maxRank = 75, Recipes = {}, recipesScannedAt = 1700000000 } },
+      }
+      DS.GetCharacter = function(_, _name, _realm) return char end
+      DS.HasModuleData = function(_, c, mod) return (c.dataVersions and c.dataVersions[mod]) == 1 end
+      DS.GetProfessions = function(_, c) return c.Professions or {} end
+      DS.GetNumRecipes = function() return 0 end
+      DS.ProfessionHasNoRecipeWindow = function(profName) return profName == "Riding" end
+      DS.ProfessionMayHaveNoRecipes = mayHaveNone
+      local out = SD.GetMissingDataInfo("Frelblast", "Realm1")
+      local found = false
+      for _, line in ipairs(out.instructions) do
+        if line == "* Open your Alchemy window" then found = true end
+      end
+      assert.is_true(found, "expected 'Open your Alchemy window'")
+    end)
+
+    it("still warns about a scanned profession with no recipes once one is learned", function()
+      local char = {
+        dataVersions = { character = 1, professions = 1 },
+        Professions = { Fishing = { rank = 1, maxRank = 75, Recipes = {}, recipesScannedAt = 1700000000 } },
+        professionsNeedingRecipeScan = { Fishing = true },
+      }
+      DS.GetCharacter = function(_, _name, _realm) return char end
+      DS.HasModuleData = function(_, c, mod) return (c.dataVersions and c.dataVersions[mod]) == 1 end
+      DS.GetProfessions = function(_, c) return c.Professions or {} end
+      DS.GetNumRecipes = function() return 0 end
+      DS.ProfessionHasNoRecipeWindow = function(profName) return profName == "Riding" end
+      DS.ProfessionMayHaveNoRecipes = mayHaveNone
+      local out = SD.GetMissingDataInfo("Frelblast", "Realm1")
+      local found = false
+      for _, line in ipairs(out.instructions) do
+        if line == "* Open your Fishing window" then found = true end
+      end
+      assert.is_true(found, "expected 'Open your Fishing window'")
+    end)
+
     it("does not warn about Skinning on TBC's legacy trade-skill API (no recipe window there)", function()
       local char = {
         level = 70,
