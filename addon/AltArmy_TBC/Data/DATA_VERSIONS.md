@@ -42,6 +42,7 @@ Canonical table: `DATA_VERSIONS` in [`DataStore.lua`](DataStore/DataStore.lua).
 ### mail (v2)
 - **v1**: Initial version. Stores mailbox contents in `char.Mails[]` with icon, itemID, count, sender, link, money, subject, lastCheck, daysLeft, returned.
 - **v2**: Each row also carries `mailIndex`, the message it belongs to: the inbox position at scan for `Mails`, and one index per send or return (counting down from -1, `DS:NextMailCacheIndex`) for the predicted `MailCache` rows, so the Inventory tab groups a message's attachments and gold on one row. v1 rows have none and render as one message each.
+- Still v2 (optional fields, nothing older reads them): a `MailCache` row predicted from mail between linked accounts (`Data/Link/LinkMail.lua`) carries `lm`, the send's id (so each side writes it once and knows when the other's data has it), and, for items sent over a link that is not our own Battle.net account (none yet: own accounts' mail arrives at once), `arrivesAt` (the send plus an hour); `ScanMailbox` keeps a row whose `arrivesAt` is still ahead.
 
 ### auctions (v1)
 - **v1**: Initial version. Stores auction listings in `char.Auctions[]` and bids in `char.Bids[]` with itemID, count, bidAmount, buyoutAmount, timeLeft.

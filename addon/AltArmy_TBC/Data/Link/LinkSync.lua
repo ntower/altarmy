@@ -28,7 +28,8 @@ Y.DELETE_DEBOUNCE = 20 -- after the last character deleted here, a full manifest
 Y.GUID_PATTERN = "^Player%-%d+%-%x+$"
 
 local outstanding = {} -- accountId -> { g, chars = { [guid] = { domain = true } }, meta, deadline, tries }
-local changeDueAt -- when the pending partial manifest of this character goes out
+local changeDueAt -- when the pending partial manifests (this character's, and those of `changedGuids`) go out
+local changedGuids = {} -- other characters of ours that changed (LinkMail wrote mail into them)
 local fullDueAt -- when the pending full manifest (characters deleted here) goes out
 
 local function Dom()
@@ -257,9 +258,13 @@ function Y.IsSyncing(acct)
     return outstanding[acct] ~= nil
 end
 
---- This character changed: send its partial manifest CHANGE_DEBOUNCE seconds after the first change (later
---- ones ride along: bags change often, and pushing the time back each time could put it off forever).
-function Y.NoteLocalChange(env)
+--- This character changed (or `guid`, another of ours: mail written into it): send its partial manifest
+--- CHANGE_DEBOUNCE seconds after the first change (later ones ride along: bags change often, and pushing the
+--- time back each time could put it off forever).
+function Y.NoteLocalChange(env, guid)
+    if type(guid) == "string" then
+        changedGuids[guid] = true
+    end
     changeDueAt = changeDueAt or (env.now() + Y.CHANGE_DEBOUNCE)
 end
 
@@ -301,11 +306,18 @@ function Y.Tick(env, peers)
     end
     if changeDueAt and now >= changeDueAt then
         changeDueAt = nil
-        local guid = env.currentGuid()
-        if guid then
+        local guids = changedGuids
+        changedGuids = {}
+        local current = env.currentGuid()
+        if current then
+            guids[current] = true
+        end
+        for guid in pairs(guids) do
             local man = Y.Manifest(env.ownRoot(), guid)
-            for _, peer in pairs(peers) do
-                env.send(peer.g, man, "NORMAL")
+            if next(man.c) then
+                for _, peer in pairs(peers) do
+                    env.send(peer.g, man, "NORMAL")
+                end
             end
         end
     end
@@ -320,6 +332,7 @@ end
 function Y._Reset()
     outstanding = {}
     changeDueAt = nil
+    changedGuids = {}
     fullDueAt = nil
 end
 

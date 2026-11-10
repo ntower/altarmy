@@ -154,6 +154,7 @@ Data\Link\LinkStore.lua
 Data\Link\LinkHarness.lua
 Data\Link\LinkCodec.lua
 Data\Link\LinkSync.lua
+Data\Link\LinkMail.lua
 Data\Link\LinkSession.lua
 Data\Link\LinkTransport.lua
 Data\Link\LinkProbe.lua

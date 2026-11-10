@@ -9,6 +9,8 @@
 --   pendingUnlinks[accountId] = when we unlinked, until that account hears of it
 --   accounts[accountId] = { Characters = { [realm] = { [guid] = char } }, meta = { CurrencyMeta, ... },
 --                           hashes = { [guid] = { [domain] = hash } }, receivedAt }
+--   outMail[accountId][id] = a send of ours to one of its characters, until its own data has it (LinkMail)
+--   mailSeen[id]        = when a send from a linked account to one of ours was taken (LinkMail)
 -- A character is kept in the DataStore's own shape (LinkDomains), so DS getters read it as they read ours.
 -- Only units LinkValidate passed are applied. Characters of a link that is not confirmed, or suspended
 -- (another game, an addon too old), are kept but not listed.
@@ -35,6 +37,8 @@ function S.Ensure()
     data.declined = type(data.declined) == "table" and data.declined or {}
     data.pendingUnlinks = type(data.pendingUnlinks) == "table" and data.pendingUnlinks or {}
     data.accounts = type(data.accounts) == "table" and data.accounts or {}
+    data.outMail = type(data.outMail) == "table" and data.outMail or {}
+    data.mailSeen = type(data.mailSeen) == "table" and data.mailSeen or {}
     return data
 end
 
@@ -57,6 +61,9 @@ local function changed()
         DS:FireLinkedDataChanged()
     end
 end
+
+--- Something changed a linked character here (LinkMail's predicted mail): views that list characters redraw.
+S.Changed = changed
 
 --- Record (or update) a link. `fields` as in links[accountId] (see the file's head).
 function S.SetLink(id, fields)
@@ -151,6 +158,10 @@ function S.Receive(id, realm, guid, domain, unit, now, hash)
     if not S.ApplyUnit(id, realm, guid, domain, kept, hash, now) then
         return false, "noIdentity"
     end
+    if domain == "mail" and AltArmy.LinkMail then
+        -- what we mailed that character and its data doesn't show yet is written in again
+        AltArmy.LinkMail.Settle(id, realm, guid, S.Ensure().accounts[id].Characters[realm][guid])
+    end
     if DS and DS._MigrateDataVersions then
         DS._MigrateDataVersions({ Characters = S.Ensure().accounts[id].Characters })
     end
@@ -236,6 +247,7 @@ function S.Unlink(id)
     local data = S.Ensure()
     data.links[id] = nil
     data.accounts[id] = nil
+    data.outMail[id] = nil
     changed()
 end
 

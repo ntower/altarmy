@@ -9,7 +9,8 @@
 describe("LinkSession + LinkSync", function()
   local VERSIONS = { character = 3, guildMembership = 1, containers = 4, equipment = 1, gearScores = 1,
     professions = 1, reputations = 2, mail = 2, currencies = 1, currencyList = 1, talents = 2, legacyTalents = 2 }
-  local MODULES = { "LinkDomains", "LinkValidate", "LinkStore", "LinkCodec", "LinkSync", "LinkSession" }
+  local MODULES = { "LinkDomains", "LinkValidate", "LinkStore", "LinkCodec", "LinkSync", "LinkMail",
+    "LinkSession" }
   local libs
   local clock
   local network -- { to = side, from = gameAccountID as the receiver knows the sender, chunk }
@@ -378,6 +379,161 @@ describe("LinkSession + LinkSync", function()
       A.owners["u:Player-1-B1"] = "cccc" -- A holds that character as another linked account's
       discoverGroup()
       assert.is_false(viewOf(A).online)
+    end)
+  end)
+
+  describe("mail to a linked account's character", function()
+    local LINEN = "|cffffffff|Hitem:2589::::|h[Linen Cloth]|h|r"
+    local function rows()
+      return { { itemID = 2589, count = 20, link = LINEN, icon = 132889 }, { money = 5000 } }
+    end
+
+    local function send()
+      return call(A, "LinkSession", "SendMail", "R", "b one", rows(), "A One", false)
+    end
+
+    -- A's copy of B One's mail rows, and B's own
+    local function predicted()
+      return within(A, function()
+        local c = AltArmy.LinkStore.Ensure().accounts.bbbb.Characters.R["Player-1-B1"]
+        return c.MailCache or {}
+      end)
+    end
+    local function own()
+      return B.data.Characters.R["Player-1-B1"].MailCache or {}
+    end
+    local function notes()
+      return within(A, function()
+        local n = 0
+        for _ in pairs(AltArmy.LinkStore.Ensure().outMail.bbbb or {}) do n = n + 1 end
+        return n
+      end)
+    end
+
+    local function offline()
+      call(B, "LinkSession", "Goodbye")
+      deliver()
+    end
+
+    local function backOnline(opts)
+      clock = clock + 120
+      within(B, function() AltArmy.LinkSession._Reset() end)
+      call(A, "LinkSession", "Discover", { { gameAccountID = 4, characterName = "B Main", realmName = "R" } })
+      call(B, "LinkSession", "Discover", { { gameAccountID = 2, characterName = "A Main", realmName = "R" } })
+      deliver(opts)
+    end
+
+    -- B's partial manifest of what changed goes out 20 s later
+    local function bTicks()
+      clock = clock + 21
+      call(B, "LinkSession", "Tick")
+      deliver()
+    end
+
+    it("shows it on the recipient at once, and tells that account when it is next online", function()
+      link()
+      offline()
+      assert.is_true(send())
+      local p = predicted()
+      assert.are.equal(2, #p)
+      assert.are.equal(2589, p[1].itemID)
+      assert.are.equal(20, p[1].count)
+      assert.are.equal(5000, p[2].money)
+      assert.are.equal(p[1].mailIndex, p[2].mailIndex)
+      assert.is_nil(p[1].arrivesAt) -- one Battle.net account: it arrives at once
+      assert.are.equal(0, #own())
+      backOnline()
+      assert.are.equal(2, #own())
+      assert.are.equal("A One", own()[1].sender)
+      assert.are.equal(LINEN, own()[1].link)
+      bTicks()
+      assert.are.equal(2, #predicted()) -- B's own rows now, not added twice
+      assert.are.equal(0, notes())
+    end)
+
+    it("tells an account online on another character at once, and adds it once though sent again", function()
+      B.env.currentGuid = function() return "Player-1-B2" end
+      link()
+      local acks = 0
+      send()
+      deliver({ drop = function(item)
+        if item.t == "MAILA" and acks < 1 then
+          acks = acks + 1
+          return true
+        end
+      end })
+      assert.are.equal(2, #own())
+      clock = clock + 121
+      call(A, "LinkSession", "Tick") -- no answer: sent again
+      deliver()
+      assert.are.equal(2, #own())
+      bTicks()
+      assert.are.equal(2, #predicted())
+      assert.are.equal(0, notes())
+    end)
+
+    it("keeps the prediction through a sync of mail the other account had before it heard", function()
+      link()
+      offline()
+      send()
+      B.data.Characters.R["Player-1-B1"].lastMailCheck = 900 -- B's mail changed, before the send
+      backOnline({ drop = function(item) return item.t == "MAIL" end })
+      assert.are.equal(900, within(A, function()
+        return AltArmy.LinkStore.Ensure().accounts.bbbb.Characters.R["Player-1-B1"].lastMailCheck
+      end))
+      assert.are.equal(2, #predicted())
+      assert.are.equal(1, notes())
+    end)
+
+    it("drops it once the recipient read its mailbox after the mail arrived", function()
+      link()
+      offline()
+      send()
+      clock = clock + 4000
+      B.data.Characters.R["Player-1-B1"].lastMailCheck = clock -- taken already, or there for real
+      backOnline()
+      assert.are.equal(0, #own())
+      assert.are.equal(0, #predicted())
+      assert.are.equal(0, notes())
+    end)
+
+    it("waits an hour for items only on a link that isn't our own Battle.net account", function()
+      link()
+      within(A, function() AltArmy.LinkStore.Ensure().links.bbbb.kind = "friend" end)
+      send()
+      assert.are.equal(clock + 3600, predicted()[1].arrivesAt)
+    end)
+
+    it("finds the recipient on a coalesced realm (Forever's US1 and US2 play together)", function()
+      local three = char("Player-1-B3", "Bank Frell")
+      three.realm = "R US1"
+      B.data.Characters["R US1"] = { ["Player-1-B3"] = three }
+      link()
+      within(A, function()
+        AltArmy.RealmFilter = { sameRealm = function(a, b) return a:sub(1, 1) == b:sub(1, 1) end }
+      end)
+      B.env.currentGuid = function() return "Player-1-B2" end
+      assert.is_true(call(A, "LinkSession", "SendMail", "R", "bank frell", rows(), "A One", false))
+      deliver()
+      assert.are.equal(2, #(three.MailCache or {}))
+      local copy = within(A, function()
+        return AltArmy.LinkStore.Ensure().accounts.bbbb.Characters["R US1"]["Player-1-B3"].MailCache
+      end)
+      assert.are.equal(2, #copy)
+    end)
+
+    it("refuses a mail message that breaks the rules", function()
+      link()
+      local bad = { t = "MAIL", id = "aaaa:1:1", g = "Player-1-B1", r = "R", at = clock, arr = clock,
+        rows = { { itemID = 2589, count = 1, link = "not a link" } } }
+      within(B, function() AltArmy.LinkMail.OnMail(B.env, { g = 2, acct = "aaaa" }, bad) end)
+      assert.are.equal(0, #own())
+    end)
+
+    it("sends nothing for a name no linked account has", function()
+      link()
+      assert.is_false(call(A, "LinkSession", "SendMail", "R", "Nobody", rows(), "A One", false))
+      assert.are.equal(0, notes())
     end)
   end)
 

@@ -12,11 +12,7 @@ local ATTACHMENTS_MAX_SEND = 12
 local MAIL_EXPIRY_DAYS = 30
 
 -- Luacheck-friendly aliases (WoW API globals exist in-game; may be absent in tests)
-local strsplit = _G.strsplit
 local hooksecurefunc = _G.hooksecurefunc
-local GetSendMailItem = _G.GetSendMailItem
-local GetSendMailItemLink = _G.GetSendMailItemLink
-local GetSendMailMoney = _G.GetSendMailMoney
 
 local function notifyContainerDataChanged()
     local SD = AltArmy and AltArmy.SearchData
@@ -37,15 +33,30 @@ local function NormalizeName(s)
     return string.lower(s)
 end
 
-local function FindCharacterByName(realm, name)
-    if not realm or not name or name == "" then return nil end
+local function FindOnRealm(realm, wanted)
     local chars = DS.GetCharacters and DS:GetCharacters(realm) or nil
-    if not chars then return nil end
-    local wanted = NormalizeName(name)
-    for key, charTable in pairs(chars) do
+    for key, charTable in pairs(chars or {}) do
         local charName = (type(charTable) == "table" and charTable.name) or key
         if NormalizeName(charName) == wanted then
             return charTable
+        end
+    end
+    return nil
+end
+
+--- Our character called `name` (any case) whom mail sent on `realm` reaches: on that realm, else on one coalesced
+--- with it (Forever's US1 and US2 shards play together: RealmFilter.sameRealm).
+local function FindCharacterByName(realm, name)
+    if not realm or not name or name == "" then return nil end
+    local wanted = NormalizeName(name)
+    local found = FindOnRealm(realm, wanted)
+    if found then return found end
+    local RF = AltArmy.RealmFilter
+    if not (RF and RF.sameRealm) then return nil end
+    for r in pairs(type(AltArmyTBC_Data) == "table" and AltArmyTBC_Data.Characters or {}) do
+        if r ~= realm and RF.sameRealm(realm, r) then
+            found = FindOnRealm(r, wanted)
+            if found then return found end
         end
     end
     return nil
@@ -76,8 +87,18 @@ function DS:ScanMailbox(_self)
     if not GetInboxNumItems then return end
     char.Mails = char.Mails or {}
     char.MailCache = char.MailCache or {}
+    -- what the inbox shows now replaces the predicted rows, except mail from a linked account still on its way
+    -- (items to another account arrive an hour later: Link/LinkMail.lua)
+    local now = Now()
+    local inTransit = {}
+    for _, row in ipairs(char.MailCache) do
+        if type(row) == "table" and type(row.arrivesAt) == "number" and row.arrivesAt > now then
+            inTransit[#inTransit + 1] = row
+        end
+    end
     for k in pairs(char.Mails) do char.Mails[k] = nil end
     for k in pairs(char.MailCache) do char.MailCache[k] = nil end
+    for i, row in ipairs(inTransit) do char.MailCache[i] = row end
     local numItems = GetInboxNumItems()
     if numItems == 0 then
         char.lastMailCheck = Now()
@@ -294,23 +315,47 @@ function DS:SaveMailAttachmentToCache(char, icon, itemID, link, count, sender, s
 end
 
 -- ---------------------------------------------------------------------------
--- Local send/return prediction cache (no guild comm relay)
+-- Local send/return prediction cache (no guild comm relay). A recipient on a linked account (none of ours by
+-- that name) is handed to Link/LinkTransport.MailSent: its attachments and money, never the subject or text.
 -- ---------------------------------------------------------------------------
+
+--- Tell the link of mail to `name` on `realm`, none of our characters: rows of { itemID, count, link, icon }
+--- and { money, icon }. Nothing for a mail that holds neither.
+local function SendToLinked(realm, name, rows, sender, returned)
+    local LT = AltArmy.LinkTransport
+    if #rows == 0 or not (LT and LT.MailSent) then return end
+    LT.MailSent(realm, name, rows, sender, returned)
+end
 
 local function CacheSentMailToAlt(recipient, subject, body)
     if not recipient or recipient == "" then return end
+    local GetSendMailItem = _G.GetSendMailItem
+    local GetSendMailItemLink = _G.GetSendMailItemLink
+    local GetSendMailMoney = _G.GetSendMailMoney
     if not GetSendMailItem then return end
 
-    local recipientName = recipient
-    if strsplit then
-        recipientName = strsplit("-", recipient)
-    end
+    local recipientName = recipient:match("^([^-]+)") or recipient -- "Name-Realm": the name
 
     local _playerName, realm = DS:GetCurrentPlayerIdentity()
     if not realm or realm == "" then return end
 
     local targetChar = FindCharacterByName(realm, recipientName)
-    if not targetChar then return end
+    local money = GetSendMailMoney and GetSendMailMoney() or 0
+    if not targetChar then
+        local rows = {}
+        for attachmentIndex = 1, ATTACHMENTS_MAX_SEND do
+            local itemName, itemID, icon, count = GetSendMailItem(attachmentIndex)
+            if itemName and itemID then
+                local link = GetSendMailItemLink and GetSendMailItemLink(attachmentIndex) or nil
+                rows[#rows + 1] = { itemID = itemID, count = count or 1, link = link, icon = icon }
+            end
+        end
+        if money and money > 0 then
+            rows[#rows + 1] = { money = money, icon = MAIL_ICON_COIN }
+        end
+        SendToLinked(realm, recipientName, rows, _playerName, false)
+        return
+    end
 
     local mailIndex = DS:NextMailCacheIndex(targetChar)
     for attachmentIndex = 1, ATTACHMENTS_MAX_SEND do
@@ -323,7 +368,6 @@ local function CacheSentMailToAlt(recipient, subject, body)
     end
 
     body = body or ""
-    local money = GetSendMailMoney and GetSendMailMoney() or 0
     if (money and money > 0) or (body and body ~= "") then
         DS:SaveMailToCache(targetChar, money or 0, body, subject, _playerName, false, mailIndex)
     end
@@ -336,16 +380,27 @@ local function CacheReturnedMailToAlt(index)
     local _, stationaryIcon, mailSender, mailSubject, mailMoney, _, _, numAttachments = GetInboxHeaderInfo(index)
     if not mailSender or mailSender == "" then return end
 
-    local senderName = mailSender
-    if strsplit then
-        senderName = strsplit("-", mailSender)
-    end
+    local senderName = mailSender:match("^([^-]+)") or mailSender -- "Name-Realm": the name
 
     local _playerName, realm = DS:GetCurrentPlayerIdentity()
     if not realm or realm == "" then return end
 
     local targetChar = FindCharacterByName(realm, senderName)
-    if not targetChar then return end
+    if not targetChar then
+        local rows = {}
+        for attachmentIndex = 1, (numAttachments and numAttachments > 0) and ATTACHMENTS_MAX_SEND or 0 do
+            local itemName, itemID, icon, count = GetInboxItem(index, attachmentIndex)
+            if itemName and itemID then
+                local link = GetInboxItemLink and GetInboxItemLink(index, attachmentIndex) or nil
+                rows[#rows + 1] = { itemID = itemID, count = count or 1, link = link, icon = icon or stationaryIcon }
+            end
+        end
+        if mailMoney and mailMoney > 0 then
+            rows[#rows + 1] = { money = mailMoney, icon = MAIL_ICON_COIN }
+        end
+        SendToLinked(realm, senderName, rows, _playerName, true)
+        return
+    end
 
     local mailIndex = DS:NextMailCacheIndex(targetChar)
     if numAttachments and numAttachments > 0 then
@@ -373,6 +428,8 @@ local function CacheReturnedMailToAlt(index)
         DS:SaveMailToCache(targetChar, mailMoney or 0, inboxText or "", mailSubject, _playerName, true, mailIndex)
     end
 end
+
+DS._CacheSentMailToAlt = CacheSentMailToAlt
 
 if hooksecurefunc then
     hooksecurefunc("SendMail", function(recipient, subject, body)

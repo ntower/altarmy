@@ -135,6 +135,22 @@ describe("DataStoreMail", function()
       assert.is_nil(DS._FindCharacterByName("R", "Frell"))
       assert.is_nil(DS._FindCharacterByName("R", "Player-1-B"))
     end)
+
+    it("finds an alt on a coalesced realm (Forever's US1 and US2 play together)", function()
+      local bank = { name = "Bank Frell", guid = "Player-1-C" }
+      _G.AltArmyTBC_Data = { Characters = {
+        ["CAMWOW US2 Realm 5 PvE"] = { ["Player-1-B"] = { name = "Frell Blast", guid = "Player-1-B" } },
+        ["CAMWOW US1 Realm 5 PvE"] = { ["Player-1-C"] = bank },
+        ["CAMWOW US1 Realm 5 PvP"] = { ["Player-1-D"] = { name = "Pvp Frell", guid = "Player-1-D" } },
+      } }
+      local saved = AltArmy.RealmFilter
+      AltArmy.RealmFilter = { sameRealm = function(a, b) return a:gsub("US%d", "US") == b:gsub("US%d", "US") end }
+      local found = DS._FindCharacterByName("CAMWOW US2 Realm 5 PvE", "bank frell")
+      local other = DS._FindCharacterByName("CAMWOW US2 Realm 5 PvE", "Pvp Frell")
+      AltArmy.RealmFilter = saved
+      assert.are.equal(bank, found)
+      assert.is_nil(other)
+    end)
   end)
 
   describe("Cache + scan interactions", function()
@@ -176,6 +192,50 @@ describe("DataStoreMail", function()
       _G.time = old
       assert.are.equal(0, #char.MailCache)
       assert.are.equal(999, char.lastMailCheck)
+    end)
+
+    it("ScanMailbox keeps a predicted row still on its way from another account", function()
+      local char = { Mails = {}, MailCache = {
+        { itemID = 100, count = 1, arrivesAt = 2000, lm = "x" },
+        { itemID = 200, count = 1, arrivesAt = 900 },
+        { itemID = 300, count = 1 },
+      } }
+      DS._GetCurrentCharTable = function() return char end
+      _G.GetInboxNumItems = function() return 0 end
+      _G.CheckInbox = function() end
+      local old = _G.time
+      _G.time = function() return 1000 end
+      DS:ScanMailbox()
+      _G.time = old
+      assert.are.equal(1, #char.MailCache)
+      assert.are.equal(100, char.MailCache[1].itemID)
+    end)
+
+    it("hands a send to a linked account's character to the link", function()
+      local got
+      AltArmy.LinkTransport = { MailSent = function(...) got = { ... } end }
+      local saved = { DS.GetCurrentPlayerIdentity, _G.GetSendMailItem, _G.GetSendMailItemLink,
+        _G.GetSendMailMoney }
+      DS.GetCurrentPlayerIdentity = function() return "Me", "R" end
+      _G.GetSendMailItem = function(i)
+        if i == 1 then return "Linen Cloth", 2589, 132889, 20 end
+      end
+      _G.GetSendMailItemLink = function(i)
+        if i == 1 then return "|Hitem:2589|h[Linen Cloth]|h" end
+      end
+      _G.GetSendMailMoney = function() return 5000 end
+      DS._CacheSentMailToAlt("Linked-Realm", "Subject", "body")
+      DS.GetCurrentPlayerIdentity, _G.GetSendMailItem, _G.GetSendMailItemLink, _G.GetSendMailMoney =
+        saved[1], saved[2], saved[3], saved[4]
+      AltArmy.LinkTransport = nil
+      assert.are.equal("R", got[1])
+      assert.are.equal("Linked", got[2])
+      assert.are.same({
+        { itemID = 2589, count = 20, link = "|Hitem:2589|h[Linen Cloth]|h", icon = 132889 },
+        { money = 5000, icon = "Interface\\Icons\\INV_Misc_Coin_01" },
+      }, got[3])
+      assert.are.equal("Me", got[4])
+      assert.is_false(got[5])
     end)
 
     it("ScanMailbox does not call GetInboxText (avoids marking mail as read)", function()

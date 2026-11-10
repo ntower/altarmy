@@ -21,6 +21,7 @@
 --           LREQ { n } / LACK { n, n2 } / LOK { n } / LNO { n } / UNL / UNLA
 --           BYE (at logout or /reload: that account is offline now; sent with env.sendNow, as nothing queued
 --           goes out once the client is closing)
+--           MAIL / MAILA: mail one of our characters sent one of its (LinkMail)
 
 AltArmy = AltArmy or {}
 AltArmy.LinkSession = AltArmy.LinkSession or {}
@@ -40,6 +41,10 @@ end
 
 local function Sync()
     return AltArmy.LinkSync
+end
+
+local function Mail()
+    return AltArmy.LinkMail
 end
 
 --- The 4-digit code both screens show for a link request.
@@ -127,6 +132,7 @@ local function startSync(env, peer)
     if Store().IsActive(peer.acct) and (not peer.manAt or now - peer.manAt >= L.MANIFEST_AGAIN) then
         peer.manAt = now
         Sync().Start(env, peer, not peer.gotMan)
+        Mail().Flush(env, peer) -- mail sent to its characters while it was away
     end
 end
 
@@ -281,6 +287,23 @@ function L.SyncNow(env, acct)
     return false
 end
 
+--- One of our characters (`sender`) mailed `rows` to `name` on `realm`, or returned them (`returned`): if
+--- that is a linked account's character, it shows the mail now and that account is told (now if online, else
+--- when it is next). Returns whether it was.
+function L.SendMail(env, realm, name, rows, sender, returned)
+    local acct, note = Mail().Sent(env, realm, name, rows, sender, returned)
+    if not acct then
+        return false
+    end
+    for _, peer in pairs(peers) do
+        if peer.acct == acct and Store().IsActive(acct) then
+            Mail().Deliver(env, peer, note)
+            break
+        end
+    end
+    return true
+end
+
 --- This client is logging out (or reloading): tell the linked accounts online that we are gone.
 function L.Goodbye(env)
     local sendNow = env.sendNow or env.send
@@ -332,6 +355,7 @@ local HANDLERS = {
 }
 
 local SYNC_HANDLERS = { MAN = "OnManifest", REQ = "OnRequest", DATA = "OnData" }
+local MAIL_HANDLERS = { MAIL = "OnMail", MAILA = "OnAck" }
 
 --- A message from game account `g`. Dropped unless `g` is ours; anything but HELLO also waits for its
 --- HELLO; sync messages need an active link.
@@ -369,6 +393,11 @@ function L.OnMessage(env, g, msg)
             end
         end
         Sync()[syncFn](env, peer, msg)
+        return
+    end
+    local mailFn = MAIL_HANDLERS[msg.t]
+    if mailFn and Store().IsActive(peer.acct) then
+        Mail()[mailFn](env, peer, msg)
     end
 end
 
@@ -390,6 +419,7 @@ function L.Tick(env)
         end
     end
     Sync().Tick(env, active)
+    Mail().Tick(env, active)
 end
 
 --- What the Sharing page lists: the links (online or not), then the accounts of ours online not linked.

@@ -92,7 +92,7 @@ Declared in `AltArmy_TBC.toc`:
 | `AltArmyTBC_SharingSettings` | Own guild-share preferences (opt-in) |
 | `AltArmyTBC_AuctionScans` | Log of Auctionator's price updates and their faction, for the website |
 | `AltArmyTBC_AuctionBook` | The auction house's order book from full scans, for the website (`scans`), plus the newest summary scan per realm and faction (`summaries`, in-game only) |
-| `AltArmyTBC_LinkedData` | Linked accounts: each link's state and the characters received from it, in the DataStore's own shape (`Data/Link/LinkStore.lua`); kept apart from `AltArmyTBC_Data` so nothing that reads our own characters sees a linked one |
+| `AltArmyTBC_LinkedData` | Linked accounts: each link's state and the characters received from it, in the DataStore's own shape (`Data/Link/LinkStore.lua`), and mail sent to them not yet in their own data (`outMail`, `Data/Link/LinkMail.lua`); kept apart from `AltArmyTBC_Data` so nothing that reads our own characters sees a linked one |
 
 ## Blizzard's code and taint
 

@@ -266,6 +266,18 @@ end
 
 env.changed = refreshUi
 
+--- LinkMail wrote mail a linked account sent into our character `guid`: Search and the Inventory redraw.
+function env.ownMailChanged()
+    local SD = AltArmy.SearchData
+    if SD and SD.NotifyContainerDataChanged then
+        SD.NotifyContainerDataChanged()
+    end
+    local DS = AltArmy.DataStore
+    if DS and DS.FireContainerDataChanged then
+        DS:FireContainerDataChanged()
+    end
+end
+
 local function handlePayload(g, payload)
     local l = getLibs()
     if not l then
@@ -411,6 +423,15 @@ function T.NoteLocalChange()
     if T.IsEnabled() then
         Sync.NoteLocalChange(env)
     end
+end
+
+--- One of our characters mailed (or returned mail to) `name` on `realm`, none of ours (DataStoreMail's
+--- SendMail hook): if a linked account has that character, it shows the mail now and that account is told.
+function T.MailSent(realm, name, rows, sender, returned)
+    if not T.IsEnabled() then
+        return false
+    end
+    return Session.SendMail(env, realm, name, rows, sender, returned)
 end
 
 --- A character was deleted here (DataStore:DeleteCharacter): linked accounts hear of it 20 s after the last.
