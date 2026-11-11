@@ -35,41 +35,46 @@ local function price(item, count, book, ctx)
     return out
 end
 
---- One row per writ: what the writ itself costs on the auction house (`writPrice`, its cheapest listing),
---- its order (`item`, `count`; `assumed` until the game told us the order), what buying
---- `count` units costs on the auction house (`buy`, `buyShort`, `buyApprox`) and what crafting them costs
---- (`craft`, the `plan`, its `steps`, `who` crafts; `canCraft`), the better of the two (`best`, `bestCost`),
---- `perRep`: copper per point of reputation, the writ bought and its order fulfilled the cheaper way
---- ((bestCost + writPrice) / rep, rounded; nil without either), and `held`: how many of the writ the
---- characters hold (`ctx.heldBy`). A writ naming several items is
---- priced as whichever comes cheapest.
+--- One writ's row (BuildRows makes one per writ): what the writ itself costs on the auction house
+--- (`writPrice`, its cheapest listing), its order (`item`, `count`; `assumed` until the game told us the
+--- order), what buying `count` units costs on the auction house (`buy`, `buyShort`, `buyApprox`) and what
+--- crafting them costs (`craft`, the `plan`, its `steps`, `who` crafts; `canCraft`), the better of the two
+--- (`best`, `bestCost`), `perRep`: copper per point of reputation, the writ bought and its order fulfilled
+--- the cheaper way ((bestCost + writPrice) / rep, rounded; nil without either), and `held`: how many of the
+--- writ the characters hold (`ctx.heldBy`). A writ naming several items is priced as whichever comes
+--- cheapest.
+function WC.BuildRow(writ, book, orders, ctx)
+    local order = orders and orders[writ.quest]
+    local candidates = writ.items
+    if order and order.item then candidates = { order.item } end
+    local count = order and order.count or writ.count
+    local chosen
+    for _, item in ipairs(candidates) do
+        local priced = price(item, count, book, ctx)
+        if not chosen or (priced.bestCost and (not chosen.bestCost or priced.bestCost < chosen.bestCost)) then
+            chosen = priced
+        end
+    end
+    local row = {
+        id = writ.id, quest = writ.quest, name = writ.name, short = writ.short, tier = writ.tier,
+        rep = writ.rep, count = count, assumed = not (order and order.count),
+        writPrice = book[writ.id] and book[writ.id][1] and book[writ.id][1].price or nil,
+        held = ctx.heldBy and ctx.heldBy(writ.id) or 0,
+    }
+    for k, v in pairs(chosen) do row[k] = v end
+    row.canCraft = row.plan ~= nil
+    if row.bestCost and row.writPrice and (row.rep or 0) > 0 then
+        row.perRep = math.floor((row.bestCost + row.writPrice) / row.rep + 0.5)
+    end
+    if row.plan then row.steps = P().Steps(row.plan) end
+    return row
+end
+
+--- One row per writ of `writs.LIST` (WC.BuildRow each).
 function WC.BuildRows(book, writs, orders, ctx)
     local rows = {}
     for _, writ in ipairs(writs.LIST) do
-        local order = orders and orders[writ.quest]
-        local candidates = writ.items
-        if order and order.item then candidates = { order.item } end
-        local count = order and order.count or writ.count
-        local chosen
-        for _, item in ipairs(candidates) do
-            local priced = price(item, count, book, ctx)
-            if not chosen or (priced.bestCost and (not chosen.bestCost or priced.bestCost < chosen.bestCost)) then
-                chosen = priced
-            end
-        end
-        local row = {
-            id = writ.id, quest = writ.quest, name = writ.name, short = writ.short, tier = writ.tier,
-            rep = writ.rep, count = count, assumed = not (order and order.count),
-            writPrice = book[writ.id] and book[writ.id][1] and book[writ.id][1].price or nil,
-            held = ctx.heldBy and ctx.heldBy(writ.id) or 0,
-        }
-        for k, v in pairs(chosen) do row[k] = v end
-        row.canCraft = row.plan ~= nil
-        if row.bestCost and row.writPrice and (row.rep or 0) > 0 then
-            row.perRep = math.floor((row.bestCost + row.writPrice) / row.rep + 0.5)
-        end
-        if row.plan then row.steps = P().Steps(row.plan) end
-        rows[#rows + 1] = row
+        rows[#rows + 1] = WC.BuildRow(writ, book, orders, ctx)
     end
     return rows
 end

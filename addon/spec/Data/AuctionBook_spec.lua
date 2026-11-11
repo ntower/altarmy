@@ -252,6 +252,15 @@ describe("AuctionBook", function()
             assert.is_nil(B.Newest("R", "Horde").summary)
         end)
 
+        it("Newest says there is none while the debug option hides the scans, which stay stored", function()
+            B.Store({ t = 1000, realm = "R", faction = "Horde", complete = true, items = "" }, 1000)
+            local saved = AltArmy.Debug
+            AltArmy.Debug = { IsHideAuctionData = function() return true end }
+            assert.is_nil(B.Newest("R", "Horde"))
+            AltArmy.Debug = saved
+            assert.equals(1000, B.Newest("R", "Horde").t)
+        end)
+
         it("are cleared with the full scans", function()
             B.Store({ t = 1000, realm = "R", faction = "Horde", complete = true, items = "" }, 1000)
             B.StoreSummary(stored(2000), 2000)

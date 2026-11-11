@@ -9,7 +9,7 @@ AltArmy TBC is an account-wide alt management addon for WoW: Forever (the main f
 - Collects and persists character data automatically while you play.
 - Presents cross-character information in tabbed dashboards.
 - Supports item and recipe search across characters, with recipe skill, difficulty and source filters from built-in recipe data (optional guildmate recipes).
-- Shows what each Waylaid Crate costs per point of Merchant's Favor, filled from the auction house or crafted by your characters, and what each Craftsman's Writ's order costs to buy or to craft with your characters (WoW Forever). A Supply Chain view explaining alt-army.com's crafting planner is built but off behind `AltArmy.FeatureFlags.economySupplyChain`.
+- Shows what each Waylaid Crate costs per point of Merchant's Favor, filled from the auction house or crafted by your characters, and what each Craftsman's Writ's order costs to buy or to craft with your characters (WoW Forever). The same costs show in any tooltip of a crate or writ (bags, bank, links), with the scan's age at the bottom (orange once it is over an hour old); Options → General → Economy turns that off. A Supply Chain view explaining alt-army.com's crafting planner is built but off behind `AltArmy.FeatureFlags.economySupplyChain`.
 - Tracks profession cooldown readiness (on WoW Forever its shared transmute cooldown, Mooncloth, the Salt Shaker, Comprehension's Study and the Legacy talent Dedicated Study), stockpile mailing, and raid/heroic lockouts.
 - Graphs leveling progress over calendar and played time.
 - Optionally shares character cards and recipes with guildmates.
@@ -100,7 +100,7 @@ See [tabs/options.md](tabs/options.md#export-for-the-alt-army-website). Bundles 
 ### Auction house scan for the Alt Army website
 
 On WoW Forever only, an **Alt Army scan** button sits above the auction house window; `/altarmy scan` does
-the same. Elsewhere (TBC Anniversary) the button, the Auction House options section, the automatic scan and
+the same. Elsewhere (TBC Anniversary) the button, the Economy options section, the automatic scan and
 the reading of other addons' full scans are all off, whatever the client's API offers
 (`AuctionScan.HasFullApi` and `HasSummaryApi`, which `HasApi` ORs, check `DataStore.IsWowForever` first).
 
@@ -109,14 +109,14 @@ the reading of other addons' full scans are all off, whatever the client's API o
 - The game allows one full scan every 15 minutes per account. During that wait, or if the game refuses the
   full scan, the button runs a **summary scan** instead: each item's cheapest price and how many units are
   listed. It has no cooldown and is faster, but cannot say how many units sit at each price.
-- The scan mode (Options → General → Auction House): **Prefer full scans** (the default, as above), **Only
+- The scan mode (Options → General → Economy): **Prefer full scans** (the default, as above), **Only
   full scans** (nothing during the cooldown: the button is disabled and the automatic scan does nothing) or
   **Only summary scans**.
 - Summary scans are kept apart from full scans (the newest one per realm and faction) and are never uploaded
   to the website, which only gets full scans. A summary never replaces a stored full scan.
 - When the full scan is cooling down and no summary scan is possible, the button counts the wait down. Its
   tooltip says which kind of scan a click runs now.
-- **Scan automatically:** Options → General → **Auction House** can start the scan by itself a second after
+- **Scan automatically:** Options → General → **Economy** can start the scan by itself a second after
   the auction house opens (off by default). The settings icon right of the button opens that option. A visit
   within the 15-minute cooldown runs a summary scan; one where another addon already started a full scan,
   or within 2 minutes of that auction house's last scan (full or summary), is skipped. The button still

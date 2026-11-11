@@ -180,6 +180,9 @@ end
 
 --- The newer of the full scan (Latest) and the summary (LatestSummary), or nil.
 function B.Newest(realm, faction)
+    -- Options -> Debug -> Pretend there is no auction house data: none, while the scans stay stored.
+    local D = AltArmy.Debug
+    if D and D.IsHideAuctionData and D.IsHideAuctionData() then return nil end
     local full, summary = B.Latest(realm, faction), B.LatestSummary(realm, faction)
     if full and summary then
         return (summary.t or 0) > (full.t or 0) and summary or full

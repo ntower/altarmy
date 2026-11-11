@@ -129,6 +129,18 @@ describe("WritCosts", function()
         end)
     end)
 
+    describe("BuildRow", function()
+        it("builds one writ's row as BuildRows does", function()
+            local ctx = context()
+            local one = WC.BuildRow(WRITS.LIST[1], ctx.book, nil, ctx)
+            local all = byId(WC.BuildRows(ctx.book, WRITS, nil, ctx))[264047]
+            assert.equals(all.craft, one.craft)
+            assert.equals(all.perRep, one.perRep)
+            assert.equals(all.held, one.held)
+            assert.equals(all.item, one.item)
+        end)
+    end)
+
     describe("Filter", function()
         local function ids(rows)
             local out = {}

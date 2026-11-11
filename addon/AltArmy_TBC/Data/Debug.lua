@@ -52,6 +52,9 @@ function D.Ensure()
     if d.showUnannouncedCooldowns == nil then
         d.showUnannouncedCooldowns = false
     end
+    if d.hideAuctionData == nil then
+        d.hideAuctionData = false
+    end
     -- Legacy SavedVariables key from when the whole resize grip was a debug toggle; no longer read.
     d.windowResize = nil
     -- Legacy SavedVariables key from the dual-engine experiment; no longer read.
@@ -208,6 +211,19 @@ end
 function D.SetShowUnannouncedCooldowns(on)
     D.Ensure()
     AltArmyTBC_Options.debug.showUnannouncedCooldowns = on == true
+end
+
+--- When true, the addon acts as if no auction house had ever been scanned (AuctionBook.Newest is nil): the
+--- Economy tab's empty state, no item tooltip lines. The scans stay stored. Standalone flag (does not
+--- require master debug on).
+function D.IsHideAuctionData()
+    D.Ensure()
+    return AltArmyTBC_Options.debug.hideAuctionData == true
+end
+
+function D.SetHideAuctionData(on)
+    D.Ensure()
+    AltArmyTBC_Options.debug.hideAuctionData = on == true
 end
 
 function D.RefreshZygorDependentUi()

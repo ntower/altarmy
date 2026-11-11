@@ -10,7 +10,7 @@
 -- during the cooldown; "only_summary" runs summaries alone. Summaries are stored apart
 -- (AuctionBook.StoreSummary) so the website only ever gets full scans.
 -- Only a scan read to its end is stored; one the auction house closed on is dropped.
--- With the automatic scan on (AltArmyTBC_Options.auctionAutoScan, the Auction House options), a scan starts
+-- With the automatic scan on (AltArmyTBC_Options.auctionAutoScan, the Economy options), a scan starts
 -- AUTO_DELAY seconds after the auction house opens, if the client allows one, none is under way and this
 -- auction house's newest scan (full or summary) is at least AUTO_GAP old. A scan asked for runs regardless.
 -- A scan Alt Army starts (the button, /altarmy scan or the automatic scan) says in chat which kind it is when

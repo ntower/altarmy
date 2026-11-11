@@ -14,7 +14,8 @@ local WC = AltArmy.WritCosts
 local Writs = AltArmy.Writs
 local Book = AltArmy.AuctionBook
 local DS = AltArmy.DataStore
-if not (Theme and W and WC and Writs and Book and DS and AltArmy.CraftPlan and AltArmy.CraftContext
+local ET = AltArmy.EconomyTooltip -- the rows' tooltips (UI/EconomyTooltip.lua)
+if not (Theme and W and WC and Writs and Book and DS and ET and AltArmy.CraftPlan and AltArmy.CraftContext
     and AltArmy.ColumnFit and frame.CreateScanFooter and frame.CreateEmptyState) then return end
 
 local panel = frame.WritsView
@@ -46,8 +47,6 @@ local UI = {
     cache = nil, -- { scan, book }: the decoded scan, kept until a newer one arrives
     classOf = {}, -- character name -> class file (CraftContext.Build)
     WRIT_COLOR = "|cff0070dd", -- the writs are rare items
-    -- The tooltip's greyed-out text (the dearer way to fulfil): as dark as its hints, as on the Waylaid view.
-    DIM = 0.5,
 }
 
 local function TotalColWidth()
@@ -58,30 +57,15 @@ local function TotalColWidth()
     return w
 end
 
-local function Money(copper)
-    if copper == nil then return "—" end
-    return AltArmy.SummaryData.GetMoneyString(copper)
-end
-
 --- "~" before a cost that rests on an estimate, or on units the auction house is short of.
 local function Mark(approx, short)
     return (approx or (short or 0) > 0) and "~" or ""
-end
-
-local function MoneyMarked(copper, approx, short)
-    if copper == nil then return "—" end
-    return Mark(approx, short) .. Money(copper)
 end
 
 local function ItemIcon(itemID)
     if GetItemIcon then return GetItemIcon(itemID) end
     if C_Item and C_Item.GetItemIconByID then return C_Item.GetItemIconByID(itemID) end
     return nil
-end
-
-local function ItemName(itemID)
-    local entry = Writs.ITEMS[itemID]
-    return entry and entry.name or ("item " .. tostring(itemID))
 end
 
 local function WritLabel(row)
@@ -223,112 +207,18 @@ local function ReleaseRows()
     end
 end
 
---- A character's name in their class colour (white when their class isn't known).
-local function CharName(name)
-    local CC = AltArmy.ClassColor
-    if not CC then return name end
-    return CC.formatName(name, UI.classOf[name])
-end
-
---- A step's tooltip line: its text, and its cost (nil for a craft: it costs nothing more). Counts read "3x"
---- (a craft's is its casts). `plain`: names without their class colour (a greyed-out line).
-local function StepText(step, plain)
-    local name = ItemName(step.item)
-    local who = plain and step.who or CharName(step.who)
-    if step.kind == "craft" then
-        return "Craft " .. step.casts .. "x " .. name .. " on " .. who, nil
-    end
-    local left = "Buy " .. step.qty .. "x " .. name
-    if step.kind == "vendor" then
-        left = left .. " from a vendor on " .. who
-    else
-        left = left .. " on the auction house"
-    end
-    return left, MoneyMarked(step.cost, step.approx, step.short)
-end
-
---- A tooltip cost line: the cost in white, or "n/a" in grey when there is none.
-local function AddCostLine(label, cost)
-    if cost then
-        GameTooltip:AddDoubleLine(label, cost, 1, 1, 1, 1, 1, 1)
-    else
-        GameTooltip:AddDoubleLine(label, "n/a", 1, 1, 1, 0.7, 0.7, 0.7)
-    end
-end
-
---- A fulfil line with no way to fulfil that way: label and "n/a" both grey, as a dearer way's line is.
-local function AddUnavailableLine(label)
-    GameTooltip:AddDoubleLine(label, "n/a", UI.DIM, UI.DIM, UI.DIM, UI.DIM, UI.DIM, UI.DIM)
-end
-
 local function ShowRowTooltip(row)
     local rd = row.rowData
     if not rd then return end
     GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
     if GameTooltip.SetItemByID then
-        GameTooltip:SetItemByID(rd.id)
+        ET.SetItem(GameTooltip, rd.id)
     else
         GameTooltip:SetText(rd.name)
     end
-    GameTooltip:AddLine(" ")
-    local wants = "Wants " .. rd.count .. "x " .. ItemName(rd.item)
-    GameTooltip:AddLine(wants, 1, 0.82, 0, true)
-    GameTooltip:AddDoubleLine(rd.tier .. " writ", "+" .. rd.rep .. " reputation", 1, 1, 1, 1, 1, 1)
-    GameTooltip:AddLine(" ")
-    AddCostLine("Writ on the auction house", rd.writPrice and Money(rd.writPrice))
-    -- With both ways priced, the dearer line is grey, label and cost (a tie greys the craft: the writ buys),
-    -- and so are the craft's steps when crafting is the dearer way; a greyed line's names lose their class
-    -- colour, which would show through the grey.
-    local both = rd.buy and rd.craft
-    local buyC = both and rd.best ~= "buy" and UI.DIM or 1
-    local craftC = both and rd.best ~= "craft" and UI.DIM or 1
-    if rd.buy then
-        GameTooltip:AddDoubleLine("Fill via AH", MoneyMarked(rd.buy, rd.buyApprox, rd.buyShort),
-            buyC, buyC, buyC, buyC, buyC, buyC)
-    else
-        AddUnavailableLine("Fill via AH")
-    end
-    if rd.craft then
-        local who = craftC < 1 and rd.who or CharName(rd.who)
-        GameTooltip:AddDoubleLine("Fill via craft on " .. who,
-            MoneyMarked(rd.craft, rd.craftApprox, rd.craftShort), craftC, craftC, craftC, craftC, craftC, craftC)
-    else
-        AddUnavailableLine("Fill via craft")
-    end
-    if rd.bestCost and rd.writPrice then
-        GameTooltip:AddDoubleLine("Total cost", Money(rd.bestCost + rd.writPrice), 1, 0.82, 0, 1, 1, 1)
-        if rd.perRep then
-            GameTooltip:AddDoubleLine("Total cost per rep", Money(rd.perRep), 1, 0.82, 0, 1, 1, 1)
-        end
-    end
-    if rd.craft then
-        GameTooltip:AddLine(" ")
-        local r, g, b = 1, 0.82, 0
-        if craftC < 1 then r, g, b = craftC, craftC, craftC end
-        GameTooltip:AddLine("To craft " .. rd.count .. "x " .. ItemName(rd.item) .. ":", r, g, b)
-        for _, step in ipairs(rd.steps or {}) do
-            local left, right = StepText(step, craftC < 1)
-            if right then
-                GameTooltip:AddDoubleLine(left, right, craftC, craftC, craftC, craftC, craftC, craftC)
-            else
-                GameTooltip:AddLine(left, craftC, craftC, craftC)
-            end
-        end
-    end
-    local short = (rd.best == "craft" and rd.craftShort or rd.buyShort) or 0
-    if short > 0 then
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddLine("~ " .. short .. " unit(s) are not listed: priced at the dearest listing.",
-            0.9, 0.6, 0.2, true)
-    elseif rd.best and (rd.best == "craft" and rd.craftApprox or rd.buyApprox) then
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddLine("~ An estimate: the scan folded the dearer listings together.", 0.9, 0.6, 0.2, true)
-    end
-    local AZ = AltArmy.AuctionatorSearch
-    if AZ and AZ.IsAvailable() then
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddLine("Click to search with Auctionator", 0.5, 0.5, 0.5)
-    end
+    ET.AddWritLines(GameTooltip, rd, { classOf = UI.classOf, scanTime = UI.cache and UI.cache.scan.t,
+        summary = UI.cache and UI.cache.scan.summary, now = GetServerTime and GetServerTime() or time(),
+        clickHint = true })
     GameTooltip:Show()
 end
 

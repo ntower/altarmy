@@ -2,7 +2,7 @@
 -- frame.CurrencyView), Waylaid Crates' costs per Merchant's Favor (filled from the Alt Army auction scan or by
 -- crafting: Data/Economy/WaylaidCosts.lua, CraftPlan.lua), and the Supply Chain page
 -- about alt-army.com (Tabs/TabEconomySupplyChain.lua fills frame.SupplyChainView).
--- luacheck: globals GameTooltip GetItemIcon GetServerTime C_CurrencyInfo
+-- luacheck: globals GameTooltip GetItemIcon GetServerTime
 
 local frame = AltArmy and AltArmy.TabFrames and AltArmy.TabFrames.Economy
 if not frame then return end
@@ -22,7 +22,8 @@ local Theme = AltArmy.Theme
 local W = AltArmy.WaylaidCosts
 local Crates = AltArmy.WaylaidCrates
 local Book = AltArmy.AuctionBook
-if not (Theme and W and Crates and Book and AltArmy.ColumnFit) then return end
+local ET = AltArmy.EconomyTooltip
+if not (Theme and W and Crates and Book and ET and AltArmy.ColumnFit) then return end
 
 W.EnsureOptions()
 
@@ -53,20 +54,11 @@ local UI = {
     cache = nil, -- { scan, book }: the decoded scan, kept until a newer one arrives
     CRAFTED_COLOR = "|cff1eff00",
     GATHERED_COLOR = "|cffffffff",
-    -- The tooltip's greyed-out text (the dearer way, the bundles not picked): as dark as its hints.
-    DIM = 0.5,
-    DIM_CODE = "|cff808080",
     classOf = {}, -- character name -> class file (CraftContext.Build)
 }
 
--- Merchant's Favor (currency 3402): its icon from the game, else the one Forever gives it.
-local FAVOR_CURRENCY, FAVOR_ICON = 3402, 135725
-local function FavorIcon()
-    local CI = C_CurrencyInfo
-    local info = CI and CI.GetCurrencyInfo and CI.GetCurrencyInfo(FAVOR_CURRENCY)
-    local icon = info and info.iconFileID or FAVOR_ICON
-    return "|T" .. icon .. ":" .. UI.ICON_SIZE .. ":" .. UI.ICON_SIZE .. ":0:0|t"
-end
+-- Merchant's Favor's icon (UI/EconomyTooltip.lua, which also writes the rows' tooltips).
+local FavorIcon = ET.FavorIcon
 UI.sortLabels = {
     crate = "Waylaid Crate",
     favor = FavorIcon(),
@@ -99,32 +91,9 @@ local function TotalColWidth()
     return w
 end
 
-local function Money(copper)
-    if copper == nil then return "—" end
-    if copper < 0 then return "-" .. AltArmy.SummaryData.GetMoneyString(-copper) end
-    return AltArmy.SummaryData.GetMoneyString(copper)
-end
-
 --- "~" before a cost that rests on an estimate, or on units the auction house is short of.
 local function Mark(approx, short)
     return (approx or (short or 0) > 0) and "~" or ""
-end
-
-local function MoneyMarked(copper, approx, short)
-    if copper == nil then return "—" end
-    return Mark(approx, short) .. Money(copper)
-end
-
---- A character's name in their class colour (white when their class isn't known).
-local function CharName(name)
-    local CC = AltArmy.ClassColor
-    if not CC then return name end
-    return CC.formatName(name, UI.classOf[name])
-end
-
-local function ItemName(itemID)
-    local entry = Crates.ITEMS and Crates.ITEMS[itemID]
-    return entry and entry.name or ("item " .. tostring(itemID))
 end
 
 local function ItemIcon(itemID)
@@ -216,7 +185,7 @@ local function CreateScanFooter(parent)
         hover:SetShown(info:IsShown())
     end
 
-    -- Same setting as Options → General → Auction House. CreateLabeledCheckbox stretches its row to its
+    -- Same setting as Options → General → Economy. CreateLabeledCheckbox stretches its row to its
     -- parent's right edge: a holder sized to the checkbox and label keeps it right-aligned.
     local holder = CreateFrame("Frame", nil, parent)
     -- clear of the window's resize grip in the corner
@@ -461,59 +430,6 @@ local function ReleaseRows()
     end
 end
 
---- A tooltip cost line: the cost in white, or "n/a" in grey when there is none.
-local function AddCostLine(label, cost)
-    if cost then
-        GameTooltip:AddDoubleLine(label, cost, 1, 1, 1, 1, 1, 1)
-    else
-        GameTooltip:AddDoubleLine(label, "n/a", 1, 1, 1, 0.7, 0.7, 0.7)
-    end
-end
-
---- A fulfil line with no way to fulfil that way: label and "n/a" both grey, as a dearer way's line is.
-local function AddUnavailableLine(label)
-    GameTooltip:AddDoubleLine(label, "n/a", UI.DIM, UI.DIM, UI.DIM, UI.DIM, UI.DIM, UI.DIM)
-end
-
---- A step's tooltip line: its text, and its cost (nil for a craft: it costs nothing more). Counts read "3x"
---- (a craft's is its casts).
-local function StepText(step)
-    local name = ItemName(step.item)
-    if step.kind == "craft" then
-        return "Craft " .. step.casts .. "x " .. name .. " on " .. CharName(step.who), nil
-    end
-    local left = "Buy " .. step.qty .. "x " .. name
-    if step.kind == "vendor" then
-        left = left .. " from a vendor on " .. CharName(step.who)
-    else
-        left = left .. " on the auction house"
-    end
-    return left, MoneyMarked(step.cost, step.approx, step.short)
-end
-
---- A bundle's tooltip line: what it costs on the auction house and to craft, or why it can't be had.
---- With both prices, the dearer one is grey (a tie greys the craft, as on the fulfil lines).
-local function BundleText(opt)
-    local GREY = UI.DIM_CODE
-    local both = opt.cost and opt.craft
-    local parts = {}
-    if opt.cost then
-        local text = "AH " .. MoneyMarked(opt.cost, opt.approx)
-        if both and opt.best ~= "buy" then text = GREY .. text .. "|r" end
-        parts[#parts + 1] = text
-    elseif opt.listed > 0 then
-        parts[#parts + 1] = "only " .. opt.listed .. " listed"
-    else
-        parts[#parts + 1] = "not listed"
-    end
-    if opt.craft then
-        local text = "craft " .. MoneyMarked(opt.craft, opt.craftApprox, opt.craftShort)
-        if both and opt.best ~= "craft" then text = GREY .. text .. "|r" end
-        parts[#parts + 1] = text
-    end
-    return table.concat(parts, ", ")
-end
-
 --- Over a guessed reward's Favor cell: what the guess is.
 local function ShowGuessTooltip(row)
     GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
@@ -528,76 +444,13 @@ local function ShowRowTooltip(row)
     if not rd then return end
     GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
     if GameTooltip.SetItemByID then
-        GameTooltip:SetItemByID(rd.id)
+        ET.SetItem(GameTooltip, rd.id)
     else
         GameTooltip:SetText(rd.name)
     end
-    GameTooltip:AddLine(" ")
-    if rd.favor then
-        GameTooltip:AddDoubleLine("Turn-in reward", rd.favor .. " " .. FavorIcon() .. " and " .. Money(rd.goldBack),
-            1, 0.82, 0, 1, 1, 1)
-    end
-    AddCostLine("Crate on the auction house", rd.price and Money(rd.price))
-    if rd.random then
-        GameTooltip:AddLine("Its shipment is random until you read the label, so there is no fill cost.",
-            0.7, 0.7, 0.7, true)
-    else
-        -- With both ways priced, the dearer line is grey, label and cost (a tie greys the craft: the row buys);
-        -- its crafter's name then loses the class colour, which would show through the grey.
-        local both = rd.buy and rd.craft
-        local buyC = both and rd.best ~= "buy" and UI.DIM or 1
-        local craftC = both and rd.best ~= "craft" and UI.DIM or 1
-        if rd.buy then
-            GameTooltip:AddDoubleLine("Fill via AH", MoneyMarked(rd.buy, rd.buyApprox), buyC, buyC, buyC,
-                buyC, buyC, buyC)
-        else
-            AddUnavailableLine("Fill via AH")
-        end
-        if rd.craft then
-            local who = craftC < 1 and rd.who or CharName(rd.who)
-            GameTooltip:AddDoubleLine("Fill via craft on " .. who,
-                MoneyMarked(rd.craft, rd.craftApprox, rd.craftShort), craftC, craftC, craftC, craftC, craftC, craftC)
-        else
-            AddUnavailableLine("Fill via craft")
-        end
-        if rd.total then
-            GameTooltip:AddDoubleLine("Total cost", Money(rd.total), 1, 0.82, 0, 1, 1, 1)
-            GameTooltip:AddDoubleLine("Total cost per " .. FavorIcon(), Money(rd.perFavor), 1, 0.82, 0, 1, 1, 1)
-        end
-        if #rd.options > 0 then
-            GameTooltip:AddLine(" ")
-            GameTooltip:AddLine("Fill it with any one of these bundles:", 1, 0.82, 0)
-            for _, opt in ipairs(rd.options) do
-                local left = opt.count .. " x " .. opt.name
-                -- Only the cheapest bundle is white: the others are grey, name and costs.
-                local right = BundleText(opt)
-                local c = opt == rd.bundle and 1 or UI.DIM
-                GameTooltip:AddDoubleLine(left, right, c, c, c, c, c, c)
-            end
-        end
-        if rd.best == "craft" then
-            GameTooltip:AddLine(" ")
-            GameTooltip:AddLine("To craft " .. rd.bundle.count .. "x " .. rd.bundle.name .. ":", 1, 0.82, 0)
-            for _, step in ipairs(rd.steps or {}) do
-                local left, right = StepText(step)
-                if right then
-                    GameTooltip:AddDoubleLine(left, right, 1, 1, 1, 1, 1, 1)
-                else
-                    GameTooltip:AddLine(left, 1, 1, 1)
-                end
-            end
-        end
-        if rd.best == "craft" and (rd.craftShort or 0) > 0 then
-            GameTooltip:AddLine(" ")
-            GameTooltip:AddLine("~ " .. rd.craftShort .. " unit(s) are not listed: priced at the dearest listing.",
-                0.9, 0.6, 0.2, true)
-        end
-    end
-    local AZ = AltArmy.AuctionatorSearch
-    if AZ and AZ.IsAvailable() then
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddLine("Click to search with Auctionator", 0.5, 0.5, 0.5)
-    end
+    ET.AddCrateLines(GameTooltip, rd, { classOf = UI.classOf, scanTime = UI.cache and UI.cache.scan.t,
+        summary = UI.cache and UI.cache.scan.summary, now = GetServerTime and GetServerTime() or time(),
+        clickHint = true })
     GameTooltip:Show()
 end
 

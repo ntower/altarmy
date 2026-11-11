@@ -44,7 +44,7 @@ function Btn.TooltipText(nextKind, cooldown)
     return "Runs a full scan: every listing, so Alt Army can make price calculations."
 end
 
---- Open Alt Army's options on the automatic scan checkbox (General tab, Auction House section).
+--- Open Alt Army's options on the automatic scan checkbox (General tab, Economy section).
 function Btn.OpenSettings()
     if AltArmy.OpenInterfaceOptions then
         AltArmy.OpenInterfaceOptions("general", { flash = "autoScan" })

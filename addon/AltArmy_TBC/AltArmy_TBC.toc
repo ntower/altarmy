@@ -119,6 +119,7 @@ UI\ItemActions.lua
 UI\ItemSlotButton.lua
 UI\PendingItemIcons.lua
 UI\GraphCore.lua
+UI\EconomyTooltip.lua
 Tabs\SearchStickyHeaders.lua
 Tabs\TabSummary.lua
 Tabs\TabGear.lua

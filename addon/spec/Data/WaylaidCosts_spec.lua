@@ -216,6 +216,26 @@ describe("WaylaidCosts", function()
         end)
     end)
 
+    describe("BuildRow", function()
+        it("builds one crate's row as BuildRows does", function()
+            local book = { [902] = { lv(3000, 1) }, [5] = { lv(50, 20) } }
+            local one = W.BuildRow(CRATES.ById[902], book, false, context(book))
+            local all = byId(W.BuildRows(book, CRATES, false, context(book)))[902]
+            assert.equals(all.craft, one.craft)
+            assert.equals(all.perFavor, one.perFavor)
+            assert.equals(all.who, one.who)
+            assert.equals(#all.steps, #one.steps)
+        end)
+    end)
+
+    describe("IsOldData", function()
+        it("is old only past an hour", function()
+            assert.is_false(W.IsOldData(1000, 1000 + 3600))
+            assert.is_true(W.IsOldData(1000, 1000 + 3601))
+            assert.is_false(W.IsOldData(1000, 900))
+        end)
+    end)
+
     describe("FilterRows", function()
         local book = {
             [900] = { lv(500, 4) },
@@ -373,7 +393,13 @@ describe("WaylaidCosts", function()
             assert.is_true(o.writsOnlyAvailable)
             assert.is_true(o.waylaidOnlyAvailable)
             assert.is_false(o.waylaidOnlyCraftable)
+            assert.is_true(o.itemTooltips)
             assert.equals(o, AltArmyTBC_Options.economy)
+        end)
+
+        it("keeps item tooltips turned off", function()
+            _G.AltArmyTBC_Options = { economy = { itemTooltips = false } }
+            assert.is_false(W.EnsureOptions().itemTooltips)
         end)
 
         it("keeps the writs view and its choices", function()

@@ -181,6 +181,12 @@ panel.default = function()
     if panel.RefreshAdvancedOptions then
         panel.RefreshAdvancedOptions()
     end
+    if AltArmy.WaylaidCosts and AltArmy.WaylaidCosts.EnsureOptions then
+        AltArmy.WaylaidCosts.EnsureOptions().itemTooltips = true
+    end
+    if panel.RefreshEconomyOptions then
+        panel.RefreshEconomyOptions()
+    end
 end
 panel.refresh = function()
     ensureDefaults()
@@ -195,6 +201,9 @@ panel.refresh = function()
     end
     if panel.RefreshAdvancedOptions then
         panel.RefreshAdvancedOptions()
+    end
+    if panel.RefreshEconomyOptions then
+        panel.RefreshEconomyOptions()
     end
 end
 
@@ -601,9 +610,43 @@ panel.debugUnannouncedCooldownsHint:SetText(
         .. "the Cooldowns tab, and alerts for them. Their cooldowns are saved either way. The tab's settings "
         .. "dropdowns pick it up after /reload.")
 
+-- Pretend there is no auction house data (AuctionBook.Newest nil; the scans stay stored). On panel, to spare
+-- main-chunk locals.
+panel.debugHideAuctionDataCheckbox = Theme.CreateLabeledCheckbox(debugScrollChild, {
+    point = "TOPLEFT",
+    relativeTo = panel.debugUnannouncedCooldownsHint,
+    relativePoint = "BOTTOMLEFT",
+    x = 0,
+    y = -16,
+    text = "Pretend there is no auction house data",
+    fullWidthHover = true,
+    onClick = function(checked)
+        if AltArmy.Debug and AltArmy.Debug.SetHideAuctionData then
+            AltArmy.Debug.SetHideAuctionData(checked)
+        end
+        local econ = AltArmy.TabFrames and AltArmy.TabFrames.Economy
+        if econ and econ:IsShown() then
+            if econ.WaylaidView and econ.WaylaidView:IsShown() and econ.RefreshWaylaid then
+                econ.RefreshWaylaid()
+            elseif econ.WritsView and econ.WritsView:IsShown() and econ.RefreshWrits then
+                econ.RefreshWrits()
+            end
+        end
+    end,
+}).check
+
+panel.debugHideAuctionDataHint = debugScrollChild:CreateFontString(nil, "ARTWORK", Theme.FONTS.body)
+panel.debugHideAuctionDataHint:SetPoint("TOPLEFT", panel.debugHideAuctionDataCheckbox, "BOTTOMLEFT", 0, -8)
+panel.debugHideAuctionDataHint:SetWidth(520)
+panel.debugHideAuctionDataHint:SetJustifyH("LEFT")
+panel.debugHideAuctionDataHint:SetText(
+    "Acts as if no auction house had ever been scanned: the Economy tab's Waylaid Crates and Craftsman's "
+        .. "Writs views show their empty state, and crate and writ tooltips add nothing. Your scans are kept "
+        .. "and come back when this is turned off.")
+
 local function UpdateDebugScrollRange()
     local top = debugScrollChild:GetTop()
-    local bottom = panel.debugUnannouncedCooldownsHint:GetBottom()
+    local bottom = panel.debugHideAuctionDataHint:GetBottom()
     if top and bottom then
         debugScrollChild:SetHeight(math.max(1, top - bottom + 16))
     else
@@ -648,6 +691,9 @@ function RefreshDebugCheckboxes()
     if panel.debugUnannouncedCooldownsCheckbox then
         panel.debugUnannouncedCooldownsCheckbox:SetChecked(d.showUnannouncedCooldowns == true)
     end
+    if panel.debugHideAuctionDataCheckbox then
+        panel.debugHideAuctionDataCheckbox:SetChecked(d.hideAuctionData == true)
+    end
     ResetDeleteAllHistoryButton()
     ResetClearManualGroupsButton()
     panel.debugClearAuctionBtn:Reset()
@@ -677,8 +723,8 @@ panel.RefreshDebugTabVisibility = RefreshDebugTabVisibility
 RefreshDebugTabVisibility()
 
 -- ---------------------------------------------------------------------------
--- General tab: collapsible sections (General, Guild, Auction House) in a scroll area, since Guild and
--- Auction House open together can outgrow the Interface Options canvas.
+-- General tab: collapsible sections (General, Guild, Economy) in a scroll area, since Guild and
+-- Economy open together can outgrow the Interface Options canvas.
 -- ---------------------------------------------------------------------------
 
 local GENERAL_SCROLL_GUTTER = Theme.VerticalScrollBarGutter()
@@ -741,8 +787,10 @@ panel.linkedSection = Theme.CreateCollapsibleSection(panel.sharingViewport.child
     onToggle = onSectionToggled,
 })
 panel.linkedSection.SetShown(false)
+-- Economy: the auction house scan, then the crate and writ tooltips. (Its local keeps the name it had as the
+-- Auction House section.)
 local auctionSection = Theme.CreateCollapsibleSection(generalScrollChild, {
-    text = "Auction House",
+    text = "Economy",
     defaultExpanded = true,
     onToggle = onSectionToggled,
 })
@@ -1423,7 +1471,7 @@ end
 panel.RefreshGuildSharingControls = RefreshGuildSharingControls
 layoutGuildSharingTail()
 
--- Auction House section: the Alt Army scan (Data/Auctions/AuctionScan.lua). Only on clients with the full
+-- Economy section, first row: the Alt Army scan (Data/Auctions/AuctionScan.lua). Only on clients with the full
 -- scan (WoW Forever); TBC Anniversary's auction house has none.
 -- The automatic scan checkbox and the scan mode dropdown sit side by side, half the width each: a checkbox
 -- row stretches to its parent's right edge, so each gets a half-width holder (on panel, not main-chunk
@@ -1513,6 +1561,33 @@ do
     local S = AltArmy.AuctionScan
     auctionSection.SetShown(S and S.HasApi and S.HasApi() or false)
 end
+
+-- Economy section, second row: Waylaid Crate and Craftsman's Writ costs in every item tooltip
+-- (UI/EconomyTooltip.lua; AltArmyTBC_Options.economy.itemTooltips, on by default). The Economy tab's rows
+-- always show theirs.
+panel.ECONOMY_SCAN_ROW_HEIGHT = math.max(Theme.CHAR_LIST_ROW_HEIGHT, Theme.OPTIONS_DROPDOWN_ROW_HEIGHT or 24)
+panel.ECONOMY_ROW_GAP = 6
+panel.economyTooltipsRow = Theme.CreateLabeledCheckbox(auctionSection.content, {
+    point = "TOPLEFT",
+    relativeTo = auctionSection.content,
+    relativePoint = "TOPLEFT",
+    x = 0,
+    y = -(panel.ECONOMY_SCAN_ROW_HEIGHT + panel.ECONOMY_ROW_GAP),
+    text = "Detailed tooltips for Waylaid Crates and Craftsman's Writs",
+    fullWidthHover = true,
+    onClick = function(checked)
+        local W = AltArmy.WaylaidCosts
+        if W and W.EnsureOptions then
+            W.EnsureOptions().itemTooltips = checked and true or false
+        end
+    end,
+})
+
+function panel.RefreshEconomyOptions()
+    local W = AltArmy.WaylaidCosts
+    panel.economyTooltipsRow.check:SetChecked(not (W and W.EnsureOptions) or W.EnsureOptions().itemTooltips)
+end
+panel.RefreshEconomyOptions()
 
 -- Each section's content height, from its rows (as Blizzard's Settings sections compute theirs).
 -- Advanced section: reading recipes in the background (Data/DataStore/OwnRecipeRead.lua). Only on clients
@@ -1605,7 +1680,7 @@ end
 
 generalSection.SetContentHeight(Theme.CHAR_LIST_ROW_HEIGHT) -- the minimap row
 guildSection.SetContentHeight(GUILD_CONTENT_HEIGHT)
-auctionSection.SetContentHeight(math.max(Theme.CHAR_LIST_ROW_HEIGHT, Theme.OPTIONS_DROPDOWN_ROW_HEIGHT or 24))
+auctionSection.SetContentHeight(panel.ECONOMY_SCAN_ROW_HEIGHT + panel.ECONOMY_ROW_GAP + Theme.CHAR_LIST_ROW_HEIGHT)
 panel.advancedSection.SetContentHeight(Theme.CHAR_LIST_ROW_HEIGHT)
 
 --- Where the General tab's section frames and the Guild rows actually are, for `/altarmy debug layout`
@@ -2220,6 +2295,9 @@ pageGeneral:HookScript("OnShow", function()
     if panel.RefreshAdvancedOptions then
         panel.RefreshAdvancedOptions()
     end
+    if panel.RefreshEconomyOptions then
+        panel.RefreshEconomyOptions()
+    end
     if panel.RefreshLookAndFeel then
         panel.RefreshLookAndFeel()
     end
@@ -2340,7 +2418,7 @@ SlashCmdList.ALTARMY = function(msg)
                 text = string.format("The game allows the next full scan in %d:%02d.", math.floor(left / 60),
                     left % 60)
             else
-                text = "This client can't run the kind of scan set in Options (Auction House)."
+                text = "This client can't run the kind of scan set in Options (Economy)."
             end
         end
         if text and AltArmy.Debug and AltArmy.Debug.NotifyChat then
@@ -2688,7 +2766,7 @@ AltArmy.OptionsPanel = panel
 --- or "debug"
 --- @param opts table|nil { name, realm, flash = "main"|"bankAlt"|"guildShare"|"autoDelete"|"autoScan"|"scanMode" }
 --- A flashed General tab control's section is opened first (Guild: main, guildShare, autoDelete;
---- Auction House: autoScan, scanMode).
+--- Economy: autoScan, scanMode).
 function AltArmy.OpenInterfaceOptions(initialTab, opts)
     opts = opts or {}
     local tab = initialTab or "general"

@@ -81,6 +81,10 @@ function W.EnsureOptions()
     if type(o.waylaidOnlyCraftable) ~= "boolean" then -- Hide crates I can not fulfill via crafting
         o.waylaidOnlyCraftable = false
     end
+    -- Item tooltips outside the Economy tab (bags, links): on unless turned off in Options -> Economy.
+    if type(o.itemTooltips) ~= "boolean" then
+        o.itemTooltips = true
+    end
     o.writsHideUnavailable = nil
     return o
 end
@@ -150,57 +154,62 @@ local function priceBundle(b, book, ctx)
     return opt
 end
 
---- One row per crate (every one the game has, listed or not): its cheapest price in `book` (itemID ->
---- ladder; nil when the crate isn't listed), what the turn-in gives (`favor`, `goldBack`; `favorGuess`
---- when not measured yet), and the cheapest
---- way to fill it with any one of its bundles: bought on the auction house (`buy`, `buyBundle`, `buyApprox`:
---- only a bundle listed in full) or crafted by the realm's characters (`craft`, `craftBundle`, its `plan`
---- and `steps`, `who`, `craftShort`, `craftApprox`; `canCraft`), the cheaper of the two (`best`, `bestCost`,
---- `bundle`: the bundle it fills with). `total`: the crate plus that fill less the gold the turn-in gives
---- back; `perFavor` that per point of Merchant's Favor, rounded (negative when the turn-in pays more than it
---- cost; nil without a crate price, a fill or a known reward). `options`: every bundle priced both ways for
---- the tooltip. `crates` is AltArmy.WaylaidCrates (LIST). `summary`: the book is a summary scan's (one level
---- per item, its cheapest price), so a fill of more than one unit is a lower bound; only the row is marked
---- `summary` (the view says so on the scan's age, not on each cost). `ctx`: a CraftPlan context
---- (CraftContext.Build) for the craft prices.
+--- One crate's row (BuildRows makes one for every crate the game has, listed or not): its cheapest price
+--- in `book` (itemID -> ladder; nil when the crate isn't listed), what the turn-in gives (`favor`,
+--- `goldBack`; `favorGuess` when not measured yet), and the cheapest way to fill it with any one of its
+--- bundles: bought on the auction house (`buy`, `buyBundle`, `buyApprox`: only a bundle listed in full) or
+--- crafted by the realm's characters (`craft`, `craftBundle`, its `plan` and `steps`, `who`, `craftShort`,
+--- `craftApprox`; `canCraft`), the cheaper of the two (`best`, `bestCost`, `bundle`: the bundle it fills
+--- with). `total`: the crate plus that fill less the gold the turn-in gives back; `perFavor` that per point
+--- of Merchant's Favor, rounded (negative when the turn-in pays more than it cost; nil without a crate
+--- price, a fill or a known reward). `options`: every bundle priced both ways for the tooltip. `crate` is
+--- one of AltArmy.WaylaidCrates.LIST. `summary`: the book is a summary scan's (one level per item, its
+--- cheapest price), so a fill of more than one unit is a lower bound; only the row is marked `summary` (the
+--- view says so on the scan's age, not on each cost). `ctx`: a CraftPlan context (CraftContext.Build) for
+--- the craft prices.
+function W.BuildRow(crate, book, summary, ctx)
+    local ladder = book[crate.id]
+    local row = {
+        id = crate.id, name = crate.name, short = crate.short, tier = crate.tier, kind = crate.kind,
+        random = crate.random == true, price = ladder and ladder[1] and ladder[1].price or nil,
+        listed = unitsListed(ladder), options = {}, summary = summary and true or nil,
+    }
+    local reward = W.Reward(crate.tier, crate.kind)
+    if reward then
+        row.favor, row.goldBack, row.favorGuess = reward.favor, reward.copper, reward.guess
+    end
+    for _, b in ipairs(crate.bundles) do
+        local opt = priceBundle(b, book, ctx)
+        row.options[#row.options + 1] = opt
+        if opt.cost and (not row.buyBundle or opt.cost < row.buy) then
+            row.buyBundle, row.buy, row.buyApprox = opt, opt.cost, opt.approx
+        end
+        if opt.craft and (not row.craftBundle or opt.craft < row.craft) then
+            row.craftBundle, row.craft, row.craftShort, row.craftApprox = opt, opt.craft, opt.craftShort,
+                opt.craftApprox
+            row.plan, row.who = opt.plan, opt.who
+        end
+    end
+    sortOptions(row.options)
+    row.canCraft = row.craftBundle ~= nil
+    if row.plan then row.steps = AltArmy.CraftPlan.Steps(row.plan) end
+    if row.craft and (not row.buy or row.craft < row.buy) then
+        row.best, row.bestCost, row.bundle = "craft", row.craft, row.craftBundle
+    elseif row.buy then
+        row.best, row.bestCost, row.bundle = "buy", row.buy, row.buyBundle
+    end
+    if row.bestCost and row.price and reward then
+        row.total = row.price + row.bestCost - reward.copper
+        row.perFavor = math.floor(row.total / reward.favor + 0.5)
+    end
+    return row
+end
+
+--- One row per crate of `crates.LIST` (W.BuildRow each).
 function W.BuildRows(book, crates, summary, ctx)
     local rows = {}
     for _, crate in ipairs(crates.LIST) do
-        local ladder = book[crate.id]
-        local row = {
-            id = crate.id, name = crate.name, short = crate.short, tier = crate.tier, kind = crate.kind,
-            random = crate.random == true, price = ladder and ladder[1] and ladder[1].price or nil,
-            listed = unitsListed(ladder), options = {}, summary = summary and true or nil,
-        }
-        local reward = W.Reward(crate.tier, crate.kind)
-        if reward then
-            row.favor, row.goldBack, row.favorGuess = reward.favor, reward.copper, reward.guess
-        end
-        for _, b in ipairs(crate.bundles) do
-            local opt = priceBundle(b, book, ctx)
-            row.options[#row.options + 1] = opt
-            if opt.cost and (not row.buyBundle or opt.cost < row.buy) then
-                row.buyBundle, row.buy, row.buyApprox = opt, opt.cost, opt.approx
-            end
-            if opt.craft and (not row.craftBundle or opt.craft < row.craft) then
-                row.craftBundle, row.craft, row.craftShort, row.craftApprox = opt, opt.craft, opt.craftShort,
-                    opt.craftApprox
-                row.plan, row.who = opt.plan, opt.who
-            end
-        end
-        sortOptions(row.options)
-        row.canCraft = row.craftBundle ~= nil
-        if row.plan then row.steps = AltArmy.CraftPlan.Steps(row.plan) end
-        if row.craft and (not row.buy or row.craft < row.buy) then
-            row.best, row.bestCost, row.bundle = "craft", row.craft, row.craftBundle
-        elseif row.buy then
-            row.best, row.bestCost, row.bundle = "buy", row.buy, row.buyBundle
-        end
-        if row.bestCost and row.price and reward then
-            row.total = row.price + row.bestCost - reward.copper
-            row.perFavor = math.floor(row.total / reward.favor + 0.5)
-        end
-        rows[#rows + 1] = row
+        rows[#rows + 1] = W.BuildRow(crate, book, summary, ctx)
     end
     return rows
 end
@@ -282,6 +291,14 @@ function W.AgeLevel(scanTime, now)
         return "stale"
     end
     return "old"
+end
+
+-- Prices older than this get a warning in the tooltips (Tabs and UI/EconomyTooltip.lua).
+W.OLD_DATA_SECONDS = 60 * 60
+
+--- True when a scan taken at `scanTime` is over an hour old at `now` (server time).
+function W.IsOldData(scanTime, now)
+    return (now or 0) - (scanTime or 0) > W.OLD_DATA_SECONDS
 end
 
 --- "Scanned 2 hr ago", from the scan's time and now (server time), in whole minutes rounded to the nearest
