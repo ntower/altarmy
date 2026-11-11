@@ -1,7 +1,7 @@
 -- AltArmy TBC — Core: namespace, main frame, header, tabs, content frames
 
 local ADDON_NAME = "Alt Army"
-local ADDON_VERSION = "2.4.7"
+local ADDON_VERSION = "2.4.8"
 
 -- Namespace
 AltArmy = AltArmy or {}
