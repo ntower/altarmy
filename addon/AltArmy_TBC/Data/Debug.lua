@@ -226,6 +226,48 @@ function D.SetHideAuctionData(on)
     AltArmyTBC_Options.debug.hideAuctionData = on == true
 end
 
+-- The Debug page's Simulate options, in its order: each changes what the addon shows and works without the
+-- master switch, so one left on is easy to forget (the section's header counts them; a chat line at login).
+D.SIMULATIONS = {
+    { key = "hideAuctionData", doing = "pretending there is no auction house data" },
+    { key = "showUnannouncedCooldowns", doing = "showing unannounced cooldowns" },
+    { key = "showZygorMissingGuides", doing = "showing Zygor trial placeholder guides" },
+}
+
+--- The SIMULATIONS entries turned on.
+function D.ActiveSimulations()
+    D.Ensure()
+    local d = AltArmyTBC_Options.debug
+    local on = {}
+    for _, sim in ipairs(D.SIMULATIONS) do
+        if d[sim.key] == true then on[#on + 1] = sim end
+    end
+    return on
+end
+
+--- The login chat line naming every simulation on ("Alt Army: pretending there is no auction house data
+--- (Options -> Debug)."), or nil with none on.
+function D.SimulationReminder()
+    local on = D.ActiveSimulations()
+    if #on == 0 then return nil end
+    local doing = {}
+    for _, sim in ipairs(on) do doing[#doing + 1] = sim.doing end
+    return "|cfffecc00Alt Army|r: " .. table.concat(doing, "; ") .. " (Options -> Debug)."
+end
+
+-- A few seconds after login, the reminder in chat (past the login spam).
+if CreateFrame then
+    local loginFrame = CreateFrame("Frame")
+    loginFrame:RegisterEvent("PLAYER_LOGIN")
+    loginFrame:SetScript("OnEvent", function()
+        local function remind()
+            local text = D.SimulationReminder()
+            if text then D.NotifyChat(text) end
+        end
+        if C_Timer and C_Timer.After then C_Timer.After(5, remind) else remind() end
+    end)
+end
+
 function D.RefreshZygorDependentUi()
     local repFrame = AltArmy and AltArmy.TabFrames and AltArmy.TabFrames.Reputation
     if repFrame and repFrame.RefreshGrid then

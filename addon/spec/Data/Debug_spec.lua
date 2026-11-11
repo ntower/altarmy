@@ -213,6 +213,30 @@ describe("AltArmy.Debug", function()
         assert.is_false(D.IsHideAuctionData())
     end)
 
+    describe("simulations", function()
+        it("lists none and has no reminder while all are off", function()
+            assert.same({}, D.ActiveSimulations())
+            assert.is_nil(D.SimulationReminder())
+        end)
+
+        it("lists the ones on, in the Debug page's order, whatever the master switch", function()
+            D.SetShowZygorMissingGuides(true)
+            D.SetHideAuctionData(true)
+            local keys = {}
+            for _, sim in ipairs(D.ActiveSimulations()) do keys[#keys + 1] = sim.key end
+            assert.same({ "hideAuctionData", "showZygorMissingGuides" }, keys)
+        end)
+
+        it("names every one on in the reminder and where to turn it off", function()
+            D.SetHideAuctionData(true)
+            D.SetShowUnannouncedCooldowns(true)
+            local text = D.SimulationReminder()
+            assert.truthy(text:find("pretending there is no auction house data", 1, true))
+            assert.truthy(text:find("showing unannounced cooldowns", 1, true))
+            assert.truthy(text:find("(Options -> Debug)", 1, true))
+        end)
+    end)
+
     it("Ensure drops the legacy windowResize and windowWidthResize keys", function()
         _G.AltArmyTBC_Options = { debug = { windowResize = true, windowWidthResize = true } }
         D.Ensure()

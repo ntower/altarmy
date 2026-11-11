@@ -289,7 +289,11 @@ pageDebug:HookScript("OnShow", function()
 end)
 
 -- ---------------------------------------------------------------------------
--- Debug tab (scrollable — content exceeds the Interface Options canvas)
+-- Debug tab (scrollable): three collapsible sections, built from DEBUG_SECTIONS below.
+--   Logging    - chat logging toggles (they log only with /altarmy debug on); closed at first.
+--   Simulate   - change what the addon shows, whatever the master switch (AltArmy.Debug.SIMULATIONS); the
+--                header counts those on, and Debug.lua reminds in chat at login.
+--   Reset data - two-click red buttons that delete stored data.
 -- ---------------------------------------------------------------------------
 
 local DEBUG_SCROLL_GUTTER = Theme.VerticalScrollBarGutter()
@@ -307,359 +311,185 @@ local debugViewport = Theme.CreateVerticalScrollViewport({
     minScrollToShow = 1,
 })
 local debugScrollChild = debugViewport.child
-local debugSearchRow = Theme.CreateLabeledCheckbox(debugScrollChild, {
-    point = "TOPLEFT",
-    relativeTo = debugScrollChild,
-    relativePoint = "TOPLEFT",
-    x = 0,
-    y = 0,
-    text = "Search query timing",
-    fullWidthHover = true,
-    onClick = function(checked)
-        if AltArmy.Debug and AltArmy.Debug.SetSearchEnabled then
-            AltArmy.Debug.SetSearchEnabled(checked)
-        end
-    end,
-})
-panel.debugSearchCheckbox = debugSearchRow.check
 
-local debugSearchHint = debugScrollChild:CreateFontString(nil, "ARTWORK", Theme.FONTS.body)
-debugSearchHint:SetPoint("TOPLEFT", debugSearchRow, "BOTTOMLEFT", 0, -8)
-debugSearchHint:SetWidth(520)
-debugSearchHint:SetJustifyH("LEFT")
-debugSearchHint:SetText(
-    "Logs search phase timings (lookup/expand/sort/enrich/filter), recipe UI (sort/collapse), "
-        .. "scroll paint, and index-build timing in chat.")
-
-local debugCooldownsRow = Theme.CreateLabeledCheckbox(debugScrollChild, {
-    point = "TOPLEFT",
-    relativeTo = debugSearchHint,
-    relativePoint = "BOTTOMLEFT",
-    x = 0,
-    y = -16,
-    text = "Profession cooldown scans",
-    fullWidthHover = true,
-    onClick = function(checked)
-        if AltArmy.Debug and AltArmy.Debug.SetCooldownsEnabled then
-            AltArmy.Debug.SetCooldownsEnabled(checked)
-        end
-    end,
-})
-panel.debugCooldownsCheckbox = debugCooldownsRow.check
-
-local debugCooldownsHint = debugScrollChild:CreateFontString(nil, "ARTWORK", Theme.FONTS.body)
-debugCooldownsHint:SetPoint("TOPLEFT", debugCooldownsRow, "BOTTOMLEFT", 0, -8)
-debugCooldownsHint:SetWidth(520)
-debugCooldownsHint:SetJustifyH("LEFT")
-debugCooldownsHint:SetText("Logs cooldown persistence when opening profession windows (e.g. Tailoring).")
-
-local debugLevelHistoryRow = Theme.CreateLabeledCheckbox(debugScrollChild, {
-    point = "TOPLEFT",
-    relativeTo = debugCooldownsHint,
-    relativePoint = "BOTTOMLEFT",
-    x = 0,
-    y = -16,
-    text = "Level history tracking",
-    fullWidthHover = true,
-    onClick = function(checked)
-        if AltArmy.Debug and AltArmy.Debug.SetLevelHistoryEnabled then
-            AltArmy.Debug.SetLevelHistoryEnabled(checked)
-        end
-    end,
-})
-panel.debugLevelHistoryCheckbox = debugLevelHistoryRow.check
-
-local deleteAllHistoryConfirmPending = false
-
-local debugDeleteAllHistoryBtn = CreateFrame("Button", nil, debugScrollChild, "UIPanelButtonTemplate")
-debugDeleteAllHistoryBtn:SetSize(160, 22)
-debugDeleteAllHistoryBtn:SetPoint("TOPLEFT", debugLevelHistoryRow, "BOTTOMLEFT", 0, -12)
-debugDeleteAllHistoryBtn:SetText("Delete all history")
-Theme.SkinDangerButton(debugDeleteAllHistoryBtn)
-panel.debugDeleteAllHistoryBtn = debugDeleteAllHistoryBtn
-
-local function ResetDeleteAllHistoryButton()
-    deleteAllHistoryConfirmPending = false
-    if panel.debugDeleteAllHistoryBtn then
-        panel.debugDeleteAllHistoryBtn:SetText("Delete all history")
-        panel.debugDeleteAllHistoryBtn:Enable()
-    end
+local function DebugCall(fn, ...)
+    local D = AltArmy.Debug
+    if D and D[fn] then return D[fn](...) end
 end
 
-debugDeleteAllHistoryBtn:SetScript("OnClick", function(self)
-    if deleteAllHistoryConfirmPending then
-        deleteAllHistoryConfirmPending = false
-        local DS = AltArmy and AltArmy.DataStore
-        if DS and DS.DeleteAllLevelHistory then
-            DS:DeleteAllLevelHistory()
-        end
-        self:SetText("Delete all history")
-    else
-        deleteAllHistoryConfirmPending = true
-        self:SetText("Really Delete?")
-    end
-end)
-
-local debugLevelHistoryHint = debugScrollChild:CreateFontString(nil, "ARTWORK", Theme.FONTS.body)
-debugLevelHistoryHint:SetPoint("TOPLEFT", debugDeleteAllHistoryBtn, "BOTTOMLEFT", 0, -12)
-debugLevelHistoryHint:SetWidth(520)
-debugLevelHistoryHint:SetJustifyH("LEFT")
-debugLevelHistoryHint:SetText("Logs level history import checks, decisions, and stored milestone summaries.")
-
-local debugItemComparisonRow = Theme.CreateLabeledCheckbox(debugScrollChild, {
-    point = "TOPLEFT",
-    relativeTo = debugLevelHistoryHint,
-    relativePoint = "BOTTOMLEFT",
-    x = 0,
-    y = -16,
-    text = "Item comparison details",
-    fullWidthHover = true,
-    onClick = function(checked)
-        if AltArmy.Debug and AltArmy.Debug.SetItemComparisonEnabled then
-            AltArmy.Debug.SetItemComparisonEnabled(checked)
-        end
-    end,
-})
-panel.debugItemComparisonCheckbox = debugItemComparisonRow.check
-
-local debugItemComparisonHint = debugScrollChild:CreateFontString(nil, "ARTWORK", Theme.FONTS.body)
-debugItemComparisonHint:SetPoint("TOPLEFT", debugItemComparisonRow, "BOTTOMLEFT", 0, -8)
-debugItemComparisonHint:SetWidth(520)
-debugItemComparisonHint:SetJustifyH("LEFT")
-debugItemComparisonHint:SetText(
-    "Logs every comparison algorithm for each equippable alt when you loot an item or run /altarmy debug item.")
-
-local debugItemStatsRow = Theme.CreateLabeledCheckbox(debugScrollChild, {
-    point = "TOPLEFT",
-    relativeTo = debugItemComparisonHint,
-    relativePoint = "BOTTOMLEFT",
-    x = 0,
-    y = -16,
-    text = "Item stat parsing details",
-    fullWidthHover = true,
-    onClick = function(checked)
-        if AltArmy.Debug and AltArmy.Debug.SetItemStatsEnabled then
-            AltArmy.Debug.SetItemStatsEnabled(checked)
-        end
-    end,
-})
-panel.debugItemStatsCheckbox = debugItemStatsRow.check
-
-local debugItemStatsHint = debugScrollChild:CreateFontString(nil, "ARTWORK", Theme.FONTS.body)
-debugItemStatsHint:SetPoint("TOPLEFT", debugItemStatsRow, "BOTTOMLEFT", 0, -8)
-debugItemStatsHint:SetWidth(520)
-debugItemStatsHint:SetJustifyH("LEFT")
-debugItemStatsHint:SetText(
-    "Logs API vs tooltip stat parsing when comparing items. Use /altarmy debug stats with an item on the cursor.")
-
-local debugGuildShareVerboseRow = Theme.CreateLabeledCheckbox(debugScrollChild, {
-    point = "TOPLEFT",
-    relativeTo = debugItemStatsHint,
-    relativePoint = "BOTTOMLEFT",
-    x = 0,
-    y = -16,
-    text = "Guild sharing traffic (verbose)",
-    fullWidthHover = true,
-    onClick = function(checked)
-        if AltArmy.Debug and AltArmy.Debug.SetGuildShareVerbose then
-            AltArmy.Debug.SetGuildShareVerbose(checked)
-        end
-    end,
-})
-panel.debugGuildShareVerboseCheckbox = debugGuildShareVerboseRow.check
-
-local debugGuildShareVerboseHint = debugScrollChild:CreateFontString(nil, "ARTWORK", Theme.FONTS.body)
-debugGuildShareVerboseHint:SetPoint("TOPLEFT", debugGuildShareVerboseRow, "BOTTOMLEFT", 0, -8)
-debugGuildShareVerboseHint:SetWidth(520)
-debugGuildShareVerboseHint:SetJustifyH("LEFT")
-debugGuildShareVerboseHint:SetText(
-    "Prints every guild-share message sent/received to chat.")
-
-local clearManualGroupsConfirmPending = false
-
-local debugClearManualGroupsBtn = CreateFrame("Button", nil, debugScrollChild, "UIPanelButtonTemplate")
-debugClearManualGroupsBtn:SetSize(200, 22)
-debugClearManualGroupsBtn:SetPoint("TOPLEFT", debugGuildShareVerboseHint, "BOTTOMLEFT", 0, -12)
-debugClearManualGroupsBtn:SetText("Clear manual groups")
-Theme.SkinDangerButton(debugClearManualGroupsBtn)
-panel.debugClearManualGroupsBtn = debugClearManualGroupsBtn
-
-local function ResetClearManualGroupsButton()
-    clearManualGroupsConfirmPending = false
-    if panel.debugClearManualGroupsBtn then
-        panel.debugClearManualGroupsBtn:SetText("Clear manual groups")
-        panel.debugClearManualGroupsBtn:Enable()
-    end
-end
-
-debugClearManualGroupsBtn:SetScript("OnClick", function(self)
-    if clearManualGroupsConfirmPending then
-        clearManualGroupsConfirmPending = false
-        local GMG = AltArmy and AltArmy.GuildManualGroups
-        if GMG and GMG.ClearAll then
-            GMG.ClearAll()
-        end
-        if AltArmy.RefreshGuildTab then
-            AltArmy.RefreshGuildTab()
-        end
-        self:SetText("Clear manual groups")
-    else
-        clearManualGroupsConfirmPending = true
-        self:SetText("Really clear?")
-    end
-end)
-
-local debugClearManualGroupsHint = debugScrollChild:CreateFontString(nil, "ARTWORK", Theme.FONTS.body)
-debugClearManualGroupsHint:SetPoint("TOPLEFT", debugClearManualGroupsBtn, "BOTTOMLEFT", 0, -12)
-debugClearManualGroupsHint:SetWidth(520)
-debugClearManualGroupsHint:SetJustifyH("LEFT")
-debugClearManualGroupsHint:SetText(
-    "Deletes every local manual main/alt grouping (user and note-accepted). Does not affect shared Alt Army data.")
-
--- Clear auction data (two clicks, like Clear manual groups); state on the button to spare main-chunk locals.
-panel.debugClearAuctionBtn = CreateFrame("Button", nil, debugScrollChild, "UIPanelButtonTemplate")
-panel.debugClearAuctionBtn:SetSize(200, 22)
-panel.debugClearAuctionBtn:SetPoint("TOPLEFT", debugClearManualGroupsHint, "BOTTOMLEFT", 0, -12)
-panel.debugClearAuctionBtn:SetText("Clear auction data")
-Theme.SkinDangerButton(panel.debugClearAuctionBtn)
-panel.debugClearAuctionBtn.Reset = function(self)
-    self.confirmPending = false
-    self:SetText("Clear auction data")
-    self:Enable()
-end
-panel.debugClearAuctionBtn:SetScript("OnClick", function(self)
-    if not self.confirmPending then
-        self.confirmPending = true
-        self:SetText("Really clear?")
-        return
-    end
-    self:Reset()
-    local B = AltArmy and AltArmy.AuctionBook
-    local count = B and B.Clear and B.Clear() or 0
+--- Redraw the Economy tab's auction house view, if open (after the auction data changed or was hidden).
+local function RefreshEconomyAuctionViews()
     local econ = AltArmy.TabFrames and AltArmy.TabFrames.Economy
-    if econ and econ:IsShown() then
-        if econ.RefreshWaylaid then econ.RefreshWaylaid() end
-        if econ.RefreshWrits then econ.RefreshWrits() end
-    end
-    if AltArmy.Debug and AltArmy.Debug.NotifyChat then
-        AltArmy.Debug.NotifyChat(string.format("Cleared %d auction house scan(s).", count))
-    end
-end)
-
-local debugClearAuctionHint = debugScrollChild:CreateFontString(nil, "ARTWORK", Theme.FONTS.body)
-debugClearAuctionHint:SetPoint("TOPLEFT", panel.debugClearAuctionBtn, "BOTTOMLEFT", 0, -12)
-debugClearAuctionHint:SetWidth(520)
-debugClearAuctionHint:SetJustifyH("LEFT")
-debugClearAuctionHint:SetText(
-    "Deletes every stored auction house scan (all realms and factions) used by Economy > Waylaid Crates "
-        .. "and the Alt Army website. The client's 15-minute full-scan cooldown is kept.")
-
-local debugShowZygorMissingRow = Theme.CreateLabeledCheckbox(debugScrollChild, {
-    point = "TOPLEFT",
-    relativeTo = debugClearAuctionHint,
-    relativePoint = "BOTTOMLEFT",
-    x = 0,
-    y = -16,
-    text = "Show Zygor guides (trial placeholders)",
-    fullWidthHover = true,
-    onClick = function(checked)
-        if AltArmy.Debug and AltArmy.Debug.SetShowZygorMissingGuides then
-            AltArmy.Debug.SetShowZygorMissingGuides(checked)
-        end
-        if AltArmy.Debug and AltArmy.Debug.RefreshZygorDependentUi then
-            AltArmy.Debug.RefreshZygorDependentUi()
-        end
-    end,
-})
-panel.debugShowZygorMissingCheckbox = debugShowZygorMissingRow.check
-
-local debugShowZygorMissingHint = debugScrollChild:CreateFontString(nil, "ARTWORK", Theme.FONTS.body)
-debugShowZygorMissingHint:SetPoint("TOPLEFT", debugShowZygorMissingRow, "BOTTOMLEFT", 0, -8)
-debugShowZygorMissingHint:SetWidth(520)
-debugShowZygorMissingHint:SetJustifyH("LEFT")
-debugShowZygorMissingHint:SetText(
-    "On the Reputation tab, show Zygor guide icons even when Zygor only has trial placeholder "
-        .. "guides (they cannot be opened). Paid Zygor installs show icons without this.")
-
--- Unannounced cooldowns (WoW Forever game data not announced yet). On panel, to spare main-chunk locals.
-panel.debugUnannouncedCooldownsCheckbox = Theme.CreateLabeledCheckbox(debugScrollChild, {
-    point = "TOPLEFT",
-    relativeTo = debugShowZygorMissingHint,
-    relativePoint = "BOTTOMLEFT",
-    x = 0,
-    y = -16,
-    text = "Show unannounced cooldowns",
-    fullWidthHover = true,
-    onClick = function(checked)
-        if AltArmy.Debug and AltArmy.Debug.SetShowUnannouncedCooldowns then
-            AltArmy.Debug.SetShowUnannouncedCooldowns(checked)
-        end
-        local cdFrame = AltArmy.TabFrames and AltArmy.TabFrames.Cooldowns
-        if cdFrame and cdFrame.RefreshCooldownList then
-            cdFrame.RefreshCooldownList()
-        end
-    end,
-}).check
-
-panel.debugUnannouncedCooldownsHint = debugScrollChild:CreateFontString(nil, "ARTWORK", Theme.FONTS.body)
-panel.debugUnannouncedCooldownsHint:SetPoint("TOPLEFT", panel.debugUnannouncedCooldownsCheckbox, "BOTTOMLEFT", 0, -8)
-panel.debugUnannouncedCooldownsHint:SetWidth(520)
-panel.debugUnannouncedCooldownsHint:SetJustifyH("LEFT")
-panel.debugUnannouncedCooldownsHint:SetText(
-    "Lists WoW Forever cooldowns that are in the game data but not announced yet (Essence of Innovation) on "
-        .. "the Cooldowns tab, and alerts for them. Their cooldowns are saved either way. The tab's settings "
-        .. "dropdowns pick it up after /reload.")
-
--- Pretend there is no auction house data (AuctionBook.Newest nil; the scans stay stored). On panel, to spare
--- main-chunk locals.
-panel.debugHideAuctionDataCheckbox = Theme.CreateLabeledCheckbox(debugScrollChild, {
-    point = "TOPLEFT",
-    relativeTo = panel.debugUnannouncedCooldownsHint,
-    relativePoint = "BOTTOMLEFT",
-    x = 0,
-    y = -16,
-    text = "Pretend there is no auction house data",
-    fullWidthHover = true,
-    onClick = function(checked)
-        if AltArmy.Debug and AltArmy.Debug.SetHideAuctionData then
-            AltArmy.Debug.SetHideAuctionData(checked)
-        end
-        local econ = AltArmy.TabFrames and AltArmy.TabFrames.Economy
-        if econ and econ:IsShown() then
-            if econ.WaylaidView and econ.WaylaidView:IsShown() and econ.RefreshWaylaid then
-                econ.RefreshWaylaid()
-            elseif econ.WritsView and econ.WritsView:IsShown() and econ.RefreshWrits then
-                econ.RefreshWrits()
-            end
-        end
-    end,
-}).check
-
-panel.debugHideAuctionDataHint = debugScrollChild:CreateFontString(nil, "ARTWORK", Theme.FONTS.body)
-panel.debugHideAuctionDataHint:SetPoint("TOPLEFT", panel.debugHideAuctionDataCheckbox, "BOTTOMLEFT", 0, -8)
-panel.debugHideAuctionDataHint:SetWidth(520)
-panel.debugHideAuctionDataHint:SetJustifyH("LEFT")
-panel.debugHideAuctionDataHint:SetText(
-    "Acts as if no auction house had ever been scanned: the Economy tab's Waylaid Crates and Craftsman's "
-        .. "Writs views show their empty state, and crate and writ tooltips add nothing. Your scans are kept "
-        .. "and come back when this is turned off.")
-
-local function UpdateDebugScrollRange()
-    local top = debugScrollChild:GetTop()
-    local bottom = panel.debugHideAuctionDataHint:GetBottom()
-    if top and bottom then
-        debugScrollChild:SetHeight(math.max(1, top - bottom + 16))
-    else
-        debugScrollChild:SetHeight(900)
-    end
-    if debugViewport and debugViewport.UpdateRange then
-        debugViewport.UpdateRange()
+    if not (econ and econ:IsShown()) then return end
+    if econ.WaylaidView and econ.WaylaidView:IsShown() and econ.RefreshWaylaid then
+        econ.RefreshWaylaid()
+    elseif econ.WritsView and econ.WritsView:IsShown() and econ.RefreshWrits then
+        econ.RefreshWrits()
     end
 end
-panel.UpdateDebugScrollRange = UpdateDebugScrollRange
+
+-- Each entry: a checkbox (`key`: its AltArmyTBC_Options.debug flag, `set`: the Debug setter, `after`) or a
+-- two-click button (`button`, `run`), and its one-line grey description.
+local DEBUG_SECTIONS = {
+    {
+        id = "logging", title = "Logging", expanded = false,
+        entries = {
+            { key = "search", set = "SetSearchEnabled", text = "Search query timing",
+                desc = "Search phase, recipe list, scroll paint and index build timings." },
+            { key = "cooldowns", set = "SetCooldownsEnabled", text = "Profession cooldown scans",
+                desc = "Cooldowns saved when a profession window opens." },
+            { key = "levelHistory", set = "SetLevelHistoryEnabled", text = "Level history tracking",
+                desc = "Level history import checks, decisions and stored milestones." },
+            { key = "itemComparison", set = "SetItemComparisonEnabled", text = "Item comparison details",
+                desc = "Every comparison for each alt on loot, or with /altarmy debug item." },
+            { key = "itemStats", set = "SetItemStatsEnabled", text = "Item stat parsing details",
+                desc = "API vs tooltip stats; /altarmy debug stats with an item on the cursor." },
+            { key = "guildShareVerbose", set = "SetGuildShareVerbose", text = "Guild sharing traffic (verbose)",
+                desc = "Every guild-share message sent and received." },
+        },
+    },
+    {
+        id = "simulate", title = "Simulate", expanded = true,
+        entries = {
+            { key = "hideAuctionData", set = "SetHideAuctionData", text = "Pretend there is no auction house data",
+                desc = "Economy shows no scans, crate and writ tooltips add nothing. Scans are kept.",
+                after = RefreshEconomyAuctionViews },
+            { key = "showUnannouncedCooldowns", set = "SetShowUnannouncedCooldowns",
+                text = "Show unannounced cooldowns",
+                desc = "Essence of Innovation on the Cooldowns tab, with alerts (its settings after /reload).",
+                after = function()
+                    local cd = AltArmy.TabFrames and AltArmy.TabFrames.Cooldowns
+                    if cd and cd.RefreshCooldownList then cd.RefreshCooldownList() end
+                end },
+            { key = "showZygorMissingGuides", set = "SetShowZygorMissingGuides",
+                text = "Show Zygor guides (trial placeholders)",
+                desc = "Zygor icons on the Reputation tab even for guides that cannot be opened.",
+                after = function() DebugCall("RefreshZygorDependentUi") end },
+        },
+    },
+    {
+        id = "reset", title = "Reset data", expanded = true,
+        entries = {
+            { button = "Delete all level history",
+                desc = "Every character's level history.",
+                run = function()
+                    local DS = AltArmy.DataStore
+                    if DS and DS.DeleteAllLevelHistory then DS:DeleteAllLevelHistory() end
+                end },
+            { button = "Clear manual groups",
+                desc = "Local main/alt groupings (yours and accepted from notes). Shared data is kept.",
+                run = function()
+                    local GMG = AltArmy.GuildManualGroups
+                    if GMG and GMG.ClearAll then GMG.ClearAll() end
+                    if AltArmy.RefreshGuildTab then AltArmy.RefreshGuildTab() end
+                end },
+            { button = "Clear auction data",
+                desc = "Every stored auction house scan, all realms. The 15-minute scan cooldown is kept.",
+                run = function()
+                    local B = AltArmy.AuctionBook
+                    local count = B and B.Clear and B.Clear() or 0
+                    RefreshEconomyAuctionViews()
+                    DebugCall("NotifyChat", string.format("Cleared %d auction house scan(s).", count))
+                end },
+        },
+    },
+}
+
+-- What the page built: the checkboxes by flag, the buttons, the sections by id. On panel (200-local limit).
+panel.debugPage = { checks = {}, buttons = {}, sections = {}, list = {} }
+local DEBUG_ROW = {
+    descGap = 2, -- between a control and its description
+    descHeight = 14,
+    after = 10, -- below a description
+    button = 22,
+}
+
+--- "Simulate", or "Simulate (1 on)" while any is on.
+local function UpdateSimulateHeader()
+    local section = panel.debugPage.sections.simulate
+    if not section then return end
+    local on = DebugCall("ActiveSimulations") or {}
+    section.label:SetText(#on > 0 and ("Simulate (" .. #on .. " on)") or "Simulate")
+end
+
+local function LayoutDebugPage()
+    local page = panel.debugPage
+    if not page.stack then return end
+    debugScrollChild:SetHeight(math.max(1, page.stack() + 8))
+    if debugViewport.UpdateRange then debugViewport.UpdateRange() end
+end
+
+local function ResetDebugButton(btn)
+    btn.confirmPending = false
+    btn:SetText(btn.label)
+    btn:Enable()
+end
+
+for _, def in ipairs(DEBUG_SECTIONS) do
+    local section = Theme.CreateCollapsibleSection(debugScrollChild, {
+        text = def.title,
+        defaultExpanded = def.expanded,
+        onToggle = function() LayoutDebugPage() end,
+    })
+    local content = section.content
+    local y = 0
+    for _, entry in ipairs(def.entries) do
+        local control, height
+        if entry.button then
+            local btn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+            btn:SetSize(200, DEBUG_ROW.button)
+            btn:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y)
+            btn.label = entry.button
+            Theme.SkinDangerButton(btn)
+            ResetDebugButton(btn)
+            btn:SetScript("OnClick", function(self)
+                if not self.confirmPending then
+                    self.confirmPending = true
+                    self:SetText("Really?")
+                    return
+                end
+                ResetDebugButton(self)
+                entry.run()
+            end)
+            panel.debugPage.buttons[#panel.debugPage.buttons + 1] = btn
+            control, height = btn, DEBUG_ROW.button
+        else
+            local row = Theme.CreateLabeledCheckbox(content, {
+                point = "TOPLEFT",
+                relativeTo = content,
+                relativePoint = "TOPLEFT",
+                x = 0,
+                y = -y,
+                text = entry.text,
+                fullWidthHover = true,
+                onClick = function(checked)
+                    DebugCall(entry.set, checked)
+                    if entry.after then entry.after() end
+                    if def.id == "simulate" then UpdateSimulateHeader() end
+                end,
+            })
+            panel.debugPage.checks[entry.key] = row.check
+            control, height = row, Theme.CHAR_LIST_ROW_HEIGHT
+        end
+        local desc = content:CreateFontString(nil, "ARTWORK", Theme.FONTS.body)
+        desc:SetPoint("TOPLEFT", control, "BOTTOMLEFT", 0, -DEBUG_ROW.descGap)
+        desc:SetPoint("RIGHT", content, "RIGHT", 0, 0)
+        desc:SetHeight(DEBUG_ROW.descHeight)
+        desc:SetJustifyH("LEFT")
+        desc:SetWordWrap(false)
+        desc:SetTextColor(0.6, 0.6, 0.6)
+        desc:SetText(entry.desc)
+        y = y + height + DEBUG_ROW.descGap + DEBUG_ROW.descHeight + DEBUG_ROW.after
+    end
+    section.SetContentHeight(y - DEBUG_ROW.after)
+    panel.debugPage.sections[def.id] = section
+    panel.debugPage.list[#panel.debugPage.list + 1] = section
+end
+panel.debugPage.stack = Theme.StackCollapsibleSections(panel.debugPage.list, { parent = debugScrollChild, gap = 8 })
+LayoutDebugPage()
 
 tabDebug:HookScript("OnShow", function()
-    UpdateDebugScrollRange()
+    LayoutDebugPage()
 end)
 
 function RefreshDebugCheckboxes()
@@ -667,37 +497,14 @@ function RefreshDebugCheckboxes()
     if not D or not D.Ensure then return end
     D.Ensure()
     local d = AltArmyTBC_Options.debug
-    if panel.debugSearchCheckbox then
-        panel.debugSearchCheckbox:SetChecked(d.search == true)
+    for key, check in pairs(panel.debugPage.checks) do
+        check:SetChecked(d[key] == true)
     end
-    if panel.debugCooldownsCheckbox then
-        panel.debugCooldownsCheckbox:SetChecked(d.cooldowns == true)
+    for _, btn in ipairs(panel.debugPage.buttons) do
+        ResetDebugButton(btn)
     end
-    if panel.debugLevelHistoryCheckbox then
-        panel.debugLevelHistoryCheckbox:SetChecked(d.levelHistory == true)
-    end
-    if panel.debugItemComparisonCheckbox then
-        panel.debugItemComparisonCheckbox:SetChecked(d.itemComparison == true)
-    end
-    if panel.debugItemStatsCheckbox then
-        panel.debugItemStatsCheckbox:SetChecked(d.itemStats == true)
-    end
-    if panel.debugGuildShareVerboseCheckbox then
-        panel.debugGuildShareVerboseCheckbox:SetChecked(d.guildShareVerbose == true)
-    end
-    if panel.debugShowZygorMissingCheckbox then
-        panel.debugShowZygorMissingCheckbox:SetChecked(d.showZygorMissingGuides == true)
-    end
-    if panel.debugUnannouncedCooldownsCheckbox then
-        panel.debugUnannouncedCooldownsCheckbox:SetChecked(d.showUnannouncedCooldowns == true)
-    end
-    if panel.debugHideAuctionDataCheckbox then
-        panel.debugHideAuctionDataCheckbox:SetChecked(d.hideAuctionData == true)
-    end
-    ResetDeleteAllHistoryButton()
-    ResetClearManualGroupsButton()
-    panel.debugClearAuctionBtn:Reset()
-    UpdateDebugScrollRange()
+    UpdateSimulateHeader()
+    LayoutDebugPage()
 end
 panel.RefreshDebugCheckboxes = RefreshDebugCheckboxes
 
