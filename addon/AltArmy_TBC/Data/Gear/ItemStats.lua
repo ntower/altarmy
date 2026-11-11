@@ -577,7 +577,8 @@ local function addTooltipLabelPattern(patterns, seen, label, apiKey)
     if label:find("%%", 1, true) then return end
     seen[label] = true
     patterns[#patterns + 1] = {
-        pattern = "^%+?(%d+) " .. escapePattern(label) .. "$",
+        -- Signed: most items add a stat, a few take one away ("-3 Spirit": Ring of Scorn).
+        pattern = "^([%+%-]?%d+) " .. escapePattern(label) .. "$",
         apiKey = apiKey,
     }
 end
@@ -658,7 +659,19 @@ function IS.GetDisplayLabel(key)
     return key
 end
 
-local function normalizeRawStats(raw, link)
+--- Raw keys whose negative value the tooltip itself shows ("-3 Spirit"): real negative stats,
+--- unlike the -1 sentinels GetItemStats reports for stats it can't resolve.
+local function confirmedNegativeKeys(tooltipRaw)
+    local out = {}
+    for k, v in pairs(canonicalizeRawStats(tooltipRaw)) do
+        if isInvalidApiStatValue(v) then
+            out[k] = true
+        end
+    end
+    return out
+end
+
+local function normalizeRawStats(raw, link, negativeKeys)
     local out = {}
     if not raw then return out end
     local dpsKey = resolveWeaponDpsKey(link)
@@ -668,7 +681,7 @@ local function normalizeRawStats(raw, link)
             or statKey == "ITEM_MOD_DAMAGE_PER_SECOND" then
             short = dpsKey
         end
-        if not isInvalidApiStatValue(value) then
+        if not isInvalidApiStatValue(value) or (negativeKeys and negativeKeys[statKey]) then
             out[short] = (out[short] or 0) + (tonumber(value) or 0)
         end
     end
@@ -970,7 +983,7 @@ local function collectFreshParseSnapshot(link)
     finalizeMergedSchoolSpellStats(mergedRaw)
     finalizeMergedManaRegen(mergedRaw)
     finalizeMergedFeralAttackPower(mergedRaw, tooltipRaw)
-    local normalized = normalizeRawStats(mergedRaw, link)
+    local normalized = normalizeRawStats(mergedRaw, link, confirmedNegativeKeys(tooltipRaw))
     applyConditionalStats(normalized, conditionalRaw, link)
     return {
         itemName = itemName,
@@ -1073,7 +1086,7 @@ local function fetchStats(link)
     -- so treat a non-empty conditionalRaw the same as a non-empty mergedRaw here.
     if next(mergedRaw) or (conditionalRaw and next(conditionalRaw)) then
         local source = resolveStatsSource(apiRaw, tooltipRaw, mergedRaw)
-        local normalized = normalizeRawStats(mergedRaw, link)
+        local normalized = normalizeRawStats(mergedRaw, link, confirmedNegativeKeys(tooltipRaw))
         applyConditionalStats(normalized, conditionalRaw, link)
         parseSnapshot.normalized = copyTable(normalized)
         return normalized, source, {

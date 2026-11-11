@@ -657,6 +657,68 @@ describe("ItemStats", function()
         assert.are.equal(100, stats.armor)
     end)
 
+    -- Ring of Scorn (3235): "-3 Spirit" is a real negative stat, not GetItemStats' -1 sentinel.
+    local function loadNegativeStatItem(apiStats, tooltipLines)
+        _G.GetItemStats = function(link)
+            local id = tonumber(tostring(link):match("item:(%d+)"))
+            if id == 3235 then return apiStats end
+            return {}
+        end
+        _G.GetItemInfo = function(item)
+            local id = type(item) == "number" and item
+                or tonumber(tostring(item):match("item:(%d+)"))
+            if id == 3235 then
+                return "Ring of Scorn", "|Hitem:3235:0|h[Ring of Scorn]|h",
+                    2, 25, 20, "Armor", "Miscellaneous", nil, "INVTYPE_FINGER"
+            end
+            return mockGetItemInfo(item)
+        end
+        _G.CreateFrame = function(frameType)
+            if frameType == "GameTooltip" then
+                return makeTooltipMock(tooltipLines)
+            end
+            if frameType == "Frame" then
+                return { RegisterEvent = function() end, SetScript = function() end }
+            end
+            return {}
+        end
+        package.loaded["ItemStats"] = nil
+        require("ItemStats")
+        IS = AltArmy.ItemStats
+        IS.ClearCache()
+        return IS.GetNormalized("|Hitem:3235:0|h[Ring of Scorn]|h")
+    end
+
+    it("GetNormalized keeps a negative stat the tooltip confirms", function()
+        local stats = loadNegativeStatItem(
+            { ["ITEM_MOD_SPIRIT_SHORT"] = -3, ["ITEM_MOD_STAMINA_SHORT"] = 4 },
+            { "Ring of Scorn", "Finger", "+4 Stamina", "-3 Spirit" })
+        assert.are.equal(4, stats.sta)
+        assert.are.equal(-3, stats.spi)
+    end)
+
+    it("GetNormalized reads a negative stat from the tooltip alone", function()
+        local stats = loadNegativeStatItem({}, { "Ring of Scorn", "Finger", "+4 Stamina", "-3 Spirit" })
+        assert.are.equal(4, stats.sta)
+        assert.are.equal(-3, stats.spi)
+    end)
+
+    it("GetNormalized keeps a real -1 stat the tooltip confirms", function()
+        local stats = loadNegativeStatItem(
+            { ["ITEM_MOD_SPIRIT_SHORT"] = -1, ["ITEM_MOD_STAMINA_SHORT"] = 4 },
+            { "Ring of Scorn", "Finger", "+4 Stamina", "-1 Spirit" })
+        assert.are.equal(4, stats.sta)
+        assert.are.equal(-1, stats.spi)
+    end)
+
+    it("GetNormalized still drops a negative API stat the tooltip does not show", function()
+        local stats = loadNegativeStatItem(
+            { ["ITEM_MOD_SPIRIT_SHORT"] = -1, ["ITEM_MOD_STAMINA_SHORT"] = 4 },
+            { "Ring of Scorn", "Finger", "+4 Stamina" })
+        assert.are.equal(4, stats.sta)
+        assert.is_nil(stats.spi)
+    end)
+
     it("GetNormalized parses +Healing when global SHORT is Bonus Healing", function()
         _G.GetItemStats = function(link)
             local id = tonumber(tostring(link):match("item:(%d+)"))

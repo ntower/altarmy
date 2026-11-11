@@ -21,18 +21,20 @@ W.WRIT_TIERS = { "Journeyman", "Expert", "Artisan" }
 -- What turning in a filled crate (its Sealed crate) gives, by tier and kind: Merchant's Favor and copper.
 -- Gathered crates are white, Crafted ones green; green gives twice white. Not in the game data: Apprentice,
 -- Journeyman and Expert were measured in game (2026-10-07).
--- ASSUMED, revisit: no Artisan crate has been turned in yet. Its numbers continue the other tiers' steps
--- (+5 / +10 Favor, +2.5s / +5s a tier); check them in game and correct them here and in docs/tabs/economy.md.
+-- Artisan: the Merchant's Favor (20 white, 40 green) is verified in game (2026-11-11); only the gold is in
+-- doubt. ASSUMED, revisit: it continues the other tiers' steps (+2.5s / +5s a tier); check it in game and
+-- correct it here and in docs/tabs/economy.md. Until then `guess` keeps the view's "20?"/"40?" and its
+-- Educated Guess tooltip on the Favor cell (the view has no mark of its own for the gold).
 W.REWARDS = {
     Apprentice = { Gathered = { favor = 5, copper = 250 }, Crafted = { favor = 10, copper = 500 } },
     Journeyman = { Gathered = { favor = 10, copper = 500 }, Crafted = { favor = 20, copper = 1000 } },
     Expert = { Gathered = { favor = 15, copper = 750 }, Crafted = { favor = 30, copper = 1500 } },
-    Artisan = { Gathered = { favor = 20, copper = 1000, guess = true },
-        Crafted = { favor = 40, copper = 2000, guess = true } }, -- assumed: the view shows "40?"
+    Artisan = { Gathered = { favor = 20, copper = 1000, guess = true }, -- Favor verified, gold assumed
+        Crafted = { favor = 40, copper = 2000, guess = true } }, -- Favor verified, gold assumed
 }
 
---- A crate's turn-in reward ({ favor, copper, guess }), or nil when unknown (the unread crate). `guess`: not
---- measured yet.
+--- A crate's turn-in reward ({ favor, copper, guess }), or nil when unknown (the unread crate). `guess`: its
+--- gold is not measured yet (its Favor is).
 function W.Reward(tier, kind)
     local byKind = W.REWARDS[tier]
     return byKind and byKind[kind] or nil
@@ -171,8 +173,8 @@ end
 
 --- One crate's row (BuildRows makes one for every crate the game has, listed or not): its cheapest price
 --- in `book` (itemID -> ladder; nil when the crate isn't listed), what the turn-in gives (`favor`,
---- `goldBack`; `favorGuess` when not measured yet), and the cheapest way to fill it with any one of its
---- bundles: bought on the auction house (`buy`, `buyBundle`, `buyApprox`: only a bundle listed in full) or
+--- `goldBack`; `favorGuess` while its gold is not measured yet), and the cheapest way to fill it with any
+--- one of its bundles: bought on the auction house (`buy`, `buyBundle`, `buyApprox`: only a bundle listed in full) or
 --- crafted by the realm's characters (`craft`, `craftBundle`, its `plan` and `steps`, `who`, `craftShort`,
 --- `craftApprox`; `canCraft`), the cheaper of the two (`best`, `bestCost`, `bundle`: the bundle it fills
 --- with). `total`: the crate plus that fill less the gold the turn-in gives back; `perFavor` that per point
