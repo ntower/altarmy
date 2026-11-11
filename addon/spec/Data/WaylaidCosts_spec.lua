@@ -274,6 +274,12 @@ describe("WaylaidCosts", function()
             local rows = W.BuildRows(withOre, CRATES, false, context(withOre))
             assert.same({ 902 }, ids(W.FilterRows(rows, { hideUncraftable = true })))
         end)
+
+        it("hides the levels unticked, keeping a crate without a tier", function()
+            local rows = W.BuildRows(book, CRATES)
+            assert.equals(4, #W.FilterRows(rows, { hiddenTiers = {} }))
+            assert.same({ 900, 903 }, ids(W.FilterRows(rows, { hiddenTiers = { Apprentice = true, Expert = true } })))
+        end)
     end)
 
     describe("Reward", function()
@@ -394,7 +400,17 @@ describe("WaylaidCosts", function()
             assert.is_true(o.waylaidOnlyAvailable)
             assert.is_false(o.waylaidOnlyCraftable)
             assert.is_true(o.itemTooltips)
+            assert.same({}, o.waylaidHiddenTiers)
+            assert.same({}, o.writsHiddenTiers)
             assert.equals(o, AltArmyTBC_Options.economy)
+        end)
+
+        it("keeps the levels hidden, dropping bad entries", function()
+            _G.AltArmyTBC_Options = { economy = { waylaidHiddenTiers = { Apprentice = true, Bogus = true,
+                Expert = false }, writsHiddenTiers = "nope" } }
+            local o = W.EnsureOptions()
+            assert.same({ Apprentice = true }, o.waylaidHiddenTiers)
+            assert.same({}, o.writsHiddenTiers)
         end)
 
         it("keeps item tooltips turned off", function()

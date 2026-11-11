@@ -342,6 +342,29 @@ UI.noCratesLabel:SetPoint("CENTER", listViewport, "CENTER", 0, 20)
 UI.noCratesLabel:SetText("No crates left: the filters hide them all.")
 UI.noCratesLabel:Hide()
 
+--- The Filter menu's level checkboxes, appended to `entries` under a divider: one per tier of `tiers`
+--- (lowest first), keyed "tier:<tier>", ticked unless named in `hidden` (a set of tier names unticked).
+--- Shared with the Craftsman's Writs view (TabEconomyWrits.lua).
+local function AddLevelEntries(entries, tiers, hidden)
+    entries[#entries + 1] = { kind = "divider", key = "levelsDivider" }
+    for _, tier in ipairs(tiers) do
+        entries[#entries + 1] = { kind = "checkbox", key = "tier:" .. tier, label = tier,
+            checked = not hidden[tier], enabled = true }
+    end
+    return entries
+end
+frame.AddLevelEntries = AddLevelEntries
+
+--- A Filter menu toggle of a level checkbox: updates `hidden` and returns true; false for any other key.
+local function ToggleLevel(key, checked, hidden)
+    local tier = type(key) == "string" and key:match("^tier:(.+)$")
+    if not tier then return false end
+    hidden[tier] = (not checked) or nil
+    return true
+end
+frame.ToggleLevel = ToggleLevel
+
+
 -- "Filter" dropdown in the main toolbar row (as on the Craftsman's Writs view), parented to this view's panel
 -- so it shows only here. Its entries are re-read on every open and toggle.
 UI.filter = Theme.CreateFilterDropdown({
@@ -349,15 +372,19 @@ UI.filter = Theme.CreateFilterDropdown({
     text = "Filter",
     getEntries = function()
         local o = W.EnsureOptions()
-        return {
+        return AddLevelEntries({
             { kind = "checkbox", key = "hideUnavailable", label = "Hide unavailable crates",
                 checked = o.waylaidOnlyAvailable, enabled = true },
             { kind = "checkbox", key = "hideUncraftable", label = "Hide crates I can not fulfill via crafting",
                 checked = o.waylaidOnlyCraftable, enabled = true },
-        }
+        }, W.CRATE_TIERS, o.waylaidHiddenTiers)
     end,
     onToggle = function(key, checked)
         local o = W.EnsureOptions()
+        if ToggleLevel(key, checked, o.waylaidHiddenTiers) then
+            if frame.RefreshWaylaid then frame.RefreshWaylaid() end
+            return
+        end
         if key == "hideUnavailable" then
             o.waylaidOnlyAvailable = checked and true or false
         elseif key == "hideUncraftable" then
@@ -589,7 +616,8 @@ local function RefreshWaylaid()
         ctx, UI.classOf = AltArmy.CraftContext.Build(DS, realm, faction, UI.cache.book, Crates)
     end
     local rows = W.FilterRows(W.BuildRows(UI.cache.book, Crates, scan.summary, ctx),
-        { hideUnavailable = o.waylaidOnlyAvailable, hideUncraftable = o.waylaidOnlyCraftable })
+        { hideUnavailable = o.waylaidOnlyAvailable, hideUncraftable = o.waylaidOnlyCraftable,
+            hiddenTiers = o.waylaidHiddenTiers })
     table.sort(rows, function(a, b) return W.Compare(a, b, o.waylaidSortKey, o.waylaidSortAscending) end)
     UpdateHeaderSortIndicators()
 

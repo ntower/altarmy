@@ -168,6 +168,12 @@ describe("WritCosts", function()
             assert.same({ 264047 }, ids(WC.Filter(rows, { hideUnavailable = true })))
         end)
 
+        it("hides the levels unticked", function()
+            local rows = WC.BuildRows(context().book, WRITS, nil, context())
+            assert.equals(3, #WC.Filter(rows, { hiddenTiers = {} }))
+            assert.same({ 264037 }, ids(WC.Filter(rows, { hiddenTiers = { Journeyman = true, Artisan = true } })))
+        end)
+
         it("applies both together", function()
             local rows = WC.BuildRows(context().book, WRITS, nil, context())
             assert.same({ 264047 }, ids(WC.Filter(rows, { hideUncraftable = true, hideUnavailable = true })))

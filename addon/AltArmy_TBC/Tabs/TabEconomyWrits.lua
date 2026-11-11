@@ -16,7 +16,10 @@ local Book = AltArmy.AuctionBook
 local DS = AltArmy.DataStore
 local ET = AltArmy.EconomyTooltip -- the rows' tooltips (UI/EconomyTooltip.lua)
 if not (Theme and W and WC and Writs and Book and DS and ET and AltArmy.CraftPlan and AltArmy.CraftContext
-    and AltArmy.ColumnFit and frame.CreateScanFooter and frame.CreateEmptyState) then return end
+    and AltArmy.ColumnFit and frame.CreateScanFooter and frame.CreateEmptyState and frame.AddLevelEntries
+    and frame.ToggleLevel) then
+    return
+end
 
 local panel = frame.WritsView
 local inner = Theme.CreatePanelInnerContent(panel)
@@ -95,15 +98,20 @@ UI.filter = Theme.CreateFilterDropdown({
     text = "Filter",
     getEntries = function()
         local o = W.EnsureOptions()
-        return {
+        -- The levels at the bottom: the writs have no Apprentice level.
+        return frame.AddLevelEntries({
             { kind = "checkbox", key = "hideUnavailable", label = "Hide unavailable writs",
                 checked = o.writsOnlyAvailable, enabled = true },
             { kind = "checkbox", key = "hideUncraftable", label = "Hide writs I can not fulfill via crafting",
                 checked = o.writsOnlyCraftable, enabled = true },
-        }
+        }, W.WRIT_TIERS, o.writsHiddenTiers)
     end,
     onToggle = function(key, checked)
         local o = W.EnsureOptions()
+        if frame.ToggleLevel(key, checked, o.writsHiddenTiers) then
+            if frame.RefreshWrits then frame.RefreshWrits() end
+            return
+        end
         if key == "hideUncraftable" then
             o.writsOnlyCraftable = checked and true or false
         elseif key == "hideUnavailable" then
@@ -331,7 +339,8 @@ local function RefreshWrits()
     local orders = AltArmy.WritOrders and AltArmy.WritOrders.Orders() or nil
     local o = W.EnsureOptions()
     local rows = WC.Filter(WC.BuildRows(book, Writs, orders, ctx),
-        { hideUncraftable = o.writsOnlyCraftable, hideUnavailable = o.writsOnlyAvailable })
+        { hideUncraftable = o.writsOnlyCraftable, hideUnavailable = o.writsOnlyAvailable,
+            hiddenTiers = o.writsHiddenTiers })
     table.sort(rows, function(a, b) return WC.Compare(a, b, o.writsSortKey, o.writsSortAscending) end)
     UpdateHeaderSortIndicators()
 

@@ -80,10 +80,13 @@ function WC.BuildRows(book, writs, orders, ctx)
 end
 
 --- The rows the filters keep: `opts.hideUncraftable` drops those nobody can craft, `opts.hideUnavailable`
---- those whose writ isn't listed or whose order can't be fulfilled either way.
+--- those whose writ isn't listed or whose order can't be fulfilled either way, `opts.hiddenTiers` (a set of
+--- tier names) those of the levels unticked.
 function WC.Filter(rows, opts)
     opts = opts or {}
-    if not (opts.hideUncraftable or opts.hideUnavailable) then return rows end
+    local tiers = opts.hiddenTiers
+    if type(tiers) ~= "table" or next(tiers) == nil then tiers = nil end
+    if not (opts.hideUncraftable or opts.hideUnavailable or tiers) then return rows end
     local out = {}
     for _, row in ipairs(rows) do
         local keep = true
@@ -91,6 +94,7 @@ function WC.Filter(rows, opts)
         if opts.hideUnavailable and (row.writPrice == nil or (row.buy == nil and row.craft == nil)) then
             keep = false
         end
+        if tiers and row.tier and tiers[row.tier] then keep = false end
         if keep then out[#out + 1] = row end
     end
     return out

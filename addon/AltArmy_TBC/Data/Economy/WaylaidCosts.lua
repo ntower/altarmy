@@ -14,6 +14,10 @@ W.WRITS_SORT_KEYS = { "writ", "rep", "writPrice", "buy", "craft", "perRep" } -- 
 
 local TIER_ORDER = { Apprentice = 1, Journeyman = 2, Expert = 3, Artisan = 4 }
 
+-- The levels the views' Filter menus offer, lowest first. Craftsman's Writs have no Apprentice level.
+W.CRATE_TIERS = { "Apprentice", "Journeyman", "Expert", "Artisan" }
+W.WRIT_TIERS = { "Journeyman", "Expert", "Artisan" }
+
 -- What turning in a filled crate (its Sealed crate) gives, by tier and kind: Merchant's Favor and copper.
 -- Gathered crates are white, Crafted ones green; green gives twice white. Not in the game data: Apprentice,
 -- Journeyman and Expert were measured in game (2026-10-07).
@@ -80,6 +84,17 @@ function W.EnsureOptions()
     end
     if type(o.waylaidOnlyCraftable) ~= "boolean" then -- Hide crates I can not fulfill via crafting
         o.waylaidOnlyCraftable = false
+    end
+    -- The Filter menus' levels: the tiers unticked, as a set of tier names (every level shown by default).
+    for _, key in ipairs({ "waylaidHiddenTiers", "writsHiddenTiers" }) do
+        local hidden = o[key]
+        if type(hidden) ~= "table" then
+            o[key] = {}
+        else
+            for tier, v in pairs(hidden) do
+                if v ~= true or not TIER_ORDER[tier] then hidden[tier] = nil end
+            end
+        end
     end
     -- Item tooltips outside the Economy tab (bags, links): on unless turned off in Options -> Economy.
     if type(o.itemTooltips) ~= "boolean" then
@@ -216,15 +231,19 @@ end
 
 --- The rows the filters keep: `opts.hideUnavailable` drops the crates not listed on the auction house and
 --- those no bundle can fill either way (the unread crate, whose shipment is random, needs only to be
---- listed); `opts.hideUncraftable` those the characters can't fill by crafting.
+--- listed); `opts.hideUncraftable` those the characters can't fill by crafting; `opts.hiddenTiers` (a set
+--- of tier names) those of the levels unticked (a crate without a tier, the unread one, always stays).
 function W.FilterRows(rows, opts)
     opts = opts or {}
-    if not (opts.hideUnavailable or opts.hideUncraftable) then return rows end
+    local tiers = opts.hiddenTiers
+    if type(tiers) ~= "table" or next(tiers) == nil then tiers = nil end
+    if not (opts.hideUnavailable or opts.hideUncraftable or tiers) then return rows end
     local out = {}
     for _, row in ipairs(rows) do
         local keep = true
         if opts.hideUnavailable and not (row.price and (row.bestCost or row.random)) then keep = false end
         if opts.hideUncraftable and not row.canCraft then keep = false end
+        if tiers and row.tier and tiers[row.tier] then keep = false end
         if keep then out[#out + 1] = row end
     end
     return out
