@@ -455,25 +455,52 @@ describe("WaylaidCosts", function()
     describe("SearchTerms", function()
         it("searches the crate, then the bundle it is bought with at its count", function()
             local tin = { name = "Tin Ore", count = 20, cost = 100 }
-            local row = { name = "Waylaid Crate: Apprentice Ore", best = "buy", bundle = tin, options = {
-                tin,
-                { name = "Copper Ore", count = 20, cost = 200 },
-            } }
+            local row = { name = "Waylaid Crate: Apprentice Ore", best = "buy", bundle = tin, buyBundle = tin,
+                options = { tin, { name = "Copper Ore", count = 20, cost = 200 } } }
             assert.same({
                 { searchString = "Waylaid Crate: Apprentice Ore", quantity = 1, isExact = true },
                 { searchString = "Tin Ore", quantity = 20, isExact = true },
             }, W.SearchTerms(row))
         end)
 
-        it("searches what a craft buys when the fill is crafted", function()
-            local row = { name = "Waylaid Crate: Expert Ingots", best = "craft",
-                bundle = { name = "Gold Bar", count = 10 }, steps = {
+        it("searches what a craft buys when the fill is crafted, then the bundle bought instead", function()
+            local bars = { name = "Gold Bar", count = 10 }
+            local row = { name = "Waylaid Crate: Expert Ingots", best = "craft", bundle = bars,
+                craftBundle = bars, buyBundle = bars, steps = {
                     { kind = "ah", item = 5, qty = 10, cost = 500 },
                     { kind = "craft", item = 3, qty = 10, casts = 10, who = "Miner", spell = 500 },
                 } }
             assert.same({
                 { searchString = "Waylaid Crate: Expert Ingots", quantity = 1, isExact = true },
                 { searchString = "Gold Ore", quantity = 10, isExact = true },
+                { searchString = "Gold Bar", quantity = 10, isExact = true },
+            }, W.SearchTerms(row, { [5] = { name = "Gold Ore" } }))
+        end)
+
+        it("searches the bundle bought, then what the cheapest craft would buy", function()
+            local mithril = { name = "Mithril Bar", count = 10 }
+            local row = { name = "Waylaid Crate: Expert Ingots", best = "buy", bundle = mithril,
+                buyBundle = mithril, craftBundle = { name = "Gold Bar", count = 10 }, steps = {
+                    { kind = "vendor", item = 7, qty = 10, cost = 50 },
+                    { kind = "ah", item = 5, qty = 10, cost = 500 },
+                    { kind = "craft", item = 3, qty = 10, casts = 10, who = "Miner", spell = 500 },
+                } }
+            assert.same({
+                { searchString = "Waylaid Crate: Expert Ingots", quantity = 1, isExact = true },
+                { searchString = "Mithril Bar", quantity = 10, isExact = true },
+                { searchString = "Flux", quantity = 10, isExact = true },
+                { searchString = "Gold Ore", quantity = 10, isExact = true },
+            }, W.SearchTerms(row, { [5] = { name = "Gold Ore" }, [7] = { name = "Flux" } }))
+        end)
+
+        it("searches the crafted bundle when the fill is crafted and no bundle is listed in full", function()
+            local bars = { name = "Gold Bar", count = 10 }
+            local row = { name = "Waylaid Crate: Expert Ingots", best = "craft", bundle = bars,
+                craftBundle = bars, steps = { { kind = "ah", item = 5, qty = 10, cost = 500 } } }
+            assert.same({
+                { searchString = "Waylaid Crate: Expert Ingots", quantity = 1, isExact = true },
+                { searchString = "Gold Ore", quantity = 10, isExact = true },
+                { searchString = "Gold Bar", quantity = 10, isExact = true },
             }, W.SearchTerms(row, { [5] = { name = "Gold Ore" } }))
         end)
 

@@ -472,8 +472,8 @@ local function ShowRowTooltip(row)
     GameTooltip:Show()
 end
 
--- At the auction house with Auctionator: search the crate and what its cheapest fill buys as a temporary
--- shopping list.
+-- At the auction house with Auctionator: search the crate and both ways to fill it (bought and crafted, the
+-- cheaper first) as a temporary shopping list.
 local function OnRowClick(row)
     local rd = row.rowData
     local AZ = AltArmy.AuctionatorSearch

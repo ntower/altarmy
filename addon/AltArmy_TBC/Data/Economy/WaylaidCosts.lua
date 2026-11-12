@@ -243,9 +243,10 @@ function W.FilterRows(rows, opts)
     return out
 end
 
---- Auctionator shopping-list terms for a row: the crate, then what its cheapest fill buys: the bundle at its
---- count when bought, or every reagent the craft plan buys (from a vendor or the auction house, each at its
---- quantity) when crafted. `items` names a craft's reagents (WaylaidCrates.ITEMS). Each item once.
+--- Auctionator shopping-list terms for a row: the crate, then both ways to fill it, the cheaper first: the
+--- bundle bought at its count (the cheapest listed in full, else the bundle the craft makes, so what is
+--- listed of it shows), and every reagent the cheapest craft plan buys (from a vendor or the auction house,
+--- each at its quantity). `items` names a craft's reagents (WaylaidCrates.ITEMS). Each item once.
 function W.SearchTerms(row, items)
     local terms, seen = {}, {}
     local function add(searchString, quantity)
@@ -253,16 +254,25 @@ function W.SearchTerms(row, items)
         seen[searchString] = true
         terms[#terms + 1] = { searchString = searchString, quantity = quantity, isExact = true }
     end
-    add(row.name, 1)
-    if row.best == "craft" then
+    local function addBuy()
+        local bundle = row.buyBundle or row.craftBundle
+        if bundle then add(bundle.name, bundle.count) end
+    end
+    local function addCraft()
         for _, step in ipairs(row.steps or {}) do
             if step.kind == "ah" or step.kind == "vendor" then
                 local entry = items and items[step.item]
                 add(entry and entry.name or tostring(step.item), step.qty)
             end
         end
-    elseif row.bundle then
-        add(row.bundle.name, row.bundle.count)
+    end
+    add(row.name, 1)
+    if row.best == "craft" then
+        addCraft()
+        addBuy()
+    elseif row.best == "buy" then
+        addBuy()
+        addCraft()
     end
     return terms
 end
