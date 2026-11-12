@@ -1096,7 +1096,7 @@
   "vendor:3029": 81
  },
  "generated": {
-  "source": "vmangos db-sqlite-4641790",
+  "source": "vmangos db-sqlite-1fb4909",
   "tele": "ThunderBluff",
   "radius": 450,
   "counts": {
