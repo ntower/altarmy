@@ -343,12 +343,14 @@ UI.noCratesLabel:SetText("No crates left: the filters hide them all.")
 UI.noCratesLabel:Hide()
 
 --- The Filter menu's level checkboxes, appended to `entries` under a divider: one per tier of `tiers`
---- (lowest first), keyed "tier:<tier>", ticked unless named in `hidden` (a set of tier names unticked).
---- Shared with the Craftsman's Writs view (TabEconomyWrits.lua).
-local function AddLevelEntries(entries, tiers, hidden)
+--- (lowest first), keyed "tier:<tier>", ticked unless named in `hidden` (a set of tier names unticked),
+--- labelled by `labelFor(tier)` (default the tier's name). Shared with the Craftsman's Writs view
+--- (TabEconomyWrits.lua).
+local function AddLevelEntries(entries, tiers, hidden, labelFor)
     entries[#entries + 1] = { kind = "divider", key = "levelsDivider" }
     for _, tier in ipairs(tiers) do
-        entries[#entries + 1] = { kind = "checkbox", key = "tier:" .. tier, label = tier,
+        entries[#entries + 1] = { kind = "checkbox", key = "tier:" .. tier,
+            label = labelFor and labelFor(tier) or tier,
             checked = not hidden[tier], enabled = true }
     end
     return entries
@@ -377,7 +379,7 @@ UI.filter = Theme.CreateFilterDropdown({
                 checked = o.waylaidOnlyAvailable, enabled = true },
             { kind = "checkbox", key = "hideUncraftable", label = "Hide crates I can not fulfill via crafting",
                 checked = o.waylaidOnlyCraftable, enabled = true },
-        }, W.CRATE_TIERS, o.waylaidHiddenTiers)
+        }, W.CRATE_TIERS, o.waylaidHiddenTiers, W.CrateTierLabel)
     end,
     onToggle = function(key, checked)
         local o = W.EnsureOptions()

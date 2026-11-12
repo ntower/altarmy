@@ -34,6 +34,30 @@ function W.Reward(tier, kind)
     return byKind and byKind[kind] or nil
 end
 
+local WHITE, GREEN = "|cffffffff", "|cff1eff00" -- item quality colours: gathered crates white, crafted green
+
+--- A crate level's Filter menu label: "Apprentice (<icon> 5/10)", the Merchant's Favor its white (Gathered)
+--- crates give in white and its green (Crafted) ones in green, after `icon` (a texture escape; default
+--- EconomyTooltip.FavorIcon()); the bare level when the rewards are unknown.
+function W.CrateTierLabel(tier, icon)
+    local white, green = W.Reward(tier, "Gathered"), W.Reward(tier, "Crafted")
+    if not (white and green) then return tier end
+    if icon == nil then
+        local ET = AltArmy.EconomyTooltip
+        icon = ET and ET.FavorIcon and ET.FavorIcon() or ""
+    end
+    local lead = icon ~= "" and icon .. " " or ""
+    return string.format("%s (%s%s%d|r/%s%d|r)", tier, lead, WHITE, white.favor, GREEN, green.favor)
+end
+
+--- A writ level's Filter menu label: "Journeyman (75 rep)", the reputation its writs give (`rep`: tier ->
+--- reputation, default AltArmy.Writs.REP); the bare level when unknown.
+function W.WritTierLabel(tier, rep)
+    rep = rep or (AltArmy.Writs and AltArmy.Writs.REP) or {}
+    if not rep[tier] then return tier end
+    return string.format("%s (%d rep)", tier, rep[tier])
+end
+
 --- The Economy tab's saved state, repaired and created on first use.
 function W.EnsureOptions()
     if type(AltArmyTBC_Options) ~= "table" then

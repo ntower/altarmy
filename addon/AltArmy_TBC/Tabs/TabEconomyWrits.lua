@@ -104,7 +104,7 @@ UI.filter = Theme.CreateFilterDropdown({
                 checked = o.writsOnlyAvailable, enabled = true },
             { kind = "checkbox", key = "hideUncraftable", label = "Hide writs I can not fulfill via crafting",
                 checked = o.writsOnlyCraftable, enabled = true },
-        }, W.WRIT_TIERS, o.writsHiddenTiers)
+        }, W.WRIT_TIERS, o.writsHiddenTiers, W.WritTierLabel)
     end,
     onToggle = function(key, checked)
         local o = W.EnsureOptions()

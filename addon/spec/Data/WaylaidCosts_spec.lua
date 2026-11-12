@@ -300,6 +300,29 @@ describe("WaylaidCosts", function()
         end)
     end)
 
+    describe("level labels", function()
+        it("names a crate level with the Favor icon and its white/green crates' Favor, each in its colour", function()
+            assert.equals("Apprentice (|T1:14|t |cffffffff5|r/|cff1eff0010|r)",
+                W.CrateTierLabel("Apprentice", "|T1:14|t"))
+            assert.equals("Artisan (|T1:14|t |cffffffff20|r/|cff1eff0040|r)", W.CrateTierLabel("Artisan", "|T1:14|t"))
+        end)
+
+        it("leaves the icon out when there is none", function()
+            assert.equals("Expert (|cffffffff15|r/|cff1eff0030|r)", W.CrateTierLabel("Expert", ""))
+        end)
+
+        it("names a writ level with its reputation", function()
+            local rep = { Journeyman = 75, Expert = 125, Artisan = 200 }
+            assert.equals("Journeyman (75 rep)", W.WritTierLabel("Journeyman", rep))
+            assert.equals("Artisan (200 rep)", W.WritTierLabel("Artisan", rep))
+        end)
+
+        it("is the bare level when its worth is unknown", function()
+            assert.equals("Bogus", W.CrateTierLabel("Bogus"))
+            assert.equals("Expert", W.WritTierLabel("Expert", {}))
+        end)
+    end)
+
     describe("Compare", function()
         local a = { name = "A", tier = "Apprentice", price = 10, favor = 5, perFavor = 100, buy = 90 }
         local b = { name = "B", tier = "Expert", price = 20, favor = 30, perFavor = 50, buy = 30, craft = 25 }
