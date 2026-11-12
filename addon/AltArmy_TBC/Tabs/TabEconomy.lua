@@ -457,15 +457,6 @@ local function ReleaseRows()
     end
 end
 
---- Over a guessed reward's Favor cell: what the guess is.
-local function ShowGuessTooltip(row)
-    GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
-    GameTooltip:SetText("Educated Guess")
-    GameTooltip:AddLine("This early into Forever, we don't have reliable information on how much this rewards. "
-        .. "Alt Army will be updated as the game matures.", 1, 1, 1, true)
-    GameTooltip:Show()
-end
-
 local function ShowRowTooltip(row)
     local rd = row.rowData
     if not rd then return end
@@ -500,24 +491,8 @@ local function PoolRow()
     row = CreateFrame("Button", nil, scrollChild)
     row:SetHeight(UI.ROW_HEIGHT)
     Theme.InstallRowHoverHighlight(row)
-    -- While hovered, the tooltip follows the cursor: over a guessed reward's Favor cell it explains the guess
-    -- (a check per frame, only while this row is under the mouse; a child frame there would take the row's
-    -- highlight, click and wheel).
-    local function onUpdate(self)
-        local cell = self.cells.favor
-        local guess = self.rowData and self.rowData.favorGuess and cell.IsMouseOver and cell:IsMouseOver() or false
-        if guess ~= self.overGuess then
-            self.overGuess = guess
-            if guess then ShowGuessTooltip(self) else ShowRowTooltip(self) end
-        end
-    end
-    row:SetScript("OnEnter", function(self)
-        self.overGuess = nil
-        self:SetScript("OnUpdate", onUpdate)
-        onUpdate(self)
-    end)
-    row:SetScript("OnLeave", function(self)
-        self:SetScript("OnUpdate", nil)
+    row:SetScript("OnEnter", ShowRowTooltip)
+    row:SetScript("OnLeave", function()
         GameTooltip:Hide()
     end)
     row:SetScript("OnClick", OnRowClick)
@@ -647,7 +622,7 @@ local function RefreshWaylaid()
         y = y - UI.ROW_HEIGHT
         local c = row.cells
         c.crate:SetText(CrateLabel(rd))
-        c.favor:SetText(rd.favor and (rd.favor .. (rd.favorGuess and "?" or "")) or "—")
+        c.favor:SetText(rd.favor and tostring(rd.favor) or "—")
         c.price:SetMoney(rd.price)
         c.buy:SetMoney(rd.buy, Mark(rd.buyApprox))
         c.craft:SetMoney(rd.craft, Mark(rd.craftApprox, rd.craftShort))

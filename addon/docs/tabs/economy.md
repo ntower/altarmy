@@ -37,7 +37,7 @@ Laid out like the Craftsman's Writs view, with the same column widths. A wider w
 | Column | Meaning |
 |--------|---------|
 | Waylaid Crate | The shipment (icon; green for crafted-goods crates, white for gathered goods) |
-| (Merchant's Favor icon) | Merchant's Favor for turning the filled crate in (by tier and kind, below). Artisan's are guesses: shown "40?", and hovering the cell says so (titled "Educated Guess": "This early into Forever, we don't have reliable information on how much this rewards. Alt Army will be updated as the game matures.") in place of the row's tooltip |
+| (Merchant's Favor icon) | Merchant's Favor for turning the filled crate in (by tier and kind, below) |
 | Crate Price | The cheapest crate listed (a dash when none is) |
 | Fulfill via AH | The cheapest bundle that can be bought in full, bought cheapest-first up the auction house's listings |
 | Fulfill via Craft | The cheapest bundle to craft by the realm and faction's characters, its reagents got the cheapest way (vendor, auction house or a further craft), as on the Craftsman's Writs view; a dash when nobody knows a recipe for any bundle |
@@ -65,7 +65,7 @@ What turning in a filled crate gives is not in the game data, so `W.REWARDS` in 
 | Apprentice | 5 / 2.5s | 10 / 5s | Verified in game |
 | Journeyman | 10 / 5s | 20 / 10s | Verified in game |
 | Expert | 15 / 7.5s | 30 / 15s | Verified in game |
-| Artisan | 20 / 10s | 40 / 20s | **Assumed** (continues the steps above); revisit once one is turned in |
+| Artisan | 20 / 10s | 40 / 20s | Verified in game |
 
 Not yet checked: whether every crate of one tier and kind gives the same. The game data also has blue Sealed Apprentice, Journeyman, Expert and Artisan Crates and a Sealed Elite Crate (white, green and blue), none of which a Waylaid Crate is known to become yet.
 

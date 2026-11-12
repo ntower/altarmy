@@ -121,8 +121,6 @@ describe("WaylaidCosts", function()
         it("takes the turn-in's gold off the total and divides by its Favor", function()
             local r = byId(W.BuildRows(book, CRATES))[901] -- Apprentice, gathered: 5 Favor and 2.5s back
             assert.equals(5, r.favor)
-            assert.is_nil(r.favorGuess)
-            assert.is_true(byId(W.BuildRows(book, CRATES))[903].favorGuess) -- Artisan: a guess
             assert.equals(250, r.goldBack)
             assert.equals(1350, r.total) -- 1000 crate + 600 Tin Ore - 250
             assert.equals(270, r.perFavor)
@@ -292,10 +290,9 @@ describe("WaylaidCosts", function()
             assert.same({ favor = 30, copper = 1500 }, W.Reward("Expert", "Crafted"))
         end)
 
-        it("assumes Artisan continues the steps (not measured yet)", function()
-            assert.same({ favor = 20, copper = 1000, guess = true }, W.Reward("Artisan", "Gathered"))
-            assert.same({ favor = 40, copper = 2000, guess = true }, W.Reward("Artisan", "Crafted"))
-            assert.is_nil(W.Reward("Expert", "Crafted").guess)
+        it("knows Artisan's rewards", function()
+            assert.same({ favor = 20, copper = 1000 }, W.Reward("Artisan", "Gathered"))
+            assert.same({ favor = 40, copper = 2000 }, W.Reward("Artisan", "Crafted"))
         end)
 
         it("knows nothing for the unread crate", function()
