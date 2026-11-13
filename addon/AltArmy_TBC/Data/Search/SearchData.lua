@@ -629,6 +629,19 @@ local function getScanTooltip()
     return _scanTooltip
 end
 
+--- A tooltip line as the player reads it: icons dropped (an atlas coin is "|A:coin-gold:...|a",
+--- which would otherwise match "gold"), colour codes dropped (classic |cffRRGGBB and WoW: Forever's
+--- |cnIQ3:), hyperlinks reduced to their visible text.
+function SD._PlainTooltipText(text)
+    text = text:gsub("|A.-|a", "")
+    text = text:gsub("|T.-|t", "")
+    text = text:gsub("|H.-|h(.-)|h", "%1")
+    text = text:gsub("|c%x%x%x%x%x%x%x%x", "")
+    text = text:gsub("|cn[^:|]*:", "")
+    text = text:gsub("|r", "")
+    return text
+end
+
 function SD._GetSearchableTextForItem(itemID, itemLink)
     if caches.searchableTextCache[itemID] then
         return caches.searchableTextCache[itemID]
@@ -655,8 +668,7 @@ function SD._GetSearchableTextForItem(itemID, itemLink)
                 if lineText then
                     local text = lineText:GetText()
                     if text and text ~= "" then
-                        text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
-                        table.insert(lines, text)
+                        table.insert(lines, SD._PlainTooltipText(text))
                     end
                 end
             end

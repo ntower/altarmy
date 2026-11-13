@@ -2358,4 +2358,33 @@ describe("SearchData", function()
       assert.is_truthy(paintLog:find("tooltipRows=1", 1, true), paintLog)
     end)
   end)
+
+  describe("_PlainTooltipText", function()
+    it("drops atlas icons, so a gold coin doesn't read as the word gold", function()
+      -- WoW: Forever's Sell Price line, as the scan tooltip gives it.
+      local line = "Sell Price: 1|A:coin-gold:14:14:2:0|a 77|A:coin-silver:14:14:2:0|a"
+        .. " 84|A:coin-copper:14:14:2:0|a"
+      local plain = SD._PlainTooltipText(line)
+      assert.are.equal("Sell Price: 1 77 84", plain)
+      assert.is_nil(plain:lower():find("gold", 1, true))
+    end)
+
+    it("drops texture icons, so an icon's file id doesn't match a number", function()
+      assert.are.equal(" Small Radiant Shard", SD._PlainTooltipText("|T132884:16|t Small Radiant Shard"))
+    end)
+
+    it("drops classic and WoW: Forever colour codes but keeps the words", function()
+      assert.are.equal("Binds when picked up", SD._PlainTooltipText("|cffffffffBinds when picked up|r"))
+      assert.are.equal("- 10 Gold Ore", SD._PlainTooltipText("|cnIQ1:- 10 Gold Ore|r"))
+    end)
+
+    it("keeps a hyperlink's visible text and drops its link data", function()
+      local line = "Teaches |cnIQ3:|Hitem:274606::::::::45:1482|h[Bloodspine Staff]|h|r."
+      assert.are.equal("Teaches [Bloodspine Staff].", SD._PlainTooltipText(line))
+    end)
+
+    it("leaves plain text alone", function()
+      assert.are.equal("Requires Level 36", SD._PlainTooltipText("Requires Level 36"))
+    end)
+  end)
 end)
