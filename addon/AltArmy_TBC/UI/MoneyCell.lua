@@ -41,6 +41,18 @@ function M.Fit(count, totalW, slotW, leadW)
     return n
 end
 
+M.COST_COLOR = { 1, 1, 1, 1 }
+M.GAIN_COLOR = { 0.1, 1, 0.1, 1 } -- the game's green
+M.NONE_COLOR = { 0.6, 0.6, 0.6, 1 }
+
+--- How a cost that can come out negative shows (a total per point after what the turn-in pays back): the
+--- amount, what goes before it and its colour. A negative is a gain: "gain " and its size, in green; nil none.
+function M.CostStyle(copper)
+    if copper == nil then return nil, nil, M.NONE_COLOR end
+    if copper < 0 then return -copper, "gain ", M.GAIN_COLOR end
+    return copper, "", M.COST_COLOR
+end
+
 -- Slot width per font: two of the widest digit, the icon and the gap.
 local slotWidths = {}
 
@@ -63,8 +75,8 @@ local function TextWidth(fs)
     return fs:GetStringWidth()
 end
 
---- A cell (a Frame the caller anchors) of the given width with :SetMoney(copper, mark), :SetText(text) for
---- anything else (a dash), and :SetTextColor(r, g, b, a).
+--- A cell (a Frame the caller anchors) of the given width with :SetMoney(copper, mark), :SetCost(copper),
+--- :SetText(text) for anything else (a dash), and :SetTextColor(r, g, b, a).
 function M.Create(parent, font, width, height)
     local cell = CreateFrame("Frame", nil, parent)
     cell:SetSize(width, height or 20)
@@ -124,6 +136,13 @@ function M.Create(parent, font, width, height)
         for i = 2, n do
             self.texts[i]:SetText(parts[i].amount .. M.ICONS[parts[i].coin])
         end
+    end
+
+    --- A cost that can turn into a gain (M.CostStyle): white, "gain <amount>" in green, or a grey dash.
+    function cell.SetCost(self, copper)
+        local amount, prefix, color = M.CostStyle(copper)
+        self:SetMoney(amount, prefix)
+        self:SetTextColor(color[1], color[2], color[3], color[4])
     end
 
     function cell.SetTextColor(self, r, g, b, a)

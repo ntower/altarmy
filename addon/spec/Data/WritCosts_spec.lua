@@ -81,7 +81,9 @@ describe("WritCosts", function()
             assert.equals(1, robe.count)
             assert.equals(2, robe.held)
             assert.equals(500, robe.writPrice) -- the writ's own cheapest listing
-            assert.equals(7, robe.perRep) -- (20 crafted + 500 for the writ) / 75 rep, rounded
+            assert.equals(3300, robe.goldBack) -- a Journeyman's pouch
+            assert.equals(-2780, robe.total) -- 20 crafted + 500 for the writ - 3300 back
+            assert.equals(-37, robe.perRep) -- -2780 / 75 rep, rounded
             assert.equals("craft", robe.plan.option)
             assert.equals("craft", robe.steps[#robe.steps].kind)
 
@@ -91,7 +93,8 @@ describe("WritCosts", function()
             assert.equals("buy", suit.best)
             assert.is_false(suit.canCraft)
             assert.is_nil(suit.who)
-            assert.equals(12, suit.perRep) -- (2000 bought + 300) / 200 rep, rounded
+            assert.equals(-15200, suit.total) -- 2000 bought + 300 - an Artisan's 17500
+            assert.equals(-76, suit.perRep) -- -15200 / 200 rep
 
             local shot = rows[264037]
             assert.is_nil(shot.buy)
@@ -99,6 +102,7 @@ describe("WritCosts", function()
             assert.is_nil(shot.best)
             assert.equals(0, shot.held)
             assert.is_nil(shot.writPrice)
+            assert.is_nil(shot.total)
             assert.is_nil(shot.perRep)
         end)
 
@@ -195,9 +199,21 @@ describe("WritCosts", function()
             return ids
         end
 
-        it("orders by tier then name for the writ column", function()
-            assert.same({ 264047, 264037, 264144 }, sorted("writ", true))
-            assert.same({ 264144, 264037, 264047 }, sorted("writ", false))
+        it("orders by name for the writ column, whatever the tier", function()
+            local rows = {
+                { id = 1, tier = "Artisan", short = "Arcanite Rod" },
+                { id = 2, tier = "Journeyman", short = "Wizard's Robe" },
+                { id = 3, tier = "Expert", short = "Mithril Shot" },
+                { id = 4, tier = "Journeyman", short = "Mithril Shot" },
+            }
+            local function ids(asc)
+                table.sort(rows, function(a, b) return WC.Compare(a, b, "writ", asc) end)
+                local out = {}
+                for _, r in ipairs(rows) do out[#out + 1] = r.id end
+                return out
+            end
+            assert.same({ 1, 4, 3, 2 }, ids(true)) -- a name at two tiers: the lower tier first
+            assert.same({ 2, 3, 4, 1 }, ids(false))
         end)
 
         it("orders money with the unpriced last either way", function()
@@ -210,8 +226,8 @@ describe("WritCosts", function()
 
         it("orders reputation and cost per reputation", function()
             assert.same({ 264047, 264037, 264144 }, sorted("rep", true))
-            assert.same({ 264047, 264144, 264037 }, sorted("perRep", true))
-            assert.same({ 264144, 264047, 264037 }, sorted("perRep", false)) -- the unpriced last either way
+            assert.same({ 264144, 264047, 264037 }, sorted("perRep", true))
+            assert.same({ 264047, 264144, 264037 }, sorted("perRep", false)) -- the unpriced last either way
         end)
     end)
 
@@ -229,6 +245,15 @@ describe("WritCosts", function()
             local rows = byId(WC.BuildRows(context().book, WRITS, orders, context()))
             assert.same({ term("Craftsman's Writ: Robe", 1), term("Robe", 3), term("Thread", 6), term("Cloth", 12) },
                 WC.SearchTerms(rows[264047], ITEMS))
+        end)
+
+        it("searches an item with random suffixes by name, not exactly", function()
+            local suffixed = {}
+            for id, entry in pairs(ITEMS) do suffixed[id] = entry end
+            suffixed[7] = { name = "Suit", stack = 1, suffix = true }
+            local rows = byId(WC.BuildRows(context().book, WRITS, nil, context()))
+            assert.same({ term("Craftsman's Writ: Suit", 1), { searchString = "Suit", quantity = 1, isExact = false } },
+                WC.SearchTerms(rows[264144], suffixed))
         end)
 
         it("searches just the writ and its order when nobody can craft it", function()

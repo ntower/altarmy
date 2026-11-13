@@ -3,8 +3,9 @@
 -- LIST: each writ, its quest, tier, reputation (REP: community-reported, not in the game data), the
 -- item(s) its name means (`items`: several when several recipes make items of that name) and `count`,
 -- one craft's output (an assumption until the addon reads the quest). ITEMS: every item the trees
--- touch (`vendor` copper per `per` units where a vendor sells it; `bop` binds on pickup). RECIPES: the
--- craft recipes by spell id (`out`, `n` made per cast, `prof`, `reagents`).
+-- touch (`vendor` copper per `per` units where a vendor sells it; `bop` binds on pickup; `suffix` comes
+-- with random suffixes, "of the Eagle"). RECIPES: the craft recipes by spell id (`out`, `n` made per
+-- cast, `prof`, `reagents`).
 
 if not AltArmy then return end
 
@@ -670,8 +671,8 @@ W.ITEMS = {
     [8192] = { name = "Nightscape Shoulders", stack = 1 },
     [8200] = { name = "Big Voodoo Robe", stack = 1 },
     [8201] = { name = "Big Voodoo Mask", stack = 1 },
-    [8210] = { name = "Wild Leather Shoulders", stack = 1 },
-    [8214] = { name = "Wild Leather Helmet", stack = 1 },
+    [8210] = { name = "Wild Leather Shoulders", stack = 1, suffix = true },
+    [8214] = { name = "Wild Leather Helmet", stack = 1, suffix = true },
     [8217] = { name = "Quickdraw Quiver", stack = 1 },
     [8218] = { name = "Thick Leather Ammo Pouch", stack = 1 },
     [8343] = { name = "Heavy Silken Thread", stack = 20, vendor = 2000, per = 1 },
@@ -708,7 +709,7 @@ W.ITEMS = {
     [10498] = { name = "Gyromatic Micro-Adjustor", stack = 1 },
     [10500] = { name = "Fire Goggles", stack = 1 },
     [10501] = { name = "Catseye Ultra Goggles", stack = 1 },
-    [10504] = { name = "Green Lens", stack = 1 },
+    [10504] = { name = "Green Lens", stack = 1, suffix = true },
     [10505] = { name = "Solid Blasting Powder", stack = 20 },
     [10514] = { name = "Mithril Frag Bomb", stack = 10 },
     [10548] = { name = "Sniper Scope", stack = 5 },

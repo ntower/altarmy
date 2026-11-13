@@ -372,13 +372,7 @@ local function RefreshWrits()
         c.rep:SetText(tostring(rd.rep))
         c.buy:SetMoney(rd.buy, Mark(rd.buyApprox, rd.buyShort))
         c.craft:SetMoney(rd.craft, Mark(rd.craftApprox, rd.craftShort))
-        if rd.perRep then
-            c.perRep:SetMoney(rd.perRep)
-            c.perRep:SetTextColor(1, 1, 1, 1)
-        else
-            c.perRep:SetText("—")
-            c.perRep:SetTextColor(0.6, 0.6, 0.6, 1)
-        end
+        c.perRep:SetCost(rd.perRep) -- a negative is a gain, in green
     end
     viewport.UpdateRange()
     if headerFade then headerFade:Update() end

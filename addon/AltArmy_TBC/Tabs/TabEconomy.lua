@@ -628,13 +628,7 @@ local function RefreshWaylaid()
         c.price:SetMoney(rd.price)
         c.buy:SetMoney(rd.buy, Mark(rd.buyApprox))
         c.craft:SetMoney(rd.craft, Mark(rd.craftApprox, rd.craftShort))
-        if rd.perFavor then
-            c.perFavor:SetMoney(rd.perFavor)
-            c.perFavor:SetTextColor(1, 1, 1, 1)
-        else
-            c.perFavor:SetText("—")
-            c.perFavor:SetTextColor(0.6, 0.6, 0.6, 1)
-        end
+        c.perFavor:SetCost(rd.perFavor) -- a negative is a gain, in green
     end
     viewport.UpdateRange()
     if headerFade then headerFade:Update() end

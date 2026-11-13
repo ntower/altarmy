@@ -13,12 +13,17 @@ site's database keeps neither. The reagent trees under the wanted items (every c
 anything they take, with vendor prices and bonding) come from the database, so the addon can plan the
 cheapest way to buy or craft each writ's order.
 
+Which items come with random suffixes ("Green Lens of Holy Wrath"), so that the addon searches the auction
+house for them by name without an exact match: Forever's ItemSparse has no such column, so it comes from the
+vmangos world database release pinned for Forever (item_template.random_property), from the cache or
+downloaded while that release is still the newest.
+
 What the game data lacks: how many units a writ asks for (assumed one craft's output until the addon reads
 the quest in game) and the reputation it awards (REP below: community-reported per tier, not in the client).
 
 --build: pinned (default) is the Forever build pinned in the monorepo's site/data/game-data.json; latest asks
 wago.tools. --check writes nothing: it exits 1 when --out differs from what the game data gives, and 0 with a
-note when the database or the build's cached tables aren't there to check against (it never downloads).
+note when the database, the build's cached tables or the cached world database aren't there to check against (it never downloads).
 Stdlib only. The monorepo's game_data.py runs this daily (the game-data workflow), and the site's local
 `ingest` runs it when it loads Forever data into its SQLite file.
 """
@@ -213,6 +218,8 @@ def render_trees(module, out_items, out_recipes):
             parts.append(f"vendor = {entry['vendor']}, per = {entry['per']}")
         if entry.get("bop"):
             parts.append("bop = true")
+        if entry.get("suffix"):
+            parts.append("suffix = true")
         out.append(f"    [{item}] = {{ {', '.join(parts)} }},")
     out += ["}", "", f"{module}.RECIPES = {{"]
     for spell, r in out_recipes.items():
@@ -234,8 +241,9 @@ def render(build, rows, out_items, out_recipes):
         "-- LIST: each writ, its quest, tier, reputation (REP: community-reported, not in the game data), the",
         "-- item(s) its name means (`items`: several when several recipes make items of that name) and `count`,",
         "-- one craft's output (an assumption until the addon reads the quest). ITEMS: every item the trees",
-        "-- touch (`vendor` copper per `per` units where a vendor sells it; `bop` binds on pickup). RECIPES: the",
-        "-- craft recipes by spell id (`out`, `n` made per cast, `prof`, `reagents`).",
+        "-- touch (`vendor` copper per `per` units where a vendor sells it; `bop` binds on pickup; `suffix` comes",
+        "-- with random suffixes, \"of the Eagle\"). RECIPES: the craft recipes by spell id (`out`, `n` made per",
+        "-- cast, `prof`, `reagents`).",
         "",
         "if not AltArmy then return end",
         "",
@@ -276,14 +284,35 @@ def render(build, rows, out_items, out_recipes):
     return "\n".join(out)
 
 
-def build_module(db_path, build, sparse_path, labels_path):
-    """The Lua module's text and its writ count, from the database and the build's cached tables."""
+def suffixed(world_path, item_ids):
+    """The items of `item_ids` that come with random suffixes, by the emulator's world database (vmangos'
+    item_template.random_property, set on any of an item's patch rows)."""
+    ids = sorted(item_ids)
+    if not ids:
+        return set()
+    db = sqlite3.connect(f"file:{world_path}?mode=ro", uri=True)
+    try:
+        marks = ",".join("?" * len(ids))
+        rows = db.execute(
+            f"SELECT DISTINCT entry FROM item_template WHERE random_property != 0 AND entry IN ({marks})", ids
+        ).fetchall()
+    finally:
+        db.close()
+    return {row[0] for row in rows}
+
+
+def build_module(db_path, build, sparse_path, labels_path, world_path=None):
+    """The Lua module's text and its writ count, from the database, the build's cached tables and (for the
+    random suffixes) the emulator's world database."""
     writs, items, vendor, recipes = read_game(db_path)
     if len(writs) != WRIT_COUNT:
         sys.exit(f"expected {WRIT_COUNT} Craftsman's Writs, found {len(writs)}")
     sparse = read_rows(sparse_path, {str(i) for i, _ in writs})
     labels = {k: r["Description_lang"] for k, r in read_rows(labels_path).items()}
     rows, out_items, out_recipes = plan_data(writs, items, vendor, recipes, sparse, labels)
+    if world_path:
+        for item in suffixed(world_path, out_items):
+            out_items[item]["suffix"] = True
     return render(build, rows, out_items, out_recipes), len(rows)
 
 
@@ -310,13 +339,16 @@ def main():
     elif build == "latest":
         build = gamedata.latest_build(PRODUCT)
     cached = {t: gamedata.REPO_CACHE / "wago" / build / f"{t}.csv" for t in TABLES}
+    pin = gamedata.read_pins(Path(PINS))["forever"]
+    world = gamedata.cached_world_db(pin.emulator, pin.release, gamedata.REPO_CACHE)
     if args.check:
-        missing = [str(p) for p in (Path(args.db), *cached.values()) if not p.is_file()]
+        missing = [str(p) for p in (Path(args.db), *cached.values(), world) if not p.is_file()]
         if missing:
             print(f"Craftsman's Writs check skipped: no {', '.join(missing)}")
             return
     paths = {t: str(gamedata.download_table(t, build, gamedata.REPO_CACHE)) for t in TABLES}
-    text, count = build_module(args.db, build, paths["ItemSparse"], paths["ItemNameDescription"])
+    world = gamedata.world_db(pin.emulator, gamedata.REPO_CACHE, pin.release)
+    text, count = build_module(args.db, build, paths["ItemSparse"], paths["ItemNameDescription"], str(world))
     if args.check:
         if read_normalized(args.out) != text:
             sys.exit(

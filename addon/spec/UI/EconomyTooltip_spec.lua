@@ -12,8 +12,9 @@ describe("EconomyTooltip", function()
         function tt:AddLine(text, r, g, b)
             self.lines[#self.lines + 1] = { left = text, r = r, g = g, b = b }
         end
-        function tt:AddDoubleLine(left, right, r, g, b)
-            self.lines[#self.lines + 1] = { left = left, right = right, r = r, g = g, b = b }
+        function tt:AddDoubleLine(left, right, r, g, b, rr, rg, rb)
+            self.lines[#self.lines + 1] = { left = left, right = right, r = r, g = g, b = b,
+                rr = rr, rg = rg, rb = rb }
         end
         function tt:Show() self.shown = self.shown + 1 end
         function tt:GetItem()
@@ -134,6 +135,25 @@ describe("EconomyTooltip", function()
             ET.OnTooltipItem(tt)
             assert.is_true(hasLine(tt, "Wants 1x Robe"))
             assert.is_true(hasLine(tt, "Writ on the auction house"))
+        end)
+
+        it("lays a writ out as a crate: the reward, the costs, then the total less the pouch", function()
+            local tt = fakeTooltip(264047)
+            ET.OnTooltipItem(tt)
+            local at, right, line = {}, {}, {}
+            for i, l in ipairs(tt.lines) do
+                at[l.left] = at[l.left] or i
+                right[l.left] = l.right
+                line[l.left] = l
+            end
+            assert.equals("75 reputation and ~3300c", right["Turn-in reward"])
+            -- 900 bought + 500 for the writ - 3300 back: a gain, in green
+            assert.equals("gain ~1900c", right["Total cost"])
+            assert.equals("gain ~25c", right["Total cost per rep"])
+            assert.same({ 0.1, 1, 0.1 }, { line["Total cost"].rr, line["Total cost"].rg, line["Total cost"].rb })
+            assert.is_true(at["Turn-in reward"] < at["Writ on the auction house"])
+            assert.is_true(at["Writ on the auction house"] < at["Fill via AH"])
+            assert.is_true(at["Fill via AH"] < at["Total cost"])
         end)
 
         it("turns the age line orange when the scan is over an hour old", function()

@@ -88,6 +88,18 @@ local function AddCostLine(tt, label, cost)
     end
 end
 
+--- A total line (gold label): its cost in white, or, when the turn-in pays back more than it cost, "gain" and
+--- the amount in green, as the tab's last column shows it. `mark`: "~" for an estimate.
+local GAIN = { 0.1, 1, 0.1 }
+local function AddTotalLine(tt, label, copper, mark)
+    mark = mark or ""
+    if copper < 0 then
+        tt:AddDoubleLine(label, "gain " .. mark .. Money(-copper), 1, 0.82, 0, GAIN[1], GAIN[2], GAIN[3])
+    else
+        tt:AddDoubleLine(label, mark .. Money(copper), 1, 0.82, 0, 1, 1, 1)
+    end
+end
+
 --- A fulfil line with no way to fulfil that way: label and "n/a" both grey, as a dearer way's line is.
 local function AddUnavailableLine(tt, label)
     tt:AddDoubleLine(label, "n/a", DIM, DIM, DIM, DIM, DIM, DIM)
@@ -178,8 +190,8 @@ function ET.AddCrateLines(tt, rd, opts)
             AddUnavailableLine(tt, "Fill via craft")
         end
         if rd.total then
-            tt:AddDoubleLine("Total cost", Money(rd.total), 1, 0.82, 0, 1, 1, 1)
-            tt:AddDoubleLine("Total cost per " .. ET.FavorIcon(), Money(rd.perFavor), 1, 0.82, 0, 1, 1, 1)
+            AddTotalLine(tt, "Total cost", rd.total)
+            AddTotalLine(tt, "Total cost per " .. ET.FavorIcon(), rd.perFavor)
         end
         if #rd.options > 0 then
             tt:AddLine(" ")
@@ -219,8 +231,10 @@ function ET.AddWritLines(tt, rd, opts)
     local items = AltArmy.Writs and AltArmy.Writs.ITEMS
     AddHead(tt)
     tt:AddLine("Wants " .. rd.count .. "x " .. ItemName(items, rd.item), 1, 0.82, 0, true)
-    tt:AddDoubleLine(rd.tier .. " writ", "+" .. rd.rep .. " reputation", 1, 1, 1, 1, 1, 1)
-    tt:AddLine(" ")
+    -- The coin pouch's contents are semi-random: its average, marked as an estimate.
+    local reward = rd.rep .. " reputation"
+    if (rd.goldBack or 0) > 0 then reward = reward .. " and ~" .. Money(rd.goldBack) end
+    tt:AddDoubleLine("Turn-in reward", reward, 1, 0.82, 0, 1, 1, 1)
     AddCostLine(tt, "Writ on the auction house", rd.writPrice and Money(rd.writPrice))
     -- With both ways priced, the dearer line is grey, label and cost (a tie greys the craft: the writ buys),
     -- and so are the craft's steps when crafting is the dearer way; a greyed line's names lose their class
@@ -241,10 +255,12 @@ function ET.AddWritLines(tt, rd, opts)
     else
         AddUnavailableLine(tt, "Fill via craft")
     end
-    if rd.bestCost and rd.writPrice then
-        tt:AddDoubleLine("Total cost", Money(rd.bestCost + rd.writPrice), 1, 0.82, 0, 1, 1, 1)
+    -- Less the pouch's average, so an estimate ("~") like the reward.
+    if rd.total then
+        local mark = (rd.goldBack or 0) > 0 and "~" or ""
+        AddTotalLine(tt, "Total cost", rd.total, mark)
         if rd.perRep then
-            tt:AddDoubleLine("Total cost per rep", Money(rd.perRep), 1, 0.82, 0, 1, 1, 1)
+            AddTotalLine(tt, "Total cost per rep", rd.perRep, mark)
         end
     end
     if rd.craft then

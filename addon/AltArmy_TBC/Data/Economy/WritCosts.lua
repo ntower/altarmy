@@ -10,6 +10,10 @@ local WC = AltArmy.WritCosts
 
 local TIER_ORDER = { Journeyman = 1, Expert = 2, Artisan = 3 }
 
+--- What a writ's turn-in pays in coin, by tier: a coin pouch of semi-random contents, so its average (copper),
+--- as measured in game. Not in the game data.
+WC.POUCH = { Journeyman = 3300, Expert = 6700, Artisan = 17500 }
+
 local function P()
     return AltArmy.CraftPlan
 end
@@ -39,8 +43,9 @@ end
 --- (`writPrice`, its cheapest listing), its order (`item`, `count`; `assumed` until the game told us the
 --- order), what buying `count` units costs on the auction house (`buy`, `buyShort`, `buyApprox`) and what
 --- crafting them costs (`craft`, the `plan`, its `steps`, `who` crafts; `canCraft`), the better of the two
---- (`best`, `bestCost`), `perRep`: copper per point of reputation, the writ bought and its order fulfilled
---- the cheaper way ((bestCost + writPrice) / rep, rounded; nil without either), and `held`: how many of the
+--- (`best`, `bestCost`), `goldBack`: the coin pouch's average (POUCH, by tier), `total`: the writ bought and
+--- its order fulfilled the cheaper way, less the pouch (nil without either), `perRep`: that per point of
+--- reputation, rounded (negative when the turn-in pays more than it cost), and `held`: how many of the
 --- writ the characters hold (`ctx.heldBy`). A writ naming several items is priced as whichever comes
 --- cheapest.
 function WC.BuildRow(writ, book, orders, ctx)
@@ -59,12 +64,15 @@ function WC.BuildRow(writ, book, orders, ctx)
         id = writ.id, quest = writ.quest, name = writ.name, short = writ.short, tier = writ.tier,
         rep = writ.rep, count = count, assumed = not (order and order.count),
         writPrice = book[writ.id] and book[writ.id][1] and book[writ.id][1].price or nil,
-        held = ctx.heldBy and ctx.heldBy(writ.id) or 0,
+        held = ctx.heldBy and ctx.heldBy(writ.id) or 0, goldBack = WC.POUCH[writ.tier] or 0,
     }
     for k, v in pairs(chosen) do row[k] = v end
     row.canCraft = row.plan ~= nil
-    if row.bestCost and row.writPrice and (row.rep or 0) > 0 then
-        row.perRep = math.floor((row.bestCost + row.writPrice) / row.rep + 0.5)
+    if row.bestCost and row.writPrice then
+        row.total = row.bestCost + row.writPrice - row.goldBack
+        if (row.rep or 0) > 0 then
+            row.perRep = math.floor(row.total / row.rep + 0.5)
+        end
     end
     if row.plan then row.steps = P().Steps(row.plan) end
     return row
@@ -105,7 +113,7 @@ local function tierRank(row)
 end
 
 --- table.sort order for rows by `key` (one of WaylaidCosts.WRITS_SORT_KEYS, or "best": the cheaper way to
---- fulfil it; "writ" goes by tier then name). Rows without the money (or crafter) being sorted stay last in
+--- fulfil it; "writ" goes by name). Rows without the money (or crafter) being sorted stay last in
 --- both directions; ties fall back to tier then name.
 function WC.Compare(a, b, key, ascending)
     local function ordered(x, y)
@@ -126,9 +134,8 @@ function WC.Compare(a, b, key, ascending)
         if a.who ~= nil then r = ordered(a.who, b.who) end
     elseif key == "rep" then
         r = ordered(a.rep or 0, b.rep or 0)
-    else -- writ: tier, then name
-        r = ordered(tierRank(a), tierRank(b))
-        if r == nil then r = ordered(a.short or "", b.short or "") end
+    else -- writ: the name (ties, a name at two tiers, by tier below)
+        r = ordered(a.short or "", b.short or "")
     end
     if r ~= nil then return r end
     r = ordered(tierRank(a), tierRank(b))
@@ -138,22 +145,25 @@ end
 
 --- Auctionator shopping-list terms for a row: the writ itself, the item its order wants (at the order's
 --- count), then, when a character can craft it, every reagent the craft plan buys (from a vendor or the
---- auction house, each at its quantity), each item once. `items` names them (Writs.ITEMS).
+--- auction house, each at its quantity), each item once. `items` names them (Writs.ITEMS). Every search is
+--- exact but an item's that comes with random suffixes (`suffix`: "Green Lens of Holy Wrath" is listed under
+--- that name, which an exact "Green Lens" misses).
 function WC.SearchTerms(row, items)
     local function name(item)
         return items[item] and items[item].name or tostring(item)
     end
     local terms, seen = {}, {}
-    local function add(searchString, quantity)
+    local function add(searchString, quantity, item)
         if seen[searchString] then return end
         seen[searchString] = true
-        terms[#terms + 1] = { searchString = searchString, quantity = quantity, isExact = true }
+        local exact = not (item and items[item] and items[item].suffix)
+        terms[#terms + 1] = { searchString = searchString, quantity = quantity, isExact = exact }
     end
     add(row.name, 1)
-    add(name(row.item), row.count)
+    add(name(row.item), row.count, row.item)
     for _, step in ipairs(row.canCraft and row.steps or {}) do
         if step.kind == "ah" or step.kind == "vendor" then
-            add(name(step.item), step.qty)
+            add(name(step.item), step.qty, step.item)
         end
     end
     return terms

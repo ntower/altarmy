@@ -149,6 +149,23 @@ class BuildTest(unittest.TestCase):
         _, items, _ = self.build()
         self.assertEqual({"name": "Ogre Tannin", "stack": 1, "bop": True}, items[18240])
 
+    def test_random_suffix_items_are_marked(self):
+        world = os.path.join(self.tmp.name, "mangos.sqlite")
+        db = sqlite3.connect(world)
+        db.executescript(
+            "CREATE TABLE item_template (entry, patch, name, random_property);"
+            "INSERT INTO item_template VALUES (4316, 0, 'Lesser Wizard''s Robe', 0);"
+            "INSERT INTO item_template VALUES (4316, 5, 'Lesser Wizard''s Robe', 637);"  # a later patch's row
+            "INSERT INTO item_template VALUES (4306, 0, 'Silk Cloth', 0);"
+            "INSERT INTO item_template VALUES (12345, 0, 'Not In The Trees', 99);"
+        )
+        db.commit()
+        db.close()
+        self.assertEqual({4316}, gen.suffixed(world, {4316, 4306, 2321}))
+        text, _ = gen.build_module(self.db, "1.60.1.1", self.sparse, self.labels, world)
+        self.assertIn("[4316] = { name = \"Lesser Wizard's Robe\", stack = 1, suffix = true },", text)
+        self.assertIn('[4306] = { name = "Silk Cloth", stack = 20 },', text)
+
     def test_module_is_deterministic_and_lua(self):
         text, count = gen.build_module(self.db, "1.60.1.1", self.sparse, self.labels)
         again, _ = gen.build_module(self.db, "1.60.1.1", self.sparse, self.labels)
