@@ -23,6 +23,8 @@
 #                                notification channel (existing ones are kept)
 #   deploy/setup.sh alerts       the alert policies, notifying the Discord channel (after `discord`;
 #                                existing policies are kept and pointed at it alone)
+#   deploy/setup.sh archive ENV  the bucket ENV's prune job archives prices to (`archive.py`), writable by
+#                                ENV's runtime account alone (before the deploy that points the job at it)
 #
 # Then: BUILDER=cloudbuild deploy/build.sh, deploy/deploy.sh prod|staging IMAGE (README, "Deploy").
 set -euo pipefail
@@ -332,10 +334,74 @@ EOF
   "notificationChannels": ["$channel"]
 }
 EOF
+
+  # Cloud SQL memory: the RAM Postgres uses (buffer cache included) over the tier's quota. Not
+  # database/memory/utilization: on db-f1-micro it reads 1.0 always (memory/usage repeats the quota). A week
+  # before this (2026-11) peaked at 0.30
+  policy "altarmy database memory high" "$channel" <<EOF
+{
+  "displayName": "altarmy database memory high",
+  "documentation": {
+    "mimeType": "text/markdown",
+    "content": "Cloud SQL $SQL_INSTANCE has used over 85% of its memory for 15 minutes. Prod and staging share it. Queries will start reading from disk: look at what grew (Query Insights, the largest tables), or move to a larger tier (deploy/setup.sh sql's --tier)."
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "memory over 85% of quota",
+      "conditionPrometheusQueryLanguage": {
+        "query": "max by (database_id) (cloudsql_googleapis_com:database_memory_total_usage{monitored_resource=\"cloudsql_database\", database_id=\"$PROJECT:$SQL_INSTANCE\"} / cloudsql_googleapis_com:database_memory_quota{monitored_resource=\"cloudsql_database\", database_id=\"$PROJECT:$SQL_INSTANCE\"}) > 0.85",
+        "duration": "900s",
+        "evaluationInterval": "60s"
+      }
+    }
+  ],
+  "alertStrategy": {"autoClose": "86400s"},
+  "notificationChannels": ["$channel"]
+}
+EOF
+
+  # Cloud SQL CPU: the 15-minute average over 80% for 15 minutes (a week before this peaked at 0.28 an hour)
+  policy "altarmy database CPU high" "$channel" <<EOF
+{
+  "displayName": "altarmy database CPU high",
+  "documentation": {
+    "mimeType": "text/markdown",
+    "content": "Cloud SQL $SQL_INSTANCE has averaged over 80% CPU for 15 minutes. Prod and staging share it. Check the merge and ingest jobs and Query Insights for the queries behind it, or move to a larger tier (deploy/setup.sh sql's --tier)."
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "CPU 15-minute average over 80%",
+      "conditionPrometheusQueryLanguage": {
+        "query": "max by (database_id) (avg_over_time(cloudsql_googleapis_com:database_cpu_utilization{monitored_resource=\"cloudsql_database\", database_id=\"$PROJECT:$SQL_INSTANCE\"}[15m])) > 0.8",
+        "duration": "900s",
+        "evaluationInterval": "60s"
+      }
+    }
+  ],
+  "alertStrategy": {"autoClose": "86400s"},
+  "notificationChannels": ["$channel"]
+}
+EOF
+}
+
+archive() { # archive prod|staging: the long-term price archive's bucket and who may write it
+  env_config "${1:?prod or staging}"
+  if gcloud storage buckets describe "gs://$ARCHIVE_BUCKET" "${G[@]}" >/dev/null 2>&1; then
+    echo "bucket gs://$ARCHIVE_BUCKET exists"
+  else
+    # Standard class (a few GB a year; read now and then for one-off analyses), private, in the region
+    gcloud storage buckets create "gs://$ARCHIVE_BUCKET" --location "$REGION" --default-storage-class STANDARD       --uniform-bucket-level-access --public-access-prevention "${G[@]}"
+  fi
+  # the prune job writes (and rewrites, when a day is archived again) objects; nobody else
+  gcloud storage buckets add-iam-policy-binding "gs://$ARCHIVE_BUCKET" --member "serviceAccount:$RUN_SA"     --role roles/storage.objectUser "${G[@]}" >/dev/null
+  echo "  roles/storage.objectUser on gs://$ARCHIVE_BUCKET -> $RUN_SA"
 }
 
 case "${1:-}" in
   apis | registry | accounts | sql | firestore | wif | alerts) "$1" ;;
+  archive) archive "${2:-}" ;;
   wif-repo) wif_repo ;;
   discord) discord "${2:-}" ;;
   database) database "${2:-}" ;;
@@ -343,7 +409,7 @@ case "${1:-}" in
   job-runner) job_runner "${2:-}" ;;
   staging-auth) staging_auth ;;
   *)
-    sed -n '2,25p' "$0"
+    sed -n '2,27p' "$0"
     exit 1
     ;;
 esac

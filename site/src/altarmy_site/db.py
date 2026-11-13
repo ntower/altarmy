@@ -253,3 +253,16 @@ def count_rows(conn: Connection, table: str, game_version: str) -> int:
     return int(
         conn.execute(select(func.count()).select_from(t).where(t.c.game_version == game_version)).scalar_one()
     )
+
+
+def row_estimate(conn: Connection, table: Table) -> int:
+    """About how many rows `table` has, without reading it: Postgres's planner estimate (kept by
+    autovacuum's ANALYZE), else, before the first ANALYZE or on SQLite, a count."""
+    if conn.dialect.name == "postgresql":
+        estimate = conn.execute(
+            text("SELECT reltuples::bigint FROM pg_class WHERE oid = to_regclass(:name)"),
+            {"name": table.name},
+        ).scalar_one_or_none()
+        if estimate is not None and estimate >= 0:
+            return int(estimate)
+    return int(conn.execute(select(func.count()).select_from(table)).scalar_one())

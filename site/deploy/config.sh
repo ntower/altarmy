@@ -30,17 +30,19 @@ WIF_PROVIDER=github-actions
 GITHUB_REPO=ntower/altarmy
 
 # Per environment: prod | staging. Sets SERVICE, DB_NAME, DB_USER, SECRET, JOB_PREFIX, MAX_INSTANCES, RUN_SA
-# (the runtime service account) and FIREBASE_ENV (the env file with its Firebase web config).
+# (the runtime service account), FIREBASE_ENV (the env file with its Firebase web config) and ARCHIVE_BUCKET
+# (the long-term price archive the prune job writes: setup.sh archive ENV).
 env_config() {
   case "$1" in
     prod)
       # one instance: every request shares its market and rank caches (identical rankings at once run once)
       SERVICE=altarmy DB_NAME=altarmy DB_USER=altarmy SECRET=database-url JOB_PREFIX=altarmy MAX_INSTANCES=1
-      RUN_SA="$PROD_RUN_SA" FIREBASE_ENV=hosted.env
+      RUN_SA="$PROD_RUN_SA" FIREBASE_ENV=hosted.env ARCHIVE_BUCKET=alt-army-prod-archive
       ;;
     staging)
       SERVICE=altarmy-staging DB_NAME=altarmy_staging DB_USER=altarmy_staging SECRET=database-url-staging
       JOB_PREFIX=altarmy-staging MAX_INSTANCES=1 RUN_SA="$STAGING_RUN_SA" FIREBASE_ENV=staging.env
+      ARCHIVE_BUCKET=alt-army-prod-archive-staging
       ;;
     *)
       echo "environment must be prod or staging, not '$1'" >&2

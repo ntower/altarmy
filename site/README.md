@@ -46,7 +46,7 @@ altarmy-site ingest --only-if-new --force    # reload the pinned build even if l
 altarmy-site serve [--reload]                # the API (and the built front end) on http://127.0.0.1:8600; --reload restarts it on code changes
 altarmy-site watch --server URL --key KEY    # upload the addon files to the site as WoW rewrites them
 altarmy-site migrate                         # migrate the database now (each deploy runs this once)
-altarmy-site prune                           # drop price observations older than 180 days
+altarmy-site prune --archive DIR             # archive settled days to DIR (or gs://...), drop what it holds
 altarmy-site merge                           # recompute daily medians and 7-day price statistics (hourly job)
 ```
 
@@ -292,8 +292,20 @@ database gets its game data the same way, or by hand: `gcloud run jobs execute a
 
 `deploy/setup.sh` holds the one-time setup, one section per run: APIs, registry, service accounts and
 roles, Cloud SQL, each database's user and secret, Firestore for the price signals (both Firebase projects;
-before the first deploy that ships `firestore.rules`), Workload Identity Federation, the schedules, and alerts to Discord (below). Every
+before the first deploy that ships `firestore.rules`), Workload Identity Federation, the schedules, the
+long-term price archive's bucket (`deploy/setup.sh archive prod|staging`, before the first deploy whose prune
+job writes to it), and alerts to Discord (below). Every
 command passes `--project alt-army-prod --billing-project alt-army-prod`, so gcloud's defaults don't matter.
+
+The long-term archive: the daily prune job first writes every settled day (32 days old: an upload may carry a
+scan 30 days old) to the environment's bucket (`gs://alt-army-prod-archive/`, staging's
+`gs://alt-army-prod-archive-staging/`) as gzipped JSON lines, `snapshots/`, `price_daily/` and
+`price_sales_daily/` under `YYYY/MM/YYYY-MM-DD.jsonl.gz`: each snapshot with its observations and its full
+scan (an Alt Army scan's every price level, a feed snapshot's every auction), never who uploaded it. Then it
+drops only what the archive holds (`archive_progress`): full scans at once, snapshots after 45 days, daily
+rows after 400. Nothing everyday reads further back than 30 days. To look at history, e.g. with DuckDB:
+`gcloud storage cp -r gs://alt-army-prod-archive/snapshots/2026 . && duckdb -c "select realm, count(*) from
+read_json_auto('2026/*/*.jsonl.gz') group by 1"`.
 
 Alerts to Discord, once, after a prod deploy: make a webhook in the Discord channel (its settings →
 Integrations → Webhooks), then `deploy/setup.sh discord` (asks for the webhook URL; makes the relay, its
@@ -345,7 +357,7 @@ API's models or routes, regenerate the TypeScript types with `python scripts/exp
   build). Pass `--build <version>` or `--build latest` for another. The build actually loaded is stored in
   the `game_versions` table.
 - **Price history.** Every import is a snapshot (`price_snapshots`); it records observations only for
-  items whose price or last-seen day moved (`price_observations`, pruned after 180 days) and updates
+  items whose price or last-seen day moved (`price_observations`, pruned after 45 days once archived) and updates
   `price_current`, which the ranking reads. Each scan's market price (TBC: Auctionator's per-day
   high/low/available) goes to `price_daily` (pooled across uploaders: lowest low, highest high), which
   is kept indefinitely.

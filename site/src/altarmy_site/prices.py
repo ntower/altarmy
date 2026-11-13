@@ -28,10 +28,13 @@ from typing import Literal
 
 from sqlalchemy import ColumnElement, Connection, bindparam, case, delete, func, select, update
 
-from . import book, db, schema, versions
+from . import archive, book, db, schema, versions
 from .auctionator import ItemPrice
 
-KEEP_DAYS = 180  # observations older than this are pruned (price_daily is kept)
+# Once archived (`archive`), snapshots and their observations older than this are pruned, and daily rows
+# older than DAILY_KEEP_DAYS: nothing everyday reads further back than 30 days
+KEEP_DAYS = 45
+DAILY_KEEP_DAYS = 400
 AUCTIONATOR = "auctionator"
 HAND_SET = ("manual", "csv")  # sources whose price is used as it is, never capped by the 7-day median
 THIN_UNITS = 5  # fewer units listed than this: a sale there rests on a thin market
@@ -720,7 +723,8 @@ def record_book(
     unlisted. An item is news (an observation, and the price version moves) when its cheapest or its
     market price changed or it was listed or unlisted. Units gone since a scan at most SALES_GAP before
     are added to the day's sales, unless the house has a live feed (`feed_live`), whose snapshots count
-    them. An item with a newer price (set by hand, or a newer snapshot) is left alone."""
+    them. An item with a newer price (set by hand, or a newer snapshot) is left alone. Every scan recorded,
+    quarantined or not, keeps its full ladders for the archive (`archive.save_body`)."""
     at = db.utc(scanned_at or datetime.fromtimestamp(scan.t, db.utcnow().tzinfo))
     newest = _newest_book(conn, auction_house_id)
     if newest is not None and at <= newest:
@@ -737,14 +741,16 @@ def record_book(
         if broken is not None:
             verdict = bool(verdict) or broken
     if verdict:
-        _insert_snapshot(
+        snapshot_id = _insert_snapshot(
             conn, auction_house_id, ALTARMY, at, len(scan.items), None, uploader_uid, "quarantined"
         )
+        archive.save_body(conn, snapshot_id, "book", archive.encode_book(scan))
         return BookRecorded(len(scan.items), 0, quarantined=True, screened=True)
 
     snapshot_id = _insert_snapshot(
         conn, auction_house_id, ALTARMY, at, len(scan.items), None, uploader_uid, "accepted"
     )
+    archive.save_body(conn, snapshot_id, "book", archive.encode_book(scan))
     current: list[dict[str, object]] = []
     news: list[dict[str, object]] = []
     daily_rows = []
@@ -1019,18 +1025,36 @@ def record_hours(conn: Connection, auction_house_id: int, at: datetime, hours: M
 
 
 def prune(conn: Connection, now: datetime | None = None, keep_days: int = KEEP_DAYS) -> None:
-    """Drop observations of snapshots older than `keep_days`, and those snapshots unless `price_current`
-    still points at them; and the hourly rows older than HOURLY_DAYS (the merge has rolled them up)."""
-    cutoff = db.utc(now or db.utcnow()) - timedelta(days=keep_days)
-    snap, obs, pc = schema.price_snapshots, schema.price_observations, schema.price_current
-    old = select(snap.c.id).where(snap.c.scanned_at < cutoff)
-    conn.execute(delete(obs).where(obs.c.snapshot_id.in_(old)))
-    conn.execute(delete(snap).where(snap.c.scanned_at < cutoff, snap.c.id.not_in(select(pc.c.snapshot_id))))
-    recent = db.utc(now or db.utcnow()).date() - timedelta(days=HOURLY_DAYS)
+    """Drop what the archive already holds (`archive.archived_through`; nothing before its first day):
+    snapshots' full scans, snapshots older than `keep_days` and their observations (a snapshot
+    `price_current` still points at stays), and daily rows older than DAILY_KEEP_DAYS. And, archived or
+    not, the hourly rows older than HOURLY_DAYS (the merge has rolled them up; the archived full scans
+    hold them) and copy counts older than COPY_DAYS."""
+    now = db.utc(now or db.utcnow())
+    through = archive.archived_through(conn)
+    if through is not None:
+        archived = datetime.combine(through + timedelta(days=1), time(), UTC)
+        snap, obs, pc = schema.price_snapshots, schema.price_observations, schema.price_current
+        bodies = schema.snapshot_bodies
+        conn.execute(
+            delete(bodies).where(
+                bodies.c.snapshot_id.in_(select(snap.c.id).where(snap.c.scanned_at < archived))
+            )
+        )
+        cutoff = min(now - timedelta(days=keep_days), archived)
+        old = select(snap.c.id).where(snap.c.scanned_at < cutoff)
+        conn.execute(delete(obs).where(obs.c.snapshot_id.in_(old)))
+        conn.execute(
+            delete(snap).where(snap.c.scanned_at < cutoff, snap.c.id.not_in(select(pc.c.snapshot_id)))
+        )
+        last_day = min(now.date() - timedelta(days=DAILY_KEEP_DAYS + 1), through)
+        for t in (schema.price_daily, schema.price_sales_daily):
+            conn.execute(delete(t).where(t.c.day <= last_day))
+    recent = now.date() - timedelta(days=HOURLY_DAYS)
     for t in (schema.price_hourly, schema.auction_ends_daily):
         conn.execute(delete(t).where(t.c.day < recent))
     cc = schema.copy_counts
-    conn.execute(delete(cc).where(cc.c.hour < db.utc(now or db.utcnow()) - timedelta(days=COPY_DAYS)))
+    conn.execute(delete(cc).where(cc.c.hour < now - timedelta(days=COPY_DAYS)))
 
 
 COPY_DAYS = 2  # how long copy counts are kept

@@ -21,7 +21,7 @@ from datetime import UTC, date, datetime
 
 from sqlalchemy import Connection, select
 
-from . import book, db, prices, schema, snapshots
+from . import archive, book, db, prices, schema, snapshots
 from .versions import GameVersion
 
 
@@ -76,9 +76,10 @@ def record_auction_snapshot(
     before = load_state(conn, auction_house_id)
     with_buyout = len({a.item_id for a in snap.auctions if a.unit_price is not None})
     if snapshots.looks_partial(before, snap):
-        prices._insert_snapshot(
+        snapshot_id = prices._insert_snapshot(
             conn, auction_house_id, prices.BLIZZARD, at, with_buyout, None, None, "quarantined", snap.build
         )
+        archive.save_body(conn, snapshot_id, "auctions", archive.encode_auctions(snap))
         return FeedRecorded(with_buyout, 0, quarantined=True)
     d = snapshots.diff(before, snap, version.buckets, version.snapshot_gap)
     if d.stale:
@@ -87,6 +88,7 @@ def record_auction_snapshot(
     snapshot_id = prices._insert_snapshot(
         conn, auction_house_id, prices.BLIZZARD, at, with_buyout, None, None, "accepted", snap.build
     )
+    archive.save_body(conn, snapshot_id, "auctions", archive.encode_auctions(snap))
     moved = _record_book(conn, auction_house_id, snapshot_id, at, snapshots.ladders(snap))
     if d.follows:
         _add_flows(conn, auction_house_id, at.date(), snapshots.flows(d))

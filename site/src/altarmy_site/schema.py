@@ -483,7 +483,6 @@ price_snapshots = Table(
         Integer,
         ForeignKey("auction_houses.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     ),
     Column("source", String(16), nullable=False),
     # who sent it (a users.uid). No foreign key: adding one makes SQLite rebuild this table, whose drop
@@ -496,9 +495,43 @@ price_snapshots = Table(
     Column("build", String(32)),  # the game build it was taken under (revision 0026); NULL: unknown
     CheckConstraint(f"source IN ({_in(PRICE_SOURCES)})", name="source"),
     CheckConstraint(f"status IN ({_in(SNAPSHOT_STATUSES)})", name="status"),
+    # a house's newest (`store.market_stamp`, every page's stamp check) and first or recent ones (revision
+    # 0032), without reading the house's whole history
+    Index(None, "auction_house_id", "status", "id"),
+    Index(None, "auction_house_id", "status", "scanned_at"),
 )
 
-# Prices a snapshot added: only items whose price or last-seen day moved. Pruned after ~180 days.
+# A snapshot's full scan (revision 0032), kept until the archive has it (`archive`, `prices.prune`): an
+# Alt Army scan's ladders (`book`) or a feed snapshot's auctions (`auctions`), gzipped text (`archive`'s
+# `encode_book`, `encode_auctions`). Quarantined snapshots keep theirs too.
+SNAPSHOT_BODY_FORMATS = ("book", "auctions")
+snapshot_bodies = Table(
+    "snapshot_bodies",
+    metadata,
+    Column(
+        "snapshot_id",
+        Integer,
+        ForeignKey("price_snapshots.id", ondelete="CASCADE"),
+        primary_key=True,
+        autoincrement=False,
+    ),
+    Column("format", String(16), nullable=False),
+    Column("body", LargeBinary, nullable=False),
+    CheckConstraint(f"format IN ({_in(SNAPSHOT_BODY_FORMATS)})", name="format"),
+)
+
+# How far the long-term archive (`archive`) has written (revision 0032): every UTC day up to `through`
+# is in it, so `prices.prune` may drop it. One row, name "days".
+archive_progress = Table(
+    "archive_progress",
+    metadata,
+    Column("name", String(32), primary_key=True),
+    Column("through", Date, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
+# Prices a snapshot added: only items whose price or last-seen day moved. Pruned after KEEP_DAYS once
+# archived (`prices.prune`).
 price_observations = Table(
     "price_observations",
     metadata,
@@ -601,6 +634,7 @@ price_daily = Table(
     Column("open", BigInteger),  # the market price in the day's first and last hour (revision 0026)
     Column("close", BigInteger),
     PrimaryKeyConstraint("auction_house_id", "item_id", "day"),
+    Index(None, "auction_house_id", "day"),  # a house's recent days (revision 0032)
 )
 
 # Each item's price per hour of a day, from every scan and snapshot (`prices.pack_hours`: per hour
@@ -686,6 +720,7 @@ price_sales_daily = Table(
     Column("relisted", Integer, nullable=False, default=0, server_default="0"),
     Column("ambiguous", Integer, nullable=False, default=0, server_default="0"),
     PrimaryKeyConstraint("auction_house_id", "item_id", "day"),
+    Index(None, "auction_house_id", "day"),  # a house's recent days (revision 0032)
 )
 
 # --- jobs ------------------------------------------------------------------------------------------

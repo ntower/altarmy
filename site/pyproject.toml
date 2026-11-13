@@ -55,6 +55,11 @@ module = ["firebase_admin", "firebase_admin.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+# google-cloud-storage (the archive's bucket; firebase-admin brings it) ships no type hints.
+module = ["google.cloud", "google.cloud.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 # The tray extra: pystray ships no type hints; CI's check doesn't install the extra at all.
 module = ["pystray", "pystray.*", "PIL", "PIL.*"]
 ignore_missing_imports = true

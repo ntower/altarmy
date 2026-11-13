@@ -62,7 +62,8 @@ job "$JOB_PREFIX-migrate" migrate
 job "$JOB_PREFIX-merge" merge
 job "$JOB_PREFIX-ingest-tbc" --game-version tbc ingest --only-if-new --cache /tmp/cache
 job "$JOB_PREFIX-ingest-forever" --game-version forever ingest --only-if-new --cache /tmp/cache
-job "$JOB_PREFIX-prune" prune
+# archives the settled days to the bucket (setup.sh archive ENV), then drops what the archive holds
+job "$JOB_PREFIX-prune" prune --archive "gs://$ARCHIVE_BUCKET/"
 
 if changed "${MIGRATIONS[@]}"; then
   echo "== migrate"

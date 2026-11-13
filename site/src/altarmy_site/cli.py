@@ -22,6 +22,7 @@ from sqlalchemy import Connection, select
 
 from . import (
     addon_crates,
+    archive,
     auth,
     cloudlog,
     db,
@@ -99,10 +100,28 @@ def cmd_migrate(args: argparse.Namespace) -> None:
 
 
 def cmd_prune(args: argparse.Namespace) -> None:
+    """Archive the settled days (`archive`), then drop what the archive holds (`prices.prune`)."""
     with jobs.recording(args.database, "prune") as run:
+        if args.archive:
+            written = archive.run(args.database, archive.sink_for(args.archive))
+            if written:
+                run.say(
+                    f"Archived {len(written)} days ({written[0].day} to {written[-1].day}): "
+                    f"{sum(w.snapshots for w in written)} snapshots, "
+                    f"{sum(w.price_daily + w.price_sales_daily for w in written)} daily rows."
+                )
+            else:
+                run.say("Nothing new to archive.")
         with args.database.begin() as conn:
             prices.prune(conn)
-        run.say(f"Pruned price observations older than {prices.KEEP_DAYS} days.")
+            through = archive.archived_through(conn)
+        if through is None:
+            run.say("Nothing archived yet, so only hourly rows were pruned.")
+        else:
+            run.say(
+                f"Pruned what is archived (through {through}): snapshots older than {prices.KEEP_DAYS} days, "
+                f"daily rows older than {prices.DAILY_KEEP_DAYS}."
+            )
 
 
 def cmd_merge(args: argparse.Namespace) -> None:
@@ -377,7 +396,12 @@ def main(argv: list[str] | None = None) -> None:
     s = sub.add_parser("migrate", help="migrate the database to the newest schema revision")
     s.set_defaults(fn=cmd_migrate)
 
-    s = sub.add_parser("prune", help=f"drop price observations older than {prices.KEEP_DAYS} days")
+    s = sub.add_parser("prune", help="archive the settled days, then drop what the archive holds")
+    s.add_argument(
+        "--archive",
+        default=os.environ.get("ARCHIVE_URL"),
+        help="gs://bucket/prefix/ or a folder to archive to (default: ARCHIVE_URL; none: archive nothing)",
+    )
     s.set_defaults(fn=cmd_prune)
 
     s = sub.add_parser(

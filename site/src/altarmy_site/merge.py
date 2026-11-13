@@ -337,5 +337,6 @@ def _scan_samples(
 
 
 def observation_count(conn: Connection) -> int:
-    """Rows in `price_observations`: partition it by month once this passes PARTITION_AT."""
-    return int(conn.execute(select(func.count()).select_from(schema.price_observations)).scalar_one())
+    """About how many rows `price_observations` has (`db.row_estimate`: the hourly merge never reads the
+    table to count it): partition it by month once this passes PARTITION_AT."""
+    return db.row_estimate(conn, schema.price_observations)

@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy import Connection, func, select
 
 from altarmy_site import (
+    archive,
     auth,
     cli,
     db,
@@ -333,6 +334,9 @@ def test_prune_keeps_what_price_current_points_at(conn: Connection) -> None:
     prices.record_snapshot(conn, ah, "auctionator", old, [Observation(1, 10, old), Observation(2, 20, old)])
     prices.record_snapshot(conn, ah, "auctionator", old, [Observation(3, 30, old)])
     prices.record_snapshot(conn, ah, "auctionator", T0, [Observation(1, 11, T0), Observation(3, 31, T0)])
+    prices.prune(conn, now=T0)  # nothing is archived yet: nothing goes
+    assert count(conn, "price_observations") == 5
+    archive.set_through(conn, old.date())
     prices.prune(conn, now=T0)
     snap = schema.price_snapshots
     assert conn.execute(select(func.count()).select_from(snap)).scalar_one() == 2  # item 2's old one stays
@@ -464,7 +468,7 @@ def test_cli_migrate_prune_and_merge(tmp_path: Path, capsys: pytest.CaptureFixtu
         set_prices(conn, {1: 45})
     database.dispose()
     cli.main(["--db", dbfile, "prune"])
-    assert "Pruned" in capsys.readouterr().out
+    assert "Nothing archived yet" in capsys.readouterr().out
     cli.main(["--db", dbfile, "merge"])
     assert "Merged 31 auction houses of every game version (0 changed); 1 price observations stored." in (
         capsys.readouterr().out
