@@ -1,7 +1,7 @@
 """Regenerate AltArmy_TBC/Data/Economy/Writs.lua: WoW Forever's Craftsman's Writs and the crafting trees behind them.
 
 Usage: python scripts/generate-writs.py [--db <website sqlite>] [--build pinned|latest|<build>]
-                                        [--out <lua file>] [--check]
+                                        [--world-db <vmangos sqlite>] [--out <lua file>] [--check]
 
 A Craftsman's Writ ("Craftsman's Writ: Lesser Wizard's Robe", items 264011..) starts a quest asking for a
 crafted item in return for reputation. The item is named in the writ's name only, so it is matched to the
@@ -329,6 +329,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default=DEFAULT_DB)
     ap.add_argument("--build", default="pinned", help="pinned (default), latest, or a build like 1.60.1.70205")
+    ap.add_argument(
+        "--world-db",
+        help="the vmangos world database to read (default: the pinned release's, cached or downloaded)",
+    )
     ap.add_argument("--out", default=DEFAULT_OUT)
     ap.add_argument("--check", action="store_true", help="exit 1 if --out is out of date; write nothing")
     args = ap.parse_args()
@@ -340,14 +344,18 @@ def main():
         build = gamedata.latest_build(PRODUCT)
     cached = {t: gamedata.REPO_CACHE / "wago" / build / f"{t}.csv" for t in TABLES}
     pin = gamedata.read_pins(Path(PINS))["forever"]
-    world = gamedata.cached_world_db(pin.emulator, pin.release, gamedata.REPO_CACHE)
+    if args.world_db:
+        world = Path(args.world_db)
+    else:
+        world = gamedata.cached_world_db(pin.emulator, pin.release, gamedata.REPO_CACHE)
     if args.check:
         missing = [str(p) for p in (Path(args.db), *cached.values(), world) if not p.is_file()]
         if missing:
             print(f"Craftsman's Writs check skipped: no {', '.join(missing)}")
             return
     paths = {t: str(gamedata.download_table(t, build, gamedata.REPO_CACHE)) for t in TABLES}
-    world = gamedata.world_db(pin.emulator, gamedata.REPO_CACHE, pin.release)
+    if not args.world_db:
+        world = gamedata.world_db(pin.emulator, gamedata.REPO_CACHE, pin.release)
     text, count = build_module(args.db, build, paths["ItemSparse"], paths["ItemNameDescription"], str(world))
     if args.check:
         if read_normalized(args.out) != text:

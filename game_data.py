@@ -234,7 +234,18 @@ def cmd_update(args: argparse.Namespace) -> None:
         env=env,
     )
     run(py, "scripts/generate-waylaid-crates.py", "--db", db, cwd=ADDON)
-    run(py, "scripts/generate-writs.py", "--db", db, "--build", new["forever"].build, cwd=ADDON)
+    # the release being moved to: the pins are written only below, and the pinned one may be gone
+    run(
+        py,
+        "scripts/generate-writs.py",
+        "--db",
+        db,
+        "--build",
+        new["forever"].build,
+        "--world-db",
+        worlds["forever"],
+        cwd=ADDON,
+    )
 
     # The emulators publish a release every day or so, mostly with nothing we use changed: a release that
     # changed no generated file is no news, so the pins keep the one the committed data came from. A new
