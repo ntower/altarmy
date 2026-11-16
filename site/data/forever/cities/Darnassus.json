@@ -1114,7 +1114,7 @@
   "vendor:3562": 69
  },
  "generated": {
-  "source": "vmangos db-sqlite-1fb4909",
+  "source": "vmangos db-sqlite-13a411e",
   "tele": "Darnassus",
   "radius": 550,
   "counts": {

@@ -1867,7 +1867,7 @@
   "vendor:12805": 72
  },
  "generated": {
-  "source": "vmangos db-sqlite-1fb4909",
+  "source": "vmangos db-sqlite-13a411e",
   "tele": "Stormwind",
   "radius": 650,
   "counts": {
