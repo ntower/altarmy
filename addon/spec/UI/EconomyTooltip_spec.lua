@@ -146,10 +146,10 @@ describe("EconomyTooltip", function()
                 right[l.left] = l.right
                 line[l.left] = l
             end
-            assert.equals("75 reputation and ~3300c", right["Turn-in reward"])
-            -- 900 bought + 500 for the writ - 3300 back: a gain, in green
-            assert.equals("gain ~1900c", right["Total cost"])
-            assert.equals("gain ~25c", right["Total cost per rep"])
+            assert.equals("75 reputation and ~3500c", right["Turn-in reward"])
+            -- 900 bought + 500 for the writ - 3500 back: a gain, in green
+            assert.equals("gain ~2100c", right["Total cost"])
+            assert.equals("gain ~28c", right["Total cost per rep"])
             assert.same({ 0.1, 1, 0.1 }, { line["Total cost"].rr, line["Total cost"].rg, line["Total cost"].rb })
             assert.is_true(at["Turn-in reward"] < at["Writ on the auction house"])
             assert.is_true(at["Writ on the auction house"] < at["Fill via AH"])

@@ -81,9 +81,9 @@ describe("WritCosts", function()
             assert.equals(1, robe.count)
             assert.equals(2, robe.held)
             assert.equals(500, robe.writPrice) -- the writ's own cheapest listing
-            assert.equals(3300, robe.goldBack) -- a Journeyman's pouch
-            assert.equals(-2780, robe.total) -- 20 crafted + 500 for the writ - 3300 back
-            assert.equals(-37, robe.perRep) -- -2780 / 75 rep, rounded
+            assert.equals(3500, robe.goldBack) -- a Journeyman's pouch
+            assert.equals(-2980, robe.total) -- 20 crafted + 500 for the writ - 3500 back
+            assert.equals(-40, robe.perRep) -- -2980 / 75 rep, rounded
             assert.equals("craft", robe.plan.option)
             assert.equals("craft", robe.steps[#robe.steps].kind)
 
