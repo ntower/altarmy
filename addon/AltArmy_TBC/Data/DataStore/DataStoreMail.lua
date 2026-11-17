@@ -431,6 +431,31 @@ end
 
 DS._CacheSentMailToAlt = CacheSentMailToAlt
 
+-- Taking one attachment (or the money, or deleting a message) from an open mail: MAIL_INBOX_UPDATE can come
+-- before the client drops what was taken, or not at all, so the scan it starts still lists it. Rescan once
+-- the server has answered (twice: a slow answer still lands), and tell linked accounts.
+local INBOX_TAKE_RESCAN_DELAYS = { 0.5, 2 }
+
+local function RescanAfterTake()
+    DS:ScanMailbox()
+    local LT = AltArmy.LinkTransport
+    if LT and LT.NoteLocalChange then
+        LT.NoteLocalChange()
+    end
+end
+
+local function OnInboxTake()
+    local After = _G.C_Timer and _G.C_Timer.After
+    if not After then
+        RescanAfterTake()
+        return
+    end
+    for _, delay in ipairs(INBOX_TAKE_RESCAN_DELAYS) do
+        After(delay, RescanAfterTake)
+    end
+end
+DS._OnInboxTake = OnInboxTake
+
 if hooksecurefunc then
     hooksecurefunc("SendMail", function(recipient, subject, body)
         CacheSentMailToAlt(recipient, subject, body)
@@ -439,4 +464,11 @@ if hooksecurefunc then
     hooksecurefunc("ReturnInboxItem", function(index)
         CacheReturnedMailToAlt(index)
     end)
+
+    for _, name in ipairs({ "TakeInboxItem", "AutoLootMailItem", "TakeInboxMoney", "DeleteInboxItem",
+        "ReturnInboxItem" }) do
+        if type(_G[name]) == "function" then
+            hooksecurefunc(name, OnInboxTake)
+        end
+    end
 end

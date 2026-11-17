@@ -292,6 +292,41 @@ describe("DataStoreMail", function()
     end)
   end)
 
+  describe("taking from the inbox", function()
+    it("rescans after the server answers and tells linked accounts", function()
+      local char = { Mails = { { itemID = 100, count = 1, mailIndex = 1 } }, MailCache = {} }
+      DS._GetCurrentCharTable = function() return char end
+      local timers = {}
+      local savedTimer = _G.C_Timer
+      _G.C_Timer = { After = function(delay, fn) timers[#timers + 1] = { delay = delay, fn = fn } end }
+      local noted = 0
+      AltArmy.LinkTransport = { NoteLocalChange = function() noted = noted + 1 end }
+      -- the take went through: the inbox no longer has the item
+      _G.GetInboxNumItems = function() return 0 end
+      _G.CheckInbox = function() end
+      DS._OnInboxTake()
+      assert.is_true(#timers >= 1)
+      assert.are.equal(1, #char.Mails) -- nothing until the server answers
+      for _, t in ipairs(timers) do t.fn() end
+      _G.C_Timer = savedTimer
+      AltArmy.LinkTransport = nil
+      assert.are.equal(0, #char.Mails)
+      assert.are.equal(#timers, noted)
+    end)
+
+    it("rescans at once without timers", function()
+      local char = { Mails = { { itemID = 100, count = 1, mailIndex = 1 } }, MailCache = {} }
+      DS._GetCurrentCharTable = function() return char end
+      local savedTimer = _G.C_Timer
+      _G.C_Timer = nil
+      _G.GetInboxNumItems = function() return 0 end
+      _G.CheckInbox = function() end
+      DS._OnInboxTake()
+      _G.C_Timer = savedTimer
+      assert.are.equal(0, #char.Mails)
+    end)
+  end)
+
   describe("MailRowDaysLeft", function()
     it("subtracts the time since the scan, nil without an expiry", function()
       assert.are.equal(8, DS.MailRowDaysLeft({ daysLeft = 10, lastCheck = 1000 }, 1000 + 2 * 86400))
