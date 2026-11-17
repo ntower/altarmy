@@ -1500,25 +1500,14 @@ local function upgradeDeltaInSlots(char, newLink, opts, slots, entry)
     if GU.IsWeaponPairItem(newLink) then
         return GU.GetWeaponConfigDelta(char, newLink, opts, entry) or 0
     end
-    local technique = GU.GetEffectiveTechnique(opts.technique or "custom")
-    local classFile, specKey, level = resolveCompareContext(char, entry)
-    local newScore = scoreItem(newLink, technique, classFile, specKey, level)
-
+    -- Every slot counts, empty ones included: a second ring or trinket slot left empty is
+    -- filled by the item at its full score, even when the other slot is taken.
     local bestDelta = 0
-    local hasEquipped = false
     for i = 1, #slots do
-        local slot = slots[i]
-        local equipped = DS:GetInventoryItem(char, slot)
-        if resolveItemLink(equipped) then
-            hasEquipped = true
-            local delta = GU.GetSlotCompareDelta(char, newLink, slot, opts, entry)
-            if delta > bestDelta then
-                bestDelta = delta
-            end
+        local delta = GU.GetSlotCompareDelta(char, newLink, slots[i], opts, entry)
+        if delta > bestDelta then
+            bestDelta = delta
         end
-    end
-    if not hasEquipped then
-        return newScore
     end
     return bestDelta
 end

@@ -924,6 +924,67 @@ describe("GearUpgrade", function()
         assert.are.equal(20, slot12)
     end)
 
+    it("GetCharacterUpgradeDelta counts an empty ring slot beside an equipped ring", function()
+        _G.AltArmyTBC_Data.Characters.TestRealm.RingAlt = {
+            name = "RingAlt",
+            realm = "TestRealm",
+            classFile = "MAGE",
+            level = 60,
+            Inventory = {
+                [11] = "|Hitem:22:0|h[Ring One]|h",
+            },
+            talents = { tabs = { 0, 0, 21 }, primary = 3, specKey = "frost" },
+        }
+        local oldGetItemInfo = _G.GetItemInfo
+        _G.GetItemInfo = function(item)
+            local id = type(item) == "number" and item
+                or tonumber(tostring(item):match("item:(%d+)"))
+            local items = {
+                [21] = { "Ring Two", nil, 2, 30, 30, "Armor", "Miscellaneous", nil, "INVTYPE_FINGER" },
+                [22] = { "Ring One", nil, 2, 40, 40, "Armor", "Miscellaneous", nil, "INVTYPE_FINGER" },
+            }
+            local info = items[id]
+            if not info then return oldGetItemInfo(item) end
+            local link = "|cff|Hitem:" .. tostring(id) .. ":0|h[" .. info[1] .. "]|h|r"
+            return info[1], link, info[3], info[4], info[5], info[6], info[7], nil, info[9]
+        end
+        local char = DS:GetCharacter("RingAlt", "TestRealm")
+        -- Worse than the equipped ring, but the second ring slot is empty.
+        local delta = GU.GetCharacterUpgradeDelta(char, "|Hitem:21:0|h[Ring Two]|h", { technique = "ilvl" })
+        _G.GetItemInfo = oldGetItemInfo
+        assert.are.equal(30, delta)
+    end)
+
+    it("GetCharacterUpgradeDelta counts an empty trinket slot beside an equipped trinket", function()
+        _G.AltArmyTBC_Data.Characters.TestRealm.TrinketAlt = {
+            name = "TrinketAlt",
+            realm = "TestRealm",
+            classFile = "MAGE",
+            level = 60,
+            Inventory = {
+                [14] = "|Hitem:24:0|h[Trinket One]|h",
+            },
+            talents = { tabs = { 0, 0, 21 }, primary = 3, specKey = "frost" },
+        }
+        local oldGetItemInfo = _G.GetItemInfo
+        _G.GetItemInfo = function(item)
+            local id = type(item) == "number" and item
+                or tonumber(tostring(item):match("item:(%d+)"))
+            local items = {
+                [23] = { "Trinket Two", nil, 2, 30, 30, "Armor", "Miscellaneous", nil, "INVTYPE_TRINKET" },
+                [24] = { "Trinket One", nil, 2, 40, 40, "Armor", "Miscellaneous", nil, "INVTYPE_TRINKET" },
+            }
+            local info = items[id]
+            if not info then return oldGetItemInfo(item) end
+            local link = "|cff|Hitem:" .. tostring(id) .. ":0|h[" .. info[1] .. "]|h|r"
+            return info[1], link, info[3], info[4], info[5], info[6], info[7], nil, info[9]
+        end
+        local char = DS:GetCharacter("TrinketAlt", "TestRealm")
+        local delta = GU.GetCharacterUpgradeDelta(char, "|Hitem:23:0|h[Trinket Two]|h", { technique = "ilvl" })
+        _G.GetItemInfo = oldGetItemInfo
+        assert.are.equal(30, delta)
+    end)
+
     it("GetBestFocusCompareSlot picks the ring with the biggest upgrade", function()
         _G.AltArmyTBC_Data.Characters.TestRealm.RingAlt = {
             name = "RingAlt",
