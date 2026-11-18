@@ -2119,7 +2119,7 @@
   "vendor:15011": 47
  },
  "generated": {
-  "source": "vmangos db-sqlite-13a411e",
+  "source": "vmangos db-sqlite-70e38cd",
   "tele": "Ironforge",
   "radius": 350,
   "counts": {
