@@ -790,7 +790,6 @@ def _market(
         sell_prices=base.sell_prices,
         time=time,
         books=base.books,
-        sell_depth=base.sell_depth,
         ah_open=base.ah_open,
         reputation_discounts=base.reputation_discounts,
         arcane_salvager=arcane_salvager,
@@ -897,8 +896,8 @@ def ah_sale(r: Result, listings: Mapping[int, prices.Listing], sell_price: int |
     """What `r` makes on the auction house (see `AhSale`), whichever exit pays best; None when it can't be
     sold there. Its market's depth is the more of the units seen sold over the last week and those listed at
     or under `sell_price` (a crude depth, until a model of what sells replaces it); a price from another
-    source than a full scan is counted as it is. An essence conversion's sale is one like any other: its
-    essences sell only as fast as their market takes them."""
+    source than a full scan is counted as it is, and so is an essence conversion's: its essences are
+    disenchant materials, counted on to sell (`Market.materials`)."""
     all_sold = (
         r.profit if r.best_exit == "ah" else next((o.profit for o in r.sell_options if o.kind == "ah"), None)
     )
@@ -906,7 +905,9 @@ def ah_sale(r: Result, listings: Mapping[int, prices.Listing], sell_price: int |
     if all_sold is None or ah is None:
         return None
     listing = listings.get(r.recipe.output_item_id)
-    depth = prices.sale_depth(listing, sell_price) if listing is not None else None
+    depth = (
+        prices.sale_depth(listing, sell_price) if listing is not None and not r.recipe.is_conversion else None
+    )
     if depth is None:
         return AhSale(all_sold, 0, 0)
     units = r.recipe.output_count * r.crafts
@@ -988,12 +989,7 @@ def craft_sale(
     each = made.profit // crafts
     no_floor = item is not None and item.sell_price <= 0 and not r.recipe.is_enchant
     listing = listings.get(output)
-    unproven = (
-        market.ah_open is not None
-        and output not in market.ah_open
-        and listing is not None
-        and bool(listing.listed)
-    )
+    unproven = not market.sells_on_ah(output) and listing is not None and bool(listing.listed)
     if made.exit != "ah" or listing is None:
         group: CraftGroup = (
             "waiting"
@@ -1064,18 +1060,21 @@ class ProcessSale:
 
 def sell_value(item_id: int, units: int, listings: Mapping[int, prices.Listing], market: Market) -> int:
     """What `units` of an item bring sold as they are: on the AH (net of the cut) as many as its market has
-    shown it takes (`prices.sale_depth`; all of them from a price no scan gave), the rest at a vendor, and
-    all at a vendor where that pays more or its AH sale doesn't count (`Market.ah_open`)."""
+    shown it takes (`prices.sale_depth`; all of them from a price no scan gave, or of a disenchant material,
+    `Market.materials`), the rest at a vendor, and all at a vendor where that pays more or its AH sale
+    doesn't count (`Market.sells_on_ah`)."""
     item = market.items.get(item_id)
     vendor = item.sell_price if item is not None else 0
     price = market.sell_prices.get(item_id)
-    if price is None or (market.ah_open is not None and item_id not in market.ah_open):
+    if price is None or not market.sells_on_ah(item_id):
         return vendor * units
     net = engine.ah_net(price, market.ah_cut)
     if net <= vendor:
         return vendor * units
     listing = listings.get(item_id)
-    depth = prices.sale_depth(listing, price) if listing is not None else None
+    depth = (
+        prices.sale_depth(listing, price) if listing is not None and item_id not in market.materials else None
+    )
     on_ah = units if depth is None else min(units, depth)
     return net * on_ah + vendor * (units - on_ah)
 

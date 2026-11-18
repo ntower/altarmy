@@ -1600,7 +1600,6 @@ class Market:
         learn_costs: Mapping[int, float | None] | None = None,
         flips: Sequence[Recipe] | None = None,
         climbs: ClimbStore | None = None,
-        sell_depth: Mapping[int, int] | None = None,
         ah_open: frozenset[int] | None = None,
     ):
         """`crafters` are the characters who craft and disenchant, mailing items between them; without
@@ -1622,11 +1621,10 @@ class Market:
         An item in `books` is bought up its ladder instead (`book.cost`): the units listed at each price,
         cheapest first, so what it costs depends on how many are needed; units the book is short of are
         counted at its highest price and reported (`Node.short`). Branches of one plan buying the same
-        item share its ladder (`_share_books`). A disenchant material in `sell_depth` sells on the AH only
-        as many units as its market has shown it takes (`_disenchant_shortfall`); the rest go to a vendor.
-        With `ah_open` only the items in it sell on the AH, the ones whose sales have been seen enough
-        (`merge`'s gate): any other has no AH exit, and as a disenchant material counts at what a vendor
-        pays. They can still be bought there. None: every priced item sells there.
+        item share its ladder (`_share_books`). With `ah_open` only the items in it sell on the AH, the ones
+        whose sales have been seen enough (`merge`'s gate): any other has no AH exit. They can still be bought
+        there. None: every priced item sells there. Disenchant materials (`materials`: whatever a disenchant
+        row yields) always sell there, every unit: enchanting materials are counted on to sell.
 
         `reputation_discounts` is the game version's percent off at a vendor by the buyer's standing with
         the vendor's faction (standing -> percent). It needs the `time` model's city, which says whose
@@ -1652,10 +1650,11 @@ class Market:
         self.recipes = recipes
         self.prices = prices
         self.books = books or {}
-        self.sell_depth = sell_depth or {}
         self.ah_open = ah_open
         self.sell_prices = prices if sell_prices is None else sell_prices
         self.disenchant = disenchant or []
+        # what disenchanting yields: counted on to sell on the AH, gate or not (`sells_on_ah`)
+        self.materials = frozenset(d.result_item_id for d in self.disenchant)
         self.arcane_salvager = arcane_salvager
         self.ah_cut = ah_cut
         self.crafters = crafters
@@ -1729,17 +1728,12 @@ class Market:
         rolls = 1 + ARCANE_SALVAGER_BONUS if self.arcane_salvager else 1
         return rolls * d.chance * (d.min_count + d.max_count) / 2
 
-    def _sells_on_ah(self, item_id: int) -> bool:
-        """Whether the item's AH sale counts (`ah_open`)."""
-        return self.ah_open is None or item_id in self.ah_open
+    def sells_on_ah(self, item_id: int) -> bool:
+        """Whether the item's AH sale counts: a disenchant material's always, else per `ah_open`."""
+        return self.ah_open is None or item_id in self.ah_open or item_id in self.materials
 
     def _expected(self, d: DisenchantRow) -> float | None:
-        """Expected net AH copper from one disenchant row; None if its result is unpriced. A result whose
-        AH sale doesn't count yet is worth what a vendor pays for it."""
-        if not self._sells_on_ah(d.result_item_id):
-            material = self.items.get(d.result_item_id)
-            vendor = material.sell_price if material is not None else 0
-            return self._units(d) * vendor if vendor else None
+        """Expected net AH copper from one disenchant row; None if its result is unpriced."""
         price = self.sell_prices.get(d.result_item_id)
         if price is None:
             return None
@@ -1764,24 +1758,6 @@ class Market:
             )
         return out
 
-    def _disenchant_shortfall(self, item_id: int, units: float) -> float:
-        """What disenchanting `units` of the item brings less than `disenchant_value` per unit counts on: a
-        material's units past what its market has shown it takes (`sell_depth`) sell to a vendor instead."""
-        item = self.items.get(item_id)
-        if item is None or not self.sell_depth:
-            return 0.0
-        short = 0.0
-        for d in self._disenchant_rows(item):
-            depth = self.sell_depth.get(d.result_item_id)
-            price = self.sell_prices.get(d.result_item_id)
-            made = units * self._units(d)
-            if depth is None or price is None or made <= depth or not self._sells_on_ah(d.result_item_id):
-                continue
-            material = self.items.get(d.result_item_id)
-            vendor = material.sell_price if material is not None else 0
-            short += (made - depth) * max(0.0, ah_net(price, self.ah_cut) - vendor)
-        return short
-
     def disenchant_value(self, item: Item) -> int | None:
         """Expected net AH value of disenchanting one item; None if not applicable/unpriced."""
         total = sum(v for d in self._disenchant_rows(item) if (v := self._expected(d)) is not None)
@@ -1798,7 +1774,7 @@ class Market:
             item_id in self.sell_prices
             and item_id not in self.no_ah
             and item.tradable
-            and self._sells_on_ah(item_id)
+            and self.sells_on_ah(item_id)
         ):
             out.append(Exit("ah", ah_net(self.sell_prices[item_id], self.ah_cut)))
         de = self.disenchant_value(item)
@@ -2274,10 +2250,6 @@ class Market:
                 postage = mail if exit.postage else 0
                 units = recipe.output_count * n + bonus
                 revenue = round(exit.value * units)
-                if exit.kind == "disenchant":
-                    revenue = round(
-                        exit.value * units - self._disenchant_shortfall(recipe.output_item_id, units)
-                    )
                 sell_act, sell_est = self._sell_seconds(exit, recipe.output_item_id, tree.made)
                 seconds = tree.seconds + sell_est + (mail_est if exit.postage else 0.0)
                 had = by_exit.get(exit.kind)

@@ -113,7 +113,7 @@ def _record_book(
     daily = []
     hours = {}
     moved = 0
-    vendor = prices.vendor_prices(conn, auction_house_id, list(ladders))
+    vendor = prices.ask_caps(conn, auction_house_id, list(ladders))
     for item_id, ladder in sorted(ladders.items()):
         row = rows.get(item_id)
         if row is not None and row.seen_at > at:

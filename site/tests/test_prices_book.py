@@ -258,6 +258,48 @@ def test_first_party_prices_ignore_other_sources(conn: Connection) -> None:
     assert set(prices.load_buy_and_sell(conn, ah)[0]) == {ORE, EARTH, BAR}
 
 
+DREAM, CHARM = 11176, 4000  # Dream Dust (a disenchant material) and a trinket, each 1c at a vendor
+
+
+def materials(conn: Connection) -> None:
+    for item_id, name in ((DREAM, "Dream Dust"), (CHARM, "Lucky Charm")):
+        conn.execute(schema.items.insert().values(game_version=FOREVER, id=item_id, name=name, sell_price=1))
+    conn.execute(
+        schema.disenchant.insert().values(
+            game_version=FOREVER,
+            item_class=4,
+            quality=2,
+            min_ilvl=46,
+            max_ilvl=50,
+            result_item_id=DREAM,
+            chance=0.75,
+            min_count=1,
+            max_count=2,
+        )
+    )
+
+
+def test_a_disenchant_materials_ask_is_not_held_to_its_token_vendor_price(conn: Connection) -> None:
+    materials(conn)
+    ah = house(conn)
+    prices.record_book(conn, ah, scan({DREAM: ladder((9600, 42)), CHARM: ladder((9600, 42))}))
+    assert prices.daily(conn, ah, DREAM)[0][1:3] == (9600, 9600)
+    assert prices.daily(conn, ah, CHARM)[0][1:3] == (100, 100)  # 100x the vendor's 1c, as ever
+
+
+def test_a_disenchant_material_sells_at_its_market_price(conn: Connection) -> None:
+    materials(conn)
+    ah = house(conn)
+    prices.record_book(conn, ah, scan({DREAM: ladder((9500, 5), (9600, 42)), CHARM: ladder((9600, 42))}))
+    pc = schema.price_current
+    # a history held down by the old cap
+    conn.execute(pc.update().where(pc.c.auction_house_id == ah).values(median_7d=100, ewma_24h=100))
+    _, sell = prices.load_buy_and_sell(conn, ah, first_party=True)
+    assert sell[DREAM] == 9600  # 15% into the listed units
+    assert sell[CHARM] == 100
+    assert prices.disenchant_materials(conn, ah) == frozenset({DREAM})
+
+
 def test_demand_is_sales_seen_and_ahead_is_what_is_listed_at_or_under_a_price() -> None:
     ladder = (Level(100, 5, 1), Level(150, 10, 1))
     listing = prices.Listing(100, 15, ladder, sale_rate=2.0, source=prices.BLIZZARD)

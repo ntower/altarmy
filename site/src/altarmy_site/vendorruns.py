@@ -6,7 +6,7 @@
 - Bought from a vendor, sold on the AH (`resells`): what spawned vendors sell (`vendor_offers.csv`, from
   vmangos: `vmangos.vendor_offers`) for less than the AH pays after its cut and the deposit, for as many
   units as a limited vendor stocks, else a share of what the market takes in a day, posted in the stack size
-  that sold best; only items whose AH sale counts (`Market.ah_open`).
+  that sold best; only items whose AH sale counts (`Market.sells_on_ah`).
 
 Pure apart from reading the offers file (once per file, as `processing` does).
 """
@@ -142,7 +142,7 @@ def resells(
         price = market.sell_prices.get(o.item_id)
         if item is None or not item.tradable or cost is None or cost <= 0 or price is None:
             continue
-        if market.ah_open is not None and o.item_id not in market.ah_open:
+        if not market.sells_on_ah(o.item_id):
             continue
         listing = listings.get(o.item_id)
         stack = min(prices.best_stack(listing) or 1, item.stack_size) if listing is not None else 1

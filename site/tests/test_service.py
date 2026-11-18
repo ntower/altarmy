@@ -898,7 +898,7 @@ def test_likely_profit_is_the_better_of_playing_it_safe_and_the_auction_house() 
         assert service.likely(r, {10: listing}, 1000).profit == max(sale.profit, safe[1])
 
 
-def test_an_essence_conversion_sells_like_any_auction_sale() -> None:
+def test_an_essence_conversion_counts_on_every_essence_selling() -> None:
     convert = engine.Recipe(1_000_000_001, "Greater Essence", 2, 1, ((1, 3),), "", kind="convert")
     assert convert.is_conversion
     sale = engine.Result(convert, 300, 1000, "ah", engine.Node(2, "Greater Essence", 1, 300))
@@ -906,10 +906,10 @@ def test_an_essence_conversion_sells_like_any_auction_sale() -> None:
     sale.exits = [engine.Exit("ah", 950)]
     deep = prices.Listing(1000, 0, (), 1.0, "altarmy", True, sale_price=1000)
     thin = prices.Listing(1000, 0, (), 0.0, "altarmy", True, sale_price=1000)
-    # its essences sell only as fast as their market takes them, as anything else on the AH
-    assert service.ah_sale(sale, {2: deep}, 1000) == service.AhSale(700, 7, 0)
-    assert service.ah_sale(sale, {2: thin}, 1000) == service.AhSale(700 - 950, 0, 1)
-    assert service.likely(sale, {2: thin}, 1000) == service.Likely(700 - 950, "ah", 0, 1)
+    # essences are enchanting materials: counted on to sell, however thin their market looks
+    assert service.ah_sale(sale, {2: deep}, 1000) == service.AhSale(700, 0, 0)
+    assert service.ah_sale(sale, {2: thin}, 1000) == service.AhSale(700, 0, 0)
+    assert service.likely(sale, {2: thin}, 1000) == service.Likely(700, "ah", 0, 0)
     assert service.safe_profit(sale) is None  # nothing but the AH: never safe
 
 
@@ -1651,6 +1651,15 @@ def test_inputs_whose_auction_sale_does_not_count_are_valued_at_a_vendor() -> No
     # a market that has shown it takes 4: the rest go to a vendor
     shallow = prices.Listing(60, 4, (book.Level(60, 4, 4),), 0.0, prices.BLIZZARD, True)
     assert service.sell_value(BAR, 10, {BAR: shallow}, market) == 4 * engine.ah_net(200) + 6 * 10
+
+
+def test_a_disenchant_material_sells_on_the_ah_gate_or_depth_or_not() -> None:
+    dust = 40
+    items = {dust: engine.Item(dust, "Vision Dust", sell_price=1)}
+    rows = [engine.DisenchantRow(4, 2, 36, 40, dust, 0.75, 1, 2)]
+    market = engine.Market(items, [], {}, rows, sell_prices={dust: 1100}, ah_open=frozenset())
+    shallow = prices.Listing(1100, 4, (book.Level(1100, 4, 4),), 0.0, prices.ALTARMY, True)
+    assert service.sell_value(dust, 10, {dust: shallow}, market) == 10 * engine.ah_net(1100)
 
 
 def test_essence_tiers_say_which_way_converting_pays() -> None:

@@ -628,6 +628,29 @@ def trusted_ask(ask: int, sale_price: int | None, vendor: int | None) -> int:
     return ask
 
 
+def disenchant_materials(conn: Connection, auction_house_id: int | None) -> frozenset[int]:
+    """What disenchanting yields in the house's game version: enchanting materials, counted on to sell
+    (`engine.Market.materials`)."""
+    if auction_house_id is None:
+        return frozenset()
+    ah, d = schema.auction_houses, schema.disenchant
+    return frozenset(
+        conn.execute(
+            select(d.c.result_item_id)
+            .join(ah, ah.c.game_version == d.c.game_version)
+            .where(ah.c.id == auction_house_id)
+            .distinct()
+        ).scalars()
+    )
+
+
+def ask_caps(conn: Connection, auction_house_id: int, item_ids: Sequence[int]) -> dict[int, int]:
+    """{item_id: what a vendor pays} as `trusted_ask` holds asks to it: not for a disenchant material, which
+    a vendor takes for a token copper (an ask there is trusted as far as its sales say)."""
+    materials = disenchant_materials(conn, auction_house_id)
+    return {i: p for i, p in vendor_prices(conn, auction_house_id, item_ids).items() if i not in materials}
+
+
 def vendor_prices(conn: Connection, auction_house_id: int, item_ids: Sequence[int]) -> dict[int, int]:
     """{item_id: what a vendor pays} for the house's game version, items a vendor buys only."""
     if not item_ids:
@@ -755,7 +778,7 @@ def record_book(
     news: list[dict[str, object]] = []
     daily_rows = []
     sales: dict[int, book.Sold] = {}
-    vendor = vendor_prices(conn, auction_house_id, list(scan.items))
+    vendor = ask_caps(conn, auction_house_id, list(scan.items))
     for item_id, ladder in sorted(scan.items.items()):
         row = rows.get(item_id)
         if not ladder or (row is not None and row.seen_at > at):
@@ -1132,7 +1155,8 @@ def load_buy_and_sell(
 
     With `first_party` only Alt Army's scans and hand-set prices are read. A scanned item's buy price is
     its cheapest level worth counting on (`load_books`; none if it is not listed: it cannot be bought) and
-    its sell price `book_sell_price`."""
+    its sell price `book_sell_price`, except a disenchant material's while listed: its market price, since
+    enchanting materials are counted on to sell at what is asked (`disenchant_materials`)."""
     if auction_house_id is None:
         return {}, {}
     pc, snap = schema.price_current, schema.price_snapshots
@@ -1145,12 +1169,17 @@ def load_buy_and_sell(
     buy: dict[int, int] = {}
     sell: dict[int, int] = {}
     books = load_books(conn, auction_house_id) if first_party else {}
+    materials = disenchant_materials(conn, auction_house_id) if first_party else frozenset()
     for r in rows:
         if first_party and r.source in SCANNED:
             if r.item_id in books:
                 buy[r.item_id] = books[r.item_id][0].price
             market = r.price if r.market_price is None else r.market_price
-            sell[r.item_id] = book_sell_price(market, bool(r.listed), r.median_7d, r.sale_price, r.ewma_24h)
+            sell[r.item_id] = (
+                market
+                if r.item_id in materials and r.listed
+                else book_sell_price(market, bool(r.listed), r.median_7d, r.sale_price, r.ewma_24h)
+            )
         elif not first_party or r.source in HAND_SET:
             buy[r.item_id] = r.price
             sell[r.item_id] = sell_price(r.price, r.median_7d, r.source)
