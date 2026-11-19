@@ -391,6 +391,77 @@ describe("ItemUsability", function()
         }
     end)
 
+    describe("IsBindOnPickup from GetItemInfo's bindType", function()
+        local savedGetItemInfo, savedCreateFrame
+
+        before_each(function()
+            savedGetItemInfo = _G.GetItemInfo
+            savedCreateFrame = _G.CreateFrame
+            -- A scan tooltip that never fills (what Forever's hidden scan tooltips return).
+            _G.CreateFrame = function(frameType)
+                if frameType == "GameTooltip" then
+                    return {
+                        SetOwner = function() end,
+                        ClearLines = function() end,
+                        SetHyperlink = function() end,
+                        NumLines = function() return 0 end,
+                    }
+                end
+                return {}
+            end
+            _G.UIParent = _G.UIParent or {}
+        end)
+
+        after_each(function()
+            _G.GetItemInfo = savedGetItemInfo
+            _G.CreateFrame = savedCreateFrame
+            package.loaded["ItemUsability"] = nil
+            require("ItemUsability")
+        end)
+
+        local function withBindType(bindType)
+            _G.GetItemInfo = function()
+                return "Cremation Longbow", "|Hitem:275441|h", 2, 57, 52, "Weapon", "Bows", 1,
+                    "INVTYPE_RANGED", 0, 0, 2, 2, bindType
+            end
+            package.loaded["ItemUsability"] = nil
+            require("ItemUsability")
+            return AltArmy.ItemUsability
+        end
+
+        it("is true for bind on pickup (1) when the tooltip has no lines", function()
+            assert.is_true(withBindType(1).IsBindOnPickup("|Hitem:275441::::::::57:1482::11|h[Cremation Longbow]|h"))
+        end)
+
+        it("is true for quest items (4)", function()
+            assert.is_true(withBindType(4).IsBindOnPickup("|Hitem:275441|h[x]|h"))
+        end)
+
+        it("is false for bind on equip (2) and unbound (0)", function()
+            assert.is_false(withBindType(2).IsBindOnPickup("|Hitem:275441|h[x]|h"))
+            assert.is_false(withBindType(0).IsBindOnPickup("|Hitem:275441|h[x]|h"))
+        end)
+
+        it("re-owns the scan tooltip before every scan", function()
+            local owned = 0
+            _G.CreateFrame = function(frameType)
+                if frameType == "GameTooltip" then
+                    return {
+                        SetOwner = function() owned = owned + 1 end,
+                        ClearLines = function() end,
+                        SetHyperlink = function() end,
+                        NumLines = function() return 0 end,
+                    }
+                end
+                return {}
+            end
+            local iu = withBindType(nil)
+            iu.IsBindOnPickup("|Hitem:1:0|h[Cloth Hood]|h")
+            iu.IsBindOnPickup("|Hitem:1:0|h[Cloth Hood]|h")
+            assert.is_true(owned >= 2)
+        end)
+    end)
+
     it("GetEquipWarnings soulbound message uses current character name when available", function()
         _G.CreateFrame = function(frameType)
             if frameType == "GameTooltip" then

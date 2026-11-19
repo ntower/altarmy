@@ -792,15 +792,27 @@ local function getScanTooltip()
     if scanTooltip then return scanTooltip end
     if not CreateFrame then return nil end
     scanTooltip = CreateFrame("GameTooltip", "AltArmyTBC_ItemUsabilityScanTooltip", UIParent, "GameTooltipTemplate")
-    scanTooltip:SetOwner(UIParent, "ANCHOR_NONE")
     return scanTooltip
 end
 
---- True when tooltip shows bind-on-pickup or quest item (not valid for item check / loot alerts).
+-- GetItemInfo's 14th return (ItemSparse Bonding): 1 bind on pickup, 4 quest item.
+local BIND_ON_PICKUP, BIND_QUEST = 1, 4
+
+--- True for a bind-on-pickup or quest item (not valid for item check / loot alerts).
+--- GetItemInfo's bindType decides once the item is cached: on Forever a hidden scan tooltip can come back
+--- with no lines, which read as "not bound" and let a BoP quest reward alert for alts. The tooltip is
+--- the fallback for an uncached item, re-owned on every scan (a tooltip that hid has lost its owner).
 function IU.IsBindOnPickup(link)
     if not link then return false end
+    if hasItemInfoApi() then
+        local name, _, _, _, _, _, _, _, _, _, _, _, _, bindType = compatGetItemInfo(link)
+        if name and bindType ~= nil then
+            return bindType == BIND_ON_PICKUP or bindType == BIND_QUEST
+        end
+    end
     local tip = getScanTooltip()
     if not tip or not tip.SetHyperlink then return false end
+    if tip.SetOwner then tip:SetOwner(UIParent, "ANCHOR_NONE") end
     tip:ClearLines()
     tip:SetHyperlink(link)
     for i = 1, tip:NumLines() do
