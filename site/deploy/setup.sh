@@ -159,9 +159,15 @@ wif_repo() { # the provider admits GITHUB_REPO alone, and only its workflows may
   echo "  $GITHUB_REPO may deploy"
 }
 
-schedule() { # schedule NAME CRON: run the Cloud Run job NAME on CRON (UTC); skipped if it exists
-  if gcloud scheduler jobs describe "$1" --location "$REGION" "${G[@]}" >/dev/null 2>&1; then
-    echo "schedule $1 exists"
+schedule() { # schedule NAME CRON: run the Cloud Run job NAME on CRON (UTC); an existing one moved to CRON
+  local now
+  if now=$(gcloud scheduler jobs describe "$1" --location "$REGION" --format "value(schedule)" "${G[@]}" 2>/dev/null); then
+    if [ "$now" = "$2" ]; then
+      echo "schedule $1 exists ($2)"
+    else
+      echo "schedule $1: $now -> $2"
+      gcloud scheduler jobs update http "$1" --location "$REGION" --schedule "$2" "${G[@]}"
+    fi
     return
   fi
   gcloud scheduler jobs create http "$1" --location "$REGION" --schedule "$2" --time-zone Etc/UTC \
@@ -179,9 +185,12 @@ scheduler() { # scheduler prod|staging: the same cadence (jobs.CADENCE); staging
   schedule "$JOB_PREFIX-ingest-forever" "$((15 + m)) 9 * * *"
   schedule "$JOB_PREFIX-prune" "$((0 + m)) 10 * * *"
   schedule "$JOB_PREFIX-merge" "$((30 + m)) * * * *" # hourly: daily medians and 7-day price statistics
-  # hourly, after Blizzard refreshes Forever's houses (about :25) and the merge; only once deploy.sh made it
+  # hourly at :32: Blizzard refreshes Forever's houses once an hour, at :23-:28 when measured on 2026-11-19
+  # (Last-Modified, polled every 5 min), so :32 records each refresh within about 5-10 minutes with a few
+  # minutes' margin; a refresh later than that is only an hour late (the run gets a 304, the next records it).
+  # It runs just after the :30 merge, so the merge reads the previous hour's snapshot. Only once deploy.sh made it.
   if gcloud run jobs describe "$JOB_PREFIX-feed-forever" --region "$REGION" "${G[@]}" >/dev/null 2>&1; then
-    schedule "$JOB_PREFIX-feed-forever" "$((40 + m)) * * * *"
+    schedule "$JOB_PREFIX-feed-forever" "$((32 + m)) * * * *"
   else
     echo "no $JOB_PREFIX-feed-forever job yet (setup.sh blizzard $1, then a deploy): not scheduled"
   fi
