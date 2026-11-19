@@ -54,6 +54,13 @@ class RealmSpec:
     open: bool = True  # False until the realm opens (Hardcore, a couple of months after launch)
     region: str = ""  # a `REGIONS` key, whose realm names it takes (`GameVersion.coalesced_realms`)
     ruleset: str = ""  # a `RULESETS` key
+    # (faction, Blizzard auction house id) of the houses the hourly feed polls (`BLIZZARD_HOUSES`)
+    blizzard_houses: tuple[tuple[str, int], ...] = ()
+
+    @property
+    def api_region(self) -> str:
+        """The Battle.net API region its houses are served from ("us"), or "" for none."""
+        return API_REGIONS.get(self.region, "")
 
 
 # WoW: Forever's mega-server names its realms "<cluster> <region><shard> Realm <n> <ruleset>" ("CAMWOW US2
@@ -76,6 +83,19 @@ RULESETS = (
 )
 
 
+# The Battle.net API region (`dynamic-forever-<region>`) each `REGIONS` key's houses are served from
+API_REGIONS = {"americas": "us", "europe": "eu"}
+# Which of Blizzard's Forever auction houses is which realm's, by (region, ruleset): (faction, house id).
+# The API numbers a region's houses 110-125 in Alliance/Horde/Blackwater triples and lists all of them
+# under every ruleset, never saying whose they are. Americas Normal is 111/114 (outof.games lists them),
+# PvP the other large pair, 110/113 (inferred); RP and RP-PvP (119/120, 123/124, which is which unknown)
+# and Europe wait for `altarmy-site feed-match` against a fresh scan. Blackwater houses are left out.
+BLIZZARD_HOUSES: dict[tuple[str, str], tuple[tuple[str, int], ...]] = {
+    ("americas", "normal"): (("Alliance", 111), ("Horde", 114)),
+    ("americas", "pvp"): (("Alliance", 110), ("Horde", 113)),
+}
+
+
 def regional_realms() -> tuple[RealmSpec, ...]:
     """A fixed realm per region and ruleset ("Americas Normal"), the regions in `REGIONS`' order."""
     return tuple(
@@ -86,6 +106,7 @@ def regional_realms() -> tuple[RealmSpec, ...]:
             open=is_open,
             region=region,
             ruleset=ruleset,
+            blizzard_houses=BLIZZARD_HOUSES.get((region, ruleset), ()),
         )
         for region, rlabel, _ in REGIONS
         for ruleset, slabel, _, is_open in RULESETS

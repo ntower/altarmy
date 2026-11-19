@@ -418,6 +418,21 @@ Still to check by hand:
   the index. Forever has no namespace. So a Blizzard poller has nothing to read for now; rerun
   `scripts/probe_blizzard_api.py` (it needs `BLIZZARD_CLIENT_ID` and `BLIZZARD_CLIENT_SECRET`) to see
   whether that changes.
+- **Blizzard API for Forever** (live since about 2026-11-06; checked 2026-11-19, `probe_blizzard_api.py
+  --forever`). `dynamic-forever-us` and `-eu` have no connected realms (404). `/data/wow/ruleset/index`
+  lists 1 PvP, 2 Normal, 3 Roleplay and 15 Roleplay PvP. Every ruleset's `auctions/` (with the trailing
+  slash) lists the same 15 houses, 110-121 and 123-125, as Alliance, Horde and Blackwater triples, and a
+  house's body is the same whatever ruleset is in the path. So the API never says which realm a house is.
+  By size, per region: 110/113/116 and 111/114/117 are large (about 100k auctions per faction house in
+  the US, 150k in the EU), 119/120/121 and 123/124/125 small (about 20k), 112/115/118 empty (Hardcore, not
+  open, presumably). outof.games lists US Normal as 111/114/117; PvP is then 110/113 (inferred). Which
+  small triple is RP and which RP-PvP is unknown: `altarmy-site feed-match` against a fresh scan tells.
+  Listings (`auctions/<id>`, about 10 MB) carry a stack `buyout`, `quantity` and `time_left`;
+  commodities (`auctions/<id>/commodities`, about 6.5 MB) a `unit_price`. The two share no auction id and
+  no item. Both carry the same `Last-Modified` (about :25 in the US, :23 in the EU), and
+  `If-Modified-Since` answers 304. About 58% of the item ids sampled 404 in `static-forever-us`, which
+  doesn't matter: items come from the pinned game data. One snapshot of a large house is 1.3 MB as
+  `archive.encode_auctions` stores it, and its live-auction state 1.4 MB.
 - **Output counts.** TBC's data says the Major protection potions make 5 per craft; confirm one in game.
 - **Price outliers** (addressed in Phase 6). TBC rankings surfaced single overpriced listings (a 49s gem
   "selling" for 333g). Crafts now sell at the lower of the current price and the 7-day median; see section 8.

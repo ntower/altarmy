@@ -5,16 +5,16 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from sqlalchemy import Connection, select
 
-from altarmy_site import book, cli, db, feed, merge, prices, schema, snapshots, uploads, versions
+from altarmy_site import blizzard, book, cli, db, feed, merge, prices, schema, snapshots, uploads, versions
 
 from .conftest import FOREVER as FOREVER_KEY
 from .conftest import ME
-from .snapshot_fixtures import FOREVER, HOUR, T0, auction, snap
+from .snapshot_fixtures import FOREVER, HOUR, T0, auction, body, snap
 
 ORE, BAR = 2770, 2840
 
@@ -410,3 +410,134 @@ def test_feed_load_records_saved_snapshots_an_hour_apart(
         ).scalar_one()
         assert high < 99_999_990_000  # the troll never reached the day's figures
     database.dispose()
+
+
+# --- the hourly poll (`feed.poll`, `altarmy-site feed`) and house matching ----------------------------
+NORMAL = versions.RealmSpec(
+    "americas-normal",
+    "Americas Normal",
+    "Americas Normal",
+    region="americas",
+    ruleset="normal",
+    blizzard_houses=(("Alliance", 111), ("Horde", 114)),
+)
+
+
+class FakeClient:
+    """Serves each house's answers in turn: a House, None (nothing new) or an exception to raise."""
+
+    def __init__(self, answers: dict[int, list[blizzard.House | None | Exception]]) -> None:
+        self.answers = answers
+        self.asked: list[tuple[int, int | None]] = []
+
+    def house(self, house_id: int, since: int | None = None) -> blizzard.House | None:
+        self.asked.append((house_id, since))
+        got = self.answers[house_id].pop(0)
+        if isinstance(got, Exception):
+            raise got
+        return got
+
+
+def served(t: int, *auctions: dict[str, Any], commodities: tuple[dict[str, Any], ...] = ()) -> blizzard.House:
+    return blizzard.House(t, body(*auctions), body(*commodities))
+
+
+def poll(database: db.Database, client: FakeClient, *realms: versions.RealmSpec) -> list[feed.Polled]:
+    version = replace(FOREVER, realms=realms or (NORMAL,))
+    return feed.poll(database, version, lambda region: cast(blizzard.Client, client))
+
+
+def test_a_poll_records_each_mapped_house_and_asks_only_for_whats_new(database: db.Database) -> None:
+    client = FakeClient(
+        {
+            111: [served(T0, auction(1, ORE, unit=64), commodities=(auction(2, BAR, unit=200),)), None],
+            114: [served(T0, auction(5, ORE, unit=70)), served(T0 + HOUR, auction(6, ORE, unit=71))],
+        }
+    )
+    first = poll(database, client)
+    assert [(p.faction, p.house_id, p.recorded and p.recorded.items) for p in first] == [
+        ("Alliance", 111, 2),  # listings and commodities alike
+        ("Horde", 114, 1),
+    ]
+    second = poll(database, client)
+    assert client.asked[2:] == [(111, T0), (114, T0)]  # since each house's last snapshot
+    alliance, horde = second
+    assert alliance.recorded is None and alliance.error is None  # nothing new
+    assert horde.recorded is not None and (horde.recorded.ended, horde.recorded.posted) == (1, 1)
+    with database.begin() as conn:
+        ah = prices.find_auction_house(conn, FOREVER_KEY, "Americas Normal", "Alliance")
+        assert ah is not None and current(conn, ah)[BAR][0] == 200
+
+
+def test_a_house_that_fails_leaves_the_others_recorded(database: db.Database) -> None:
+    client = FakeClient(
+        {111: [blizzard.FeedError("/auctions/111: 503")], 114: [blizzard.House(T0, b"[]", body())]}
+    )
+    alliance, horde = poll(database, client)
+    assert alliance.error == "/auctions/111: 503" and alliance.recorded is None
+    assert horde.error is not None and "not an object" in horde.error  # a malformed body: a ValueError
+
+
+def test_unmapped_and_unopened_realms_are_not_polled(database: db.Database) -> None:
+    unmapped = versions.RealmSpec(
+        "americas-rp", "Americas RP", "Americas RP", region="americas", ruleset="rp"
+    )
+    closed = replace(NORMAL, key="americas-hardcore", name="Americas Hardcore", open=False)
+    assert poll(database, FakeClient({}), unmapped, closed) == []
+
+
+def test_the_feed_job_records_its_run_and_fails_when_every_house_did(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    dbfile = str(tmp_path / "f.sqlite")
+    monkeypatch.setitem(versions.VERSIONS, FOREVER_KEY, replace(FOREVER, realms=(NORMAL,)))
+    client = FakeClient({111: [served(T0, auction(1, ORE, unit=64))], 114: [None]})
+    monkeypatch.setattr(blizzard, "from_env", lambda region: client)
+    cli.main(["--db", dbfile, "feed"])
+    out = capsys.readouterr().out
+    assert "Americas Normal Alliance (house 111): 1 items" in out
+    assert "Americas Normal Horde (house 114): nothing new" in out
+    failing = FakeClient({111: [blizzard.FeedError("x")], 114: [blizzard.FeedError("y")]})
+    monkeypatch.setattr(blizzard, "from_env", lambda region: failing)
+    with pytest.raises(SystemExit, match="Every one of the 2"):
+        cli.main(["--db", dbfile, "feed"])
+    database = db.Database(db.sqlite_url(dbfile))
+    with database.begin() as conn:
+        runs = conn.execute(
+            select(schema.job_runs.c.job, schema.job_runs.c.ok).order_by(schema.job_runs.c.id)
+        ).all()
+    database.dispose()
+    assert [tuple(r) for r in runs] == [("feed", True), ("feed", False)]
+
+
+def test_the_feed_job_needs_the_api_credentials(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(versions.VERSIONS, FOREVER_KEY, replace(FOREVER, realms=(NORMAL,)))
+    monkeypatch.setattr(blizzard, "from_env", lambda region: None)
+    with pytest.raises(SystemExit, match="BLIZZARD_CLIENT_ID"):
+        cli.main(["--db", str(tmp_path / "f.sqlite"), "feed"])
+
+
+def test_a_house_matches_the_scan_of_its_own_realm(conn: Connection) -> None:
+    ah = prices.auction_house(conn, FOREVER_KEY, "Americas Normal", "Horde")
+    scan = book.Scan(
+        T0,
+        "Americas Normal",
+        "Horde",
+        3,
+        0,
+        "own",
+        {ORE: (book.Level(64, 2, 2),), BAR: (book.Level(200, 1, 1),)},
+    )
+    prices.record_book(conn, ah, scan)
+    found = feed.newest_scan(conn, ah)
+    assert found is not None
+    t, ladders = found
+    assert t == T0 and [lv.price for lv in ladders[ORE]] == [64]
+    same = snap(T0 + 600, auction(1, ORE, unit=64), auction(2, ORE, unit=64), auction(3, BAR, unit=200))
+    other = snap(T0 + 600, auction(1, ORE, unit=90), auction(3, BAR, unit=210))
+    assert feed.match(ladders, same) == feed.Match(1.0, 1.0, 2)
+    assert feed.match(ladders, other) == feed.Match(0.0, 0.5, 2)  # bars within 25%, ore not
+
+
+def test_a_house_without_a_stored_scan_has_none_to_match(conn: Connection) -> None:
+    assert feed.newest_scan(conn, house(conn)) is None

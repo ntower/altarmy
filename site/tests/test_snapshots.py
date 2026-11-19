@@ -37,6 +37,36 @@ def test_reads_a_commodity_unit_price() -> None:
     assert s.auctions[0].unit_price == 40
 
 
+def test_a_house_serves_its_commodities_apart() -> None:
+    commodities = {
+        "auctions": [{"id": 9, "item": {"id": 2589}, "quantity": 5, "unit_price": 40, "time_left": "LONG"}]
+    }
+    s = snapshots.parse_blizzard(
+        body(auction(1, 2592, unit=300)),
+        t=T0,
+        realm="R",
+        faction="Alliance",
+        commodities=json.dumps(commodities).encode(),
+    )
+    assert [(a.id, a.item_id, a.unit_price) for a in s.auctions] == [(1, 2592, 300), (9, 2589, 40)]
+
+
+def test_an_auction_in_both_bodies_is_a_value_error() -> None:
+    with pytest.raises(ValueError, match="listed twice"):
+        snapshots.parse_blizzard(
+            body(auction(1, 2592, unit=300)),
+            t=T0,
+            realm="R",
+            faction="Alliance",
+            commodities=body(auction(1, 2589, unit=40)),
+        )
+
+
+def test_a_malformed_commodities_body_is_a_value_error() -> None:
+    with pytest.raises(ValueError):
+        snapshots.parse_blizzard(body(), t=T0, realm="R", faction="Horde", commodities=b"[]")
+
+
 def test_an_empty_house_has_no_auctions() -> None:
     assert snapshots.parse_blizzard(b"{}", t=T0, realm="R", faction="Horde").auctions == ()
 

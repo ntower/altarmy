@@ -24,6 +24,7 @@ CADENCE: dict[str, timedelta] = {
     "ingest": timedelta(days=1),
     "merge": timedelta(hours=1),
     "prune": timedelta(days=1),
+    "feed": timedelta(hours=1),
 }
 LATE_FACTOR = 2
 TIMEOUT = timedelta(minutes=30)  # a job's task timeout (deploy/deploy.sh): an unfinished run older died

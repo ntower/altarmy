@@ -111,9 +111,37 @@ class Tally:
 
 
 # --- reading ---------------------------------------------------------------------------------------
-def parse_blizzard(body: bytes, *, t: int, realm: str, faction: str, build: str | None = None) -> Snapshot:
-    """A snapshot from the body of Blizzard's connected-realm auctions endpoint. Auctions carry a stack
-    `buyout` (Classic) or a `unit_price` (commodities); either is kept per unit. ValueError if malformed."""
+def parse_blizzard(
+    body: bytes,
+    *,
+    t: int,
+    realm: str,
+    faction: str,
+    build: str | None = None,
+    commodities: bytes | None = None,
+) -> Snapshot:
+    """A snapshot from the body of Blizzard's auctions endpoint, plus, where the house serves them apart
+    (Forever: `auctions/<id>/commodities`), its commodities' body. Auctions carry a stack `buyout`
+    (Classic) or a `unit_price` (commodities); either is kept per unit. An auction listed twice, within a
+    body or across the two, is a ValueError, as is anything malformed."""
+    entries = _entries(body)
+    if commodities is not None:
+        entries = entries + _entries(commodities)
+    if len(entries) > MAX_AUCTIONS:
+        raise ValueError(f"more than {MAX_AUCTIONS} auctions in a snapshot")
+    seen: set[int] = set()
+    auctions = []
+    for entry in entries:
+        a = _auction(entry)
+        if a.id in seen:
+            raise ValueError(f"auction {a.id} is listed twice")
+        seen.add(a.id)
+        auctions.append(a)
+    return Snapshot(t, realm, faction, tuple(auctions), build)
+
+
+def _entries(body: bytes) -> list[object]:
+    """The `auctions` list of one body as served."""
     try:
         data = json.loads(body)
     except RecursionError as e:
@@ -127,15 +155,7 @@ def parse_blizzard(body: bytes, *, t: int, realm: str, faction: str, build: str 
         raise ValueError("the auction snapshot's auctions are not a list")
     if len(entries) > MAX_AUCTIONS:
         raise ValueError(f"more than {MAX_AUCTIONS} auctions in a snapshot")
-    seen: set[int] = set()
-    auctions = []
-    for entry in entries:
-        a = _auction(entry)
-        if a.id in seen:
-            raise ValueError(f"auction {a.id} is listed twice")
-        seen.add(a.id)
-        auctions.append(a)
-    return Snapshot(t, realm, faction, tuple(auctions), build)
+    return entries
 
 
 def _auction(entry: object) -> Auction:

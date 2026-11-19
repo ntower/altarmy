@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Deploy an image to an environment, in order:
-#   1. define the Cloud Run jobs with the new image (migrate, merge, ingest-tbc, ingest-forever, prune);
-#      `setup.sh scheduler ENV` schedules all but migrate
+#   1. define the Cloud Run jobs with the new image (migrate, merge, ingest-tbc, ingest-forever, prune, and
+#      feed-forever once `setup.sh blizzard ENV` made its secrets); `setup.sh scheduler ENV` schedules all
+#      but migrate
 #   2. run the migrate job and wait: migrations run once per deploy, before any new instance starts;
 #      skipped when no file under MIGRATIONS changed since the commit the service runs (below)
 #   3. deploy the Cloud Run service (its instances never migrate); prod: the Discord relay too, if
@@ -47,12 +48,16 @@ changed() { # changed PATHSPEC...: whether the checkout (untracked files too) di
 COMMON=(--image "$IMAGE" --region "$REGION" --service-account "$RUN_SA"
   --set-cloudsql-instances "$SQL_CONNECTION" --set-secrets "DATABASE_URL=$SECRET:latest")
 
-job() { # job NAME ARGS...: the CLI with ARGS, as a Cloud Run job
+job() { # job NAME ARGS...: the CLI with ARGS, as a Cloud Run job; JOB_SECRETS (NAME=SECRET:latest,...) adds secrets
   local name="$1"
   shift
   local args
   args="$(IFS=,; echo "$*")"
-  gcloud run jobs deploy "$name" "${COMMON[@]}" --command altarmy-site --args="$args" \
+  local run=("${COMMON[@]}")
+  if [ -n "${JOB_SECRETS:-}" ]; then
+    run=("${run[@]/#DATABASE_URL=$SECRET:latest/DATABASE_URL=$SECRET:latest,$JOB_SECRETS}")
+  fi
+  gcloud run jobs deploy "$name" "${run[@]}" --command altarmy-site --args="$args" \
     --memory 2Gi --cpu 1 --max-retries 1 --task-timeout 30m     --set-env-vars "$FIREBASE_VARS,DB_POOL_SIZE=1,DB_MAX_OVERFLOW=0" \
     "${GCLOUD_FLAGS[@]}"
 }
@@ -64,6 +69,14 @@ job "$JOB_PREFIX-ingest-tbc" --game-version tbc ingest --only-if-new --cache /tm
 job "$JOB_PREFIX-ingest-forever" --game-version forever ingest --only-if-new --cache /tmp/cache
 # archives the settled days to the bucket (setup.sh archive ENV), then drops what the archive holds
 job "$JOB_PREFIX-prune" prune --archive "gs://$ARCHIVE_BUCKET/"
+# the hourly Blizzard auction feed (blizzard.py), once setup.sh blizzard ENV has made its secrets; no
+# retries: the next hour's run asks again anyway
+if gcloud secrets describe "$BLIZZARD_KEY_SECRET" "${GCLOUD_FLAGS[@]}" >/dev/null 2>&1; then
+  JOB_SECRETS="BLIZZARD_CLIENT_ID=$BLIZZARD_ID_SECRET:latest,BLIZZARD_CLIENT_SECRET=$BLIZZARD_KEY_SECRET:latest" \
+    job "$JOB_PREFIX-feed-forever" --game-version forever feed
+else
+  echo "== $JOB_PREFIX-feed-forever: no $BLIZZARD_KEY_SECRET secret yet (setup.sh blizzard $ENV_NAME), skipped"
+fi
 
 if changed "${MIGRATIONS[@]}"; then
   echo "== migrate"

@@ -9,15 +9,22 @@ Per day `D` (`YYYY/MM/YYYY-MM-DD`):
 - `snapshots/D.jsonl.gz`: one line per snapshot scanned that day (any source, quarantined ones too):
   its house (`game_version`, `realm`, `faction`), `source`, `status`, `scanned_at`, `received_at`,
   `build`, `item_count`, `observations` (`[item, min_buyout, quantity, listings, market_price]`: the news
-  it brought) and its full scan when it had one (`snapshot_bodies`): `book` (an Alt Army scan: `listings`,
-  `bid_only`, `source`, `items`: `[{item, levels: [[price, units, listings, tail]]}]`) or `auctions` (a
-  feed snapshot: `[id, item, quantity, unit_price, bid, time_left]`). Who uploaded it is never written.
+  it brought) and an Alt Army scan's full scan (`snapshot_bodies`): `book` (`listings`, `bid_only`,
+  `source`, `items`: `[{item, levels: [[price, units, listings, tail]]}]`; None for a feed snapshot, whose
+  auctions are in `auctions/`). Who uploaded it is never written.
 - `price_daily/D.jsonl.gz`, `price_sales_daily/D.jsonl.gz`: the day's rows of those tables, with their
   house.
+- `auctions/D.jsonl.gz`: one line per hourly feed snapshot of the day (`feed.py`) with a body: its `id`
+  (the snapshot's, as in `snapshots/`), house, `status`, `scanned_at` and `auctions` (`[id, item,
+  quantity, unit_price, bid, time_left]`).
 
 A day is archived once SETTLED_DAYS have passed (an upload may carry a scan up to 30 days old, and the
 merge rewrites the last 30 days' daily rows), oldest first, each day's files written before
-`archive_progress` moves past it in the same transaction; writing a day again writes the same files.
+`archive_progress` moves past it in the same transaction; writing a day again writes the same files. The
+feed's auctions settle sooner and go on a track of their own (`run_auctions`, progress row `AUCTIONS`):
+a snapshot is recorded at the hour it stands for, so its day is done once it is over, and a large house's
+day of snapshots is about 30 MB, too much to keep in the database for SETTLED_DAYS. Archived after
+FEED_SETTLED_DAYS, its bodies are pruned then.
 """
 
 from __future__ import annotations
@@ -37,7 +44,9 @@ from sqlalchemy import Connection, func, select
 from . import book, db, schema, snapshots
 
 SETTLED_DAYS = 32  # a day this old changes no more (uploads.scan_time: at most 30 days back)
-PROGRESS = "days"  # archive_progress's one row
+FEED_SETTLED_DAYS = 2  # a day of feed snapshots this old changes no more (a late hourly run included)
+PROGRESS = "days"  # archive_progress's row for the days (`run`)
+AUCTIONS = "auctions"  # its row for the feed's auctions (`run_auctions`), and their files' folder
 TABLES = ("snapshots", "price_daily", "price_sales_daily")  # the files of a day
 
 
@@ -135,18 +144,19 @@ def sink_for(url: str) -> Sink:
 
 
 # --- progress ---------------------------------------------------------------------------------------
-def archived_through(conn: Connection) -> date | None:
-    """The last day the archive holds (every day up to it), or None before the first."""
+def archived_through(conn: Connection, track: str = PROGRESS) -> date | None:
+    """The last day the archive holds (every day up to it) on the track (`PROGRESS` or `AUCTIONS`), or None
+    before the first."""
     t = schema.archive_progress
-    through: date | None = conn.execute(select(t.c.through).where(t.c.name == PROGRESS)).scalar_one_or_none()
+    through: date | None = conn.execute(select(t.c.through).where(t.c.name == track)).scalar_one_or_none()
     return through
 
 
-def set_through(conn: Connection, day: date, now: datetime | None = None) -> None:
+def set_through(conn: Connection, day: date, now: datetime | None = None, track: str = PROGRESS) -> None:
     db.upsert(
         conn,
         schema.archive_progress,
-        [{"name": PROGRESS, "through": day, "updated_at": db.utc(now or db.utcnow())}],
+        [{"name": track, "through": day, "updated_at": db.utc(now or db.utcnow())}],
         ["name"],
         ["through", "updated_at"],
     )
@@ -158,6 +168,26 @@ def pending_days(conn: Connection, today: date) -> list[date]:
     last = today - timedelta(days=SETTLED_DAYS)
     through = archived_through(conn)
     first = through + timedelta(days=1) if through is not None else _oldest_day(conn)
+    if first is None or first > last:
+        return []
+    return [first + timedelta(days=n) for n in range((last - first).days + 1)]
+
+
+def pending_auction_days(conn: Connection, today: date) -> list[date]:
+    """The days of feed snapshots settled (FEED_SETTLED_DAYS) and not archived yet, oldest first: from the
+    day after the last archived, else from the oldest feed snapshot kept with its auctions."""
+    last = today - timedelta(days=FEED_SETTLED_DAYS)
+    through = archived_through(conn, AUCTIONS)
+    if through is not None:
+        first: date | None = through + timedelta(days=1)
+    else:
+        snap, bodies = schema.price_snapshots, schema.snapshot_bodies
+        oldest = conn.execute(
+            select(func.min(snap.c.scanned_at))
+            .join(bodies, bodies.c.snapshot_id == snap.c.id)
+            .where(bodies.c.format == AUCTIONS)
+        ).scalar_one_or_none()
+        first = None if oldest is None else db.utc(oldest).date()
     if first is None or first > last:
         return []
     return [first + timedelta(days=n) for n in range((last - first).days + 1)]
@@ -216,6 +246,40 @@ def run(database: db.Database, sink: Sink, today: date | None = None) -> list[Wr
     return written
 
 
+@dataclass(frozen=True)
+class WrittenAuctions:
+    day: date
+    snapshots: int
+
+
+def auctions_name(day: date) -> str:
+    """The day's file of feed auctions."""
+    return f"{AUCTIONS}/{day:%Y/%m}/{day.isoformat()}.jsonl.gz"
+
+
+def write_auctions_day(conn: Connection, sink: Sink, day: date) -> WrittenAuctions:
+    """Write the day's feed auctions (an empty file too) to the sink."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "auctions.jsonl.gz"
+        with gzip.open(path, "wt", encoding="utf-8") as out:
+            n = _write_lines(out, _auction_lines(conn, day))
+        sink.put(auctions_name(day), path)
+    return WrittenAuctions(day, n)
+
+
+def run_auctions(database: db.Database, sink: Sink, today: date | None = None) -> list[WrittenAuctions]:
+    """Archive every settled day of feed auctions not archived yet, oldest first, a transaction each."""
+    today = today or db.utcnow().date()
+    with database.begin() as conn:
+        days = pending_auction_days(conn, today)
+    written = []
+    for day in days:
+        with database.begin() as conn:
+            written.append(write_auctions_day(conn, sink, day))
+            set_through(conn, day, track=AUCTIONS)
+    return written
+
+
 def _write_lines(out: IO[str], rows: Iterable[dict[str, Any]]) -> int:
     n = 0
     for row in rows:
@@ -254,7 +318,7 @@ def _snapshot_lines(conn: Connection, day: date) -> Iterator[dict[str, Any]]:
             .order_by(obs.c.item_id)
         ).all()
         body = conn.execute(
-            select(bodies.c.format, bodies.c.body).where(bodies.c.snapshot_id == r.id)
+            select(bodies.c.body).where(bodies.c.snapshot_id == r.id, bodies.c.format == "book")
         ).one_or_none()
         line: dict[str, Any] = {
             "id": r.id,
@@ -268,15 +332,39 @@ def _snapshot_lines(conn: Connection, day: date) -> Iterator[dict[str, Any]]:
             "build": r.build,
             "item_count": r.item_count,
             "observations": [list(o) for o in observed],
-            "book": None,
-            "auctions": None,
+            "book": None if body is None else decode_book(body.body),
         }
-        if body is not None:
-            if body.format == "book":
-                line["book"] = decode_book(body.body)
-            else:
-                line["auctions"] = decode_auctions(body.body)
         yield line
+
+
+def _auction_lines(conn: Connection, day: date) -> Iterator[dict[str, Any]]:
+    snap, ah, bodies = schema.price_snapshots, schema.auction_houses, schema.snapshot_bodies
+    start, end = _bounds(day)
+    rows = conn.execute(
+        select(
+            snap.c.id,
+            snap.c.status,
+            snap.c.scanned_at,
+            ah.c.game_version,
+            ah.c.realm,
+            ah.c.faction,
+            bodies.c.body,
+        )
+        .join(ah, ah.c.id == snap.c.auction_house_id)
+        .join(bodies, bodies.c.snapshot_id == snap.c.id)
+        .where(snap.c.scanned_at >= start, snap.c.scanned_at < end, bodies.c.format == AUCTIONS)
+        .order_by(snap.c.id)
+    )
+    for r in rows:
+        yield {
+            "id": r.id,
+            "game_version": r.game_version,
+            "realm": r.realm,
+            "faction": r.faction,
+            "status": r.status,
+            "scanned_at": r.scanned_at,
+            "auctions": decode_auctions(r.body),
+        }
 
 
 def _daily_lines(conn: Connection, table: str, day: date) -> Iterator[dict[str, Any]]:

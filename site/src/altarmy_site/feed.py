@@ -11,18 +11,26 @@ unlisted), `price_hourly` (the hour's slot), `price_daily` (low, high, available
 (units bought and what they went for, units pulled, and the auction counts), `auction_ends_daily` (how
 the auctions ended by hours up, for time to sell) and the house's state. No `price_observations`:
 `price_hourly` is the feed's history.
+
+`poll` is the hourly job (`altarmy-site feed`): every open fixed realm's mapped houses
+(`RealmSpec.blizzard_houses`) fetched with `blizzard.Client` and recorded, each in a transaction of its own,
+so one house that fails leaves the others recorded.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import gzip
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
 from sqlalchemy import Connection, select
 
-from . import archive, book, db, prices, schema, snapshots
+from . import archive, blizzard, book, db, prices, schema, snapshots
 from .versions import GameVersion
+
+CLOSE = 1.25  # `match`: an item's cheapest prices within this factor of each other agree
+FEED_ALERT = "feed-house-failed"  # the `Run.warn` tag of a house the hourly feed could not record
 
 
 @dataclass(frozen=True)
@@ -41,6 +49,109 @@ def load_state(conn: Connection, auction_house_id: int) -> snapshots.HouseState 
     t = schema.auction_state
     body = conn.execute(select(t.c.body).where(t.c.auction_house_id == auction_house_id)).scalar_one_or_none()
     return None if body is None else snapshots.decode_state(body)
+
+
+def state_time(conn: Connection, auction_house_id: int) -> int | None:
+    """When the house's newest recorded snapshot stands for (Unix seconds); None before the first."""
+    t = schema.auction_state
+    found = conn.execute(select(t.c.t).where(t.c.auction_house_id == auction_house_id)).scalar_one_or_none()
+    return None if found is None else int(db.utc(found).timestamp())
+
+
+@dataclass(frozen=True)
+class Polled:
+    """One mapped house's poll."""
+
+    realm: str  # the fixed realm's name
+    faction: str
+    house_id: int  # Blizzard's
+    auction_house_id: int  # ours
+    recorded: FeedRecorded | None = None  # None: nothing new since the last snapshot (or it failed)
+    error: str | None = None  # why it could not be fetched or read
+
+
+def poll(
+    database: db.Database, version: GameVersion, client_for: Callable[[str], blizzard.Client]
+) -> list[Polled]:
+    """Fetch and record every open fixed realm's mapped houses (see the module docstring); `client_for`
+    gives the API client of a region ("us"). A house that can't be fetched or read is a `Polled.error`."""
+    out: list[Polled] = []
+    for spec in version.realms:
+        if not spec.open or not spec.blizzard_houses or not spec.api_region:
+            continue
+        client = client_for(spec.api_region)
+        for faction, house_id in spec.blizzard_houses:
+            with database.begin() as conn:
+                ah = prices.auction_house(conn, version.key, spec.name, faction)
+                since = state_time(conn, ah)
+            polled = Polled(spec.name, faction, house_id, ah)
+            try:
+                house = client.house(house_id, since)
+                if house is None:
+                    out.append(polled)
+                    continue
+                snap = snapshots.parse_blizzard(
+                    house.listings, t=house.t, realm=spec.name, faction=faction, commodities=house.commodities
+                )
+            except (blizzard.FeedError, ValueError) as e:
+                out.append(Polled(spec.name, faction, house_id, ah, error=str(e)))
+                continue
+            with database.begin() as conn:
+                recorded = record_auction_snapshot(conn, ah, snap, version)
+            out.append(Polled(spec.name, faction, house_id, ah, recorded))
+    return out
+
+
+def newest_scan(conn: Connection, auction_house_id: int) -> tuple[int, dict[int, book.Ladder]] | None:
+    """The house's newest accepted Alt Army scan that kept its body (revision 0032 on): its time (Unix
+    seconds) and ladders by item; None without one."""
+    snap, body = schema.price_snapshots, schema.snapshot_bodies
+    row = conn.execute(
+        select(snap.c.scanned_at, body.c.body)
+        .join(body, body.c.snapshot_id == snap.c.id)
+        .where(
+            snap.c.auction_house_id == auction_house_id,
+            snap.c.source == prices.ALTARMY,
+            snap.c.status == "accepted",
+            body.c.format == "book",
+        )
+        .order_by(snap.c.scanned_at.desc(), snap.c.id.desc())
+        .limit(1)
+    ).first()
+    if row is None:
+        return None
+    _, *lines = gzip.decompress(row.body).decode().split("\n")  # the head: listings, bid only, source
+    ladders = {}
+    for line in lines:
+        item, ladder = line.split(":", 1)
+        ladders[int(item)] = book.decode(ladder)
+    return int(db.utc(row.scanned_at).timestamp()), ladders
+
+
+@dataclass(frozen=True)
+class Match:
+    """How far one of Blizzard's houses agrees with an Alt Army scan (`match`)."""
+
+    shared: float  # the share of the scan's price levels (tails left out) the house lists too
+    close: float  # the share of the items both list whose cheapest prices agree within CLOSE
+    items: int  # the items both list
+
+
+def match(scan: Mapping[int, book.Ladder], snap: snapshots.Snapshot) -> Match:
+    """`snap` against an Alt Army scan of what may be the same house: taken within the hour, the same
+    house shares most of its price levels (the addon pools auctions as `snapshots.ladders` does), another
+    house hardly any (`prices._breaks_off`'s test)."""
+    house = snapshots.ladders(snap)
+    levels = {(item, lv.price) for item, ladder in scan.items() for lv in ladder if not lv.tail}
+    listed = {(item, lv.price) for item, ladder in house.items() for lv in ladder if not lv.tail}
+    both = [item for item, ladder in scan.items() if ladder and house.get(item)]
+    cheapest = [(scan[item][0].price, house[item][0].price) for item in both]
+    close = sum(1 for a, b in cheapest if max(a, b) <= CLOSE * min(a, b))
+    return Match(
+        len(levels & listed) / len(levels) if levels else 0.0,
+        close / len(both) if both else 0.0,
+        len(both),
+    )
 
 
 def _save_state(

@@ -251,10 +251,10 @@ The site runs on Google Cloud in `alt-army-prod` (us-central1). The config is in
 |-------|------|
 | Firebase Hosting | serves `frontend/dist`; `/api/**` rewrites to Cloud Run. Prod is the live site; staging is the `staging` preview channel (https://alt-army-prod--staging-hn1s06um.web.app, expires 30 days after its last deploy) |
 | Cloud Run services | `altarmy` (min 0, max 2) and `altarmy-staging` (max 1): the API, 1 vCPU, 1 GiB. Instances never migrate |
-| Cloud Run jobs | the same image running the CLI: `altarmy-migrate` (each deploy, before the service), `altarmy-ingest-tbc` / `-forever` (`ingest --only-if-new`: daily, and at the end of each deploy), `altarmy-prune`, `altarmy-merge`. Staging has the same, prefixed `altarmy-staging-` |
-| Cloud Scheduler | ingest tbc 09:00 UTC, ingest forever 09:15, prune 10:00, merge hourly at :30 (`deploy/setup.sh scheduler prod`); staging's the same 5 minutes later (`scheduler staging`); run as `altarmy-scheduler` |
+| Cloud Run jobs | the same image running the CLI: `altarmy-migrate` (each deploy, before the service), `altarmy-ingest-tbc` / `-forever` (`ingest --only-if-new`: daily, and at the end of each deploy), `altarmy-prune`, `altarmy-merge`, `altarmy-feed-forever` (`feed`: Blizzard's Forever auction houses, hourly; defined once `deploy/setup.sh blizzard prod` made its secrets). Staging has the same, prefixed `altarmy-staging-` |
+| Cloud Scheduler | ingest tbc 09:00 UTC, ingest forever 09:15, prune 10:00, merge hourly at :30, feed hourly at :40 (`deploy/setup.sh scheduler prod`; the feed once its job exists); staging's the same 5 minutes later (`scheduler staging`); run as `altarmy-scheduler` |
 | Cloud SQL | `altarmy-pg`: Postgres 16, db-f1-micro, databases `altarmy` and `altarmy_staging` |
-| Secret Manager | `database-url`, `database-url-staging`: each database's `DATABASE_URL` (Cloud Run's Cloud SQL socket) |
+| Secret Manager | `database-url`, `database-url-staging`: each database's `DATABASE_URL` (Cloud Run's Cloud SQL socket); `blizzard-client-id`, `blizzard-client-secret`: the Battle.net API client both environments' feed jobs use (`deploy/setup.sh blizzard ENV`, which asks for them once) |
 | Service accounts | `altarmy-run` (prod's service and jobs), `altarmy-staging-run` (staging's), `altarmy-scheduler`, `altarmy-deploy` (CI) |
 | Firebase Auth | prod: `alt-army-prod`; staging: `alt-army-staging`, a free Spark project (see "Firebase projects") |
 | Firestore | price signals only (`priceSignals/<auction house id>`: the price version, never prices), in each environment's Firebase project; the API and jobs write them, signed-in browsers read them (`firestore.rules`, deployed with Hosting). Within the free tier |
@@ -262,7 +262,7 @@ The site runs on Google Cloud in `alt-army-prod` (us-central1). The config is in
 
 About $9 to 11 a month, nearly all of it Cloud SQL; Cloud Run stays in its free tier at hobby traffic.
 Staging adds little: its database shares the Cloud SQL instance, its Auth project has no billing, and its
-five Cloud Scheduler jobs are about $0.50 a month (3 per billing account are free, $0.10 each after).
+six Cloud Scheduler jobs are about $0.60 a month (3 per billing account are free, $0.10 each after).
 
 Deploys come from GitHub Actions (`.github/workflows/deploy.yml`). After `check` passes on a push to main,
 it deploys prod; **Run workflow** deploys staging (or prod). It signs in through Workload Identity

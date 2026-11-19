@@ -5,6 +5,8 @@ Needs a Battle.net API client (https://develop.battle.net/access/clients, "Creat
     set BLIZZARD_CLIENT_ID=...   and   set BLIZZARD_CLIENT_SECRET=...
 Usage: python scripts/probe_blizzard_api.py [--region us] [--namespace dynamic-classic1x ...]
            [--realm Dreamscythe ... | --list] [--sample 5] [--save DIR]
+       python scripts/probe_blizzard_api.py --forever [--region us] [--house 111 ...] [--sample 5]
+           [--save DIR]
 
 For each namespace (each given with `--namespace`, without the region; default: the Classic ones) it lists
 the connected realms, picks the named realms (`--list`: every one), and asks for their auction house index
@@ -12,6 +14,13 @@ and each house's auctions. It prints statuses, auction counts and, with `--sampl
 N auctions, every time-left value seen, whether stacks carry a `buyout` or a `unit_price`, and the
 Last-Modified header. `--save DIR` writes each house's body as served (for `altarmy-site feed-load` and the
 test fixtures). Nothing else is stored. Record the outcome in docs/HOSTED_PLAN.md ("Phase 0 findings").
+
+`--forever` probes WoW: Forever's layout instead (`dynamic-forever-<region>`): no connected realms, but a
+ruleset index and, under any ruleset (the path's ruleset is ignored), the same list of auction houses, each
+with its listings (`auctions/<id>`, a stack `buyout`) and its commodities (`auctions/<id>/commodities`, a
+`unit_price`). It lists the rulesets and houses, then fetches each house (`--house`: only those) and asks
+again with `If-Modified-Since` to see whether the API answers 304. `--save` writes `<ns>-<id>.json` and
+`<ns>-<id>-commodities.json`.
 """
 
 import argparse
@@ -40,14 +49,17 @@ def token(region: str, client_id: str, secret: str) -> str:
         return str(json.load(resp)["access_token"])
 
 
-def fetch(url: str, tok: str) -> tuple[int, bytes, dict[str, str]]:
-    """(status, body, headers); the body is empty on an error status."""
-    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {tok}"})
+def fetch(url: str, tok: str, since: str | None = None) -> tuple[int, bytes, dict[str, str]]:
+    """(status, body, headers by lower-case name); the body is empty on an error status (and a 304)."""
+    headers = {"Authorization": f"Bearer {tok}"}
+    if since:
+        headers["If-Modified-Since"] = since
+    req = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=120) as resp:
-            return resp.status, resp.read(), dict(resp.headers.items())
+            return resp.status, resp.read(), {k.lower(): v for k, v in resp.headers.items()}
     except urllib.error.HTTPError as e:
-        return e.code, b"", dict(e.headers.items())
+        return e.code, b"", {k.lower(): v for k, v in e.headers.items()}
 
 
 def get(url: str, tok: str) -> tuple[int, Any]:
@@ -76,6 +88,40 @@ def describe(body: Any, sample: int) -> None:
     print(f"      time left: {dict(left)}; priced by: {dict(priced)}")
 
 
+def forever(api: str, region: str, tok: str, houses: set[int], sample: int, save: Path | None) -> None:
+    """Forever's rulesets and auction houses (see the docstring)."""
+    ns = f"dynamic-forever-{region}"
+    q = "?" + urllib.parse.urlencode({"namespace": ns, "locale": "en_US"})
+    status, index = get(f"{api}/data/wow/ruleset/index{q}", tok)
+    print(f"{ns}: ruleset index -> {status}")
+    for r in (index or {}).get("rulesets", []):
+        _, ruleset = get(f"{api}/data/wow/ruleset/{r['id']}{q}", tok)
+        print(f"  ruleset {r['id']}: {_name((ruleset or {}).get('name'))}")
+    status, listed = get(f"{api}/data/wow/ruleset/1/auctions/{q}", tok)
+    print(f"  auction houses (ruleset 1) -> {status}")
+    for house in (listed or {}).get("auctions", []):
+        hid = house.get("id")
+        if houses and hid not in houses:
+            continue
+        print(f"    auction house {hid} ({_name(house.get('name'))})")
+        for part, suffix in (("listings", ""), ("commodities", "/commodities")):
+            url = f"{api}/data/wow/ruleset/1/auctions/{hid}{suffix}{q}"
+            status, raw, headers = fetch(url, tok)
+            body = json.loads(raw) if status == 200 and raw else None
+            modified = headers.get("last-modified")
+            again = fetch(url, tok, since=modified)[0] if modified else "-"
+            print(
+                f"      {part}: {status}, {len((body or {}).get('auctions', []))} auctions,"
+                f" {len(raw) / 1e6:.1f} MB, Last-Modified {modified or '-'}, again if modified since: {again}"
+            )
+            if body is not None and sample:
+                describe(body, sample)
+            if body is not None and save:
+                out = save / f"{ns}-{hid}{suffix.replace('/', '-')}.json"
+                out.write_bytes(raw)
+                print(f"      saved {out}")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--region", default="us")
@@ -84,6 +130,8 @@ def main() -> None:
     p.add_argument("--list", action="store_true", help="every connected realm, not only the named ones")
     p.add_argument("--sample", type=int, default=0, help="print the first N auctions of each house")
     p.add_argument("--save", type=Path, help="write each house's body as served into this folder")
+    p.add_argument("--forever", action="store_true", help="WoW: Forever's rulesets and auction houses")
+    p.add_argument("--house", type=int, action="append", help="with --forever: only this house (repeatable)")
     args = p.parse_args()
     realms = {r.lower() for r in (args.realm or ["Dreamscythe", "Nightslayer"])}
     client_id, secret = os.environ.get("BLIZZARD_CLIENT_ID"), os.environ.get("BLIZZARD_CLIENT_SECRET")
@@ -93,6 +141,9 @@ def main() -> None:
         args.save.mkdir(parents=True, exist_ok=True)
     tok = token(args.region, client_id, secret)
     api = f"https://{args.region}.api.blizzard.com"
+    if args.forever:
+        forever(api, args.region, tok, set(args.house or ()), args.sample, args.save)
+        return
     for base in args.namespace or NAMESPACES:
         ns = f"{base}-{args.region}"
         q = "?" + urllib.parse.urlencode({"namespace": ns, "locale": "en_US"})
@@ -113,7 +164,7 @@ def main() -> None:
                 status, raw, headers = fetch(f"{api}/data/wow/connected-realm/{cid}/auctions/{hid}{q}", tok)
                 body = json.loads(raw) if status == 200 and raw else None
                 count = len((body or {}).get("auctions", []))
-                modified = headers.get("Last-Modified", "-")
+                modified = headers.get("last-modified", "-")
                 print(
                     f"    auction house {hid} ({_name(house.get('name'))}): {status}, {count} auctions,"
                     f" Last-Modified {modified}"

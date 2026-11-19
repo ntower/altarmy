@@ -133,3 +133,17 @@ def test_the_live_forever_client_folder_is_watched() -> None:
     assert VERSIONS["forever"].flavor_folders[0] == "_forever_"
     saved = Path("World of Warcraft/_forever_/WTF/Account/A/SavedVariables/AltArmy_TBC.lua")
     assert watch.version_of(saved) == "forever"
+
+
+def test_each_mapped_blizzard_house_is_one_open_realms_and_factions() -> None:
+    forever = versions.get("forever")
+    by_key = {(r.region, r.ruleset): r for r in forever.realms}
+    seen: dict[tuple[str, int], str] = {}
+    for key, houses in versions.BLIZZARD_HOUSES.items():
+        spec = by_key[key]  # a fixed realm of a region the API serves
+        assert spec.api_region and spec.blizzard_houses == houses
+        assert len({f for f, _ in houses}) == len(houses)  # one house a faction
+        assert {f for f, _ in houses} <= set(versions.FACTIONS)
+        for faction, house_id in houses:
+            assert (spec.api_region, house_id) not in seen, f"house {house_id} mapped twice"
+            seen[spec.api_region, house_id] = f"{spec.name} {faction}"

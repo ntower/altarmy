@@ -1058,26 +1058,40 @@ def record_hours(conn: Connection, auction_house_id: int, at: datetime, hours: M
 
 def prune(conn: Connection, now: datetime | None = None, keep_days: int = KEEP_DAYS) -> None:
     """Drop what the archive already holds (`archive.archived_through`; nothing before its first day):
-    snapshots' full scans, snapshots older than `keep_days` and their observations (a snapshot
-    `price_current` still points at stays), and daily rows older than DAILY_KEEP_DAYS. And, archived or
-    not, the hourly rows older than HOURLY_DAYS (the merge has rolled them up; the archived full scans
-    hold them) and copy counts older than COPY_DAYS."""
+    Alt Army scans' full scans, snapshots older than `keep_days` and their observations (a snapshot
+    `price_current` still points at stays, and so does one whose full scan the archive lacks), and daily
+    rows older than DAILY_KEEP_DAYS; and the feed snapshots' auctions once their own, earlier track has them
+    (`archive.AUCTIONS`). And, archived or not, the hourly rows older than HOURLY_DAYS (the merge has rolled
+    them up; the archived full scans hold them) and copy counts older than COPY_DAYS."""
     now = db.utc(now or db.utcnow())
+    snap, obs, pc = schema.price_snapshots, schema.price_observations, schema.price_current
+    bodies = schema.snapshot_bodies
+
+    def drop_bodies(format: str, before: date) -> None:
+        start = datetime.combine(before, time(), UTC)
+        conn.execute(
+            delete(bodies).where(
+                bodies.c.format == format,
+                bodies.c.snapshot_id.in_(select(snap.c.id).where(snap.c.scanned_at < start)),
+            )
+        )
+
+    feed_through = archive.archived_through(conn, archive.AUCTIONS)
+    if feed_through is not None:
+        drop_bodies("auctions", feed_through + timedelta(days=1))
     through = archive.archived_through(conn)
     if through is not None:
         archived = datetime.combine(through + timedelta(days=1), time(), UTC)
-        snap, obs, pc = schema.price_snapshots, schema.price_observations, schema.price_current
-        bodies = schema.snapshot_bodies
-        conn.execute(
-            delete(bodies).where(
-                bodies.c.snapshot_id.in_(select(snap.c.id).where(snap.c.scanned_at < archived))
-            )
-        )
+        drop_bodies("book", through + timedelta(days=1))
         cutoff = min(now - timedelta(days=keep_days), archived)
         old = select(snap.c.id).where(snap.c.scanned_at < cutoff)
         conn.execute(delete(obs).where(obs.c.snapshot_id.in_(old)))
         conn.execute(
-            delete(snap).where(snap.c.scanned_at < cutoff, snap.c.id.not_in(select(pc.c.snapshot_id)))
+            delete(snap).where(
+                snap.c.scanned_at < cutoff,
+                snap.c.id.not_in(select(pc.c.snapshot_id)),
+                snap.c.id.not_in(select(bodies.c.snapshot_id)),  # its full scan isn't archived yet
+            )
         )
         last_day = min(now.date() - timedelta(days=DAILY_KEEP_DAYS + 1), through)
         for t in (schema.price_daily, schema.price_sales_daily):

@@ -25,6 +25,9 @@
 #                                existing policies are kept and pointed at it alone)
 #   deploy/setup.sh archive ENV  the bucket ENV's prune job archives prices to (`archive.py`), writable by
 #                                ENV's runtime account alone (before the deploy that points the job at it)
+#   deploy/setup.sh blizzard ENV the Battle.net API client's secrets (asked for once, shared by prod and
+#                                staging), readable by ENV's runtime account; then a deploy makes the feed job
+#                                and `scheduler ENV` schedules it
 #
 # Then: BUILDER=cloudbuild deploy/build.sh, deploy/deploy.sh prod|staging IMAGE (README, "Deploy").
 set -euo pipefail
@@ -176,6 +179,36 @@ scheduler() { # scheduler prod|staging: the same cadence (jobs.CADENCE); staging
   schedule "$JOB_PREFIX-ingest-forever" "$((15 + m)) 9 * * *"
   schedule "$JOB_PREFIX-prune" "$((0 + m)) 10 * * *"
   schedule "$JOB_PREFIX-merge" "$((30 + m)) * * * *" # hourly: daily medians and 7-day price statistics
+  # hourly, after Blizzard refreshes Forever's houses (about :25) and the merge; only once deploy.sh made it
+  if gcloud run jobs describe "$JOB_PREFIX-feed-forever" --region "$REGION" "${G[@]}" >/dev/null 2>&1; then
+    schedule "$JOB_PREFIX-feed-forever" "$((40 + m)) * * * *"
+  else
+    echo "no $JOB_PREFIX-feed-forever job yet (setup.sh blizzard $1, then a deploy): not scheduled"
+  fi
+}
+
+blizzard() { # blizzard prod|staging: the Battle.net API client's secrets for the feed job, readable by ENV's
+  # runtime account. One client serves both environments: asked for once, read without echo, never in argv
+  env_config "${1:?prod or staging}"
+  local name secret value
+  for name in "$BLIZZARD_ID_SECRET" "$BLIZZARD_KEY_SECRET"; do
+    if gcloud secrets describe "$name" "${G[@]}" >/dev/null 2>&1; then
+      echo "secret $name exists"
+    else
+      read -rsp "$name (https://develop.battle.net/access/clients): " value
+      echo
+      [ -n "$value" ] || {
+        echo "empty: nothing made" >&2
+        return 1
+      }
+      printf '%s' "$value" | gcloud secrets create "$name" --data-file - --replication-policy automatic "${G[@]}"
+    fi
+  done
+  for secret in "$BLIZZARD_ID_SECRET" "$BLIZZARD_KEY_SECRET"; do
+    gcloud secrets add-iam-policy-binding "$secret" --member "serviceAccount:$RUN_SA" \
+      --role roles/secretmanager.secretAccessor "${G[@]}" >/dev/null
+    echo "  roles/secretmanager.secretAccessor on $secret -> $RUN_SA"
+  done
 }
 
 job_runner() { # job-runner prod|staging: the service may start its ingest jobs (the Admin page's Run now)
@@ -402,6 +435,7 @@ archive() { # archive prod|staging: the long-term price archive's bucket and who
 case "${1:-}" in
   apis | registry | accounts | sql | firestore | wif | alerts) "$1" ;;
   archive) archive "${2:-}" ;;
+  blizzard) blizzard "${2:-}" ;;
   wif-repo) wif_repo ;;
   discord) discord "${2:-}" ;;
   database) database "${2:-}" ;;
@@ -409,7 +443,7 @@ case "${1:-}" in
   job-runner) job_runner "${2:-}" ;;
   staging-auth) staging_auth ;;
   *)
-    sed -n '2,27p' "$0"
+    sed -n '2,32p' "$0"
     exit 1
     ;;
 esac

@@ -24,6 +24,7 @@ from . import (
     addon_crates,
     archive,
     auth,
+    blizzard,
     cloudlog,
     db,
     feed,
@@ -103,7 +104,14 @@ def cmd_prune(args: argparse.Namespace) -> None:
     """Archive the settled days (`archive`), then drop what the archive holds (`prices.prune`)."""
     with jobs.recording(args.database, "prune") as run:
         if args.archive:
-            written = archive.run(args.database, archive.sink_for(args.archive))
+            sink = archive.sink_for(args.archive)
+            feed_days = archive.run_auctions(args.database, sink)
+            if feed_days:
+                run.say(
+                    f"Archived {len(feed_days)} days of feed auctions ({feed_days[0].day} to "
+                    f"{feed_days[-1].day}): {sum(w.snapshots for w in feed_days)} snapshots."
+                )
+            written = archive.run(args.database, sink)
             if written:
                 run.say(
                     f"Archived {len(written)} days ({written[0].day} to {written[-1].day}): "
@@ -115,6 +123,9 @@ def cmd_prune(args: argparse.Namespace) -> None:
         with args.database.begin() as conn:
             prices.prune(conn)
             through = archive.archived_through(conn)
+            feed_through = archive.archived_through(conn, archive.AUCTIONS)
+        if feed_through is not None:
+            run.say(f"Pruned the feed auctions archived (through {feed_through}).")
         if through is None:
             run.say("Nothing archived yet, so only hourly rows were pruned.")
         else:
@@ -173,6 +184,92 @@ def cmd_feed_load(args: argparse.Namespace) -> None:
                 moved.add(ah)
         versions_moved = _price_versions(conn, moved)
     print(_signal(signals.from_env(), versions_moved))
+
+
+def _feed_client(region: str) -> blizzard.Client:
+    client = blizzard.from_env(region)
+    if client is None:
+        sys.exit("Set BLIZZARD_CLIENT_ID and BLIZZARD_CLIENT_SECRET (a Battle.net API client).")
+    return client
+
+
+def cmd_feed(args: argparse.Namespace) -> None:
+    """The hourly feed: every mapped auction house from Blizzard's API (`feed.poll`), then signals."""
+    version = _version(args)
+    with jobs.recording(args.database, "feed", version.key) as run:
+        clients: dict[str, blizzard.Client] = {}
+        polled = feed.poll(
+            args.database, version, lambda r: clients.get(r) or clients.setdefault(r, _feed_client(r))
+        )
+        if not polled:
+            run.say(f"No {version.key} auction house is mapped to Blizzard's (versions.BLIZZARD_HOUSES).")
+            return
+        for p in polled:
+            where = f"{p.realm} {p.faction} (house {p.house_id})"
+            got = p.recorded
+            if p.error is not None:
+                run.warn(f"{where}: {p.error}", alert=feed.FEED_ALERT, house=p.house_id)
+            elif got is None:
+                run.say(f"{where}: nothing new")
+            else:
+                run.say(
+                    f"{where}: {got.items} items, {got.moved} moved, {got.ended} ended, {got.posted} posted"
+                    + (" (stale)" if got.stale else " (held back: cut short)" if got.quarantined else "")
+                )
+        moved = [p.auction_house_id for p in polled if p.recorded is not None and p.recorded.moved]
+        with args.database.begin() as conn:
+            versions_moved = _price_versions(conn, moved)
+        run.say(_signal(signals.from_env(), versions_moved))
+        if all(p.error is not None for p in polled):
+            sys.exit(f"Every one of the {len(polled)} auction houses failed.")
+
+
+def cmd_feed_match(args: argparse.Namespace) -> None:
+    """Which of Blizzard's houses is this realm and faction's: each against the newest Alt Army scan."""
+    version = _version(args)
+    name = version.realm_name(args.realm)
+    spec = next((r for r in version.realms if r.name == name), None)
+    region = args.region or (spec.api_region if spec else "")
+    if not region:
+        sys.exit(f"{name} is no fixed realm of a region the API serves: pass --region.")
+    with args.database.begin() as conn:
+        ah = prices.find_auction_house(conn, version.key, name, args.faction)
+        scan = None if ah is None else feed.newest_scan(conn, ah)
+    if scan is None:
+        sys.exit(f"No Alt Army scan of {name} {args.faction} with its ladders stored: upload a fresh one.")
+    t, ladders = scan
+    client = _feed_client(region)
+    print(
+        f"{name} {args.faction}: the scan of {datetime.fromtimestamp(t, db.utcnow().tzinfo):%Y-%m-%d %H:%M}"
+        f" UTC, {len(ladders)} items"
+    )
+    rows = []
+    for house_id, house_name in client.houses():
+        if args.house and house_id not in args.house:
+            continue
+        try:
+            house = client.house(house_id)
+            assert house is not None  # asked without since
+            snap = snapshots.parse_blizzard(
+                house.listings, t=house.t, realm=name, faction=args.faction, commodities=house.commodities
+            )
+        except (blizzard.FeedError, ValueError) as e:
+            print(f"  house {house_id}: {e}")
+            continue
+        rows.append((feed.match(ladders, snap), house_id, house_name, house.t))
+    rows.sort(key=lambda r: (r[0].shared, r[0].close), reverse=True)
+    print(
+        f"  {'house':>5}  {'name':<26} {'levels shared':>13} {'prices close':>12} {'items':>6}"
+        "  minutes after the scan"
+    )
+    for m, house_id, house_name, ht in rows:
+        print(
+            f"  {house_id:>5}  {house_name:<26} {m.shared:>13.0%} {m.close:>12.0%} {m.items:>6}"
+            f"  {(ht - t) / 60:+.0f}"
+        )
+    mapped = dict(spec.blizzard_houses) if spec else {}
+    if args.faction in mapped:
+        print(f"  mapped now: house {mapped[args.faction]} (versions.BLIZZARD_HOUSES)")
 
 
 def _price_versions(conn: Connection, auction_house_ids: Iterable[int]) -> dict[str, dict[int, int]]:
@@ -422,6 +519,22 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--step", type=int, default=60, help="minutes between them (default: %(default)s)")
     s.add_argument("files", nargs="+")
     s.set_defaults(fn=cmd_feed_load)
+
+    s = sub.add_parser(
+        "feed",
+        help="record every mapped auction house from Blizzard's API (needs BLIZZARD_CLIENT_ID, _SECRET)",
+    )
+    s.set_defaults(fn=cmd_feed)
+
+    s = sub.add_parser(
+        "feed-match",
+        help="which of Blizzard's auction houses a realm and faction is, against its newest Alt Army scan",
+    )
+    s.add_argument("--realm", required=True, help="the realm (a fixed realm's name or alias)")
+    s.add_argument("--faction", required=True, choices=list(versions.FACTIONS))
+    s.add_argument("--region", help="the API region (us, eu; default: the fixed realm's)")
+    s.add_argument("--house", type=int, action="append", help="only this Blizzard house id (repeatable)")
+    s.set_defaults(fn=cmd_feed_match)
 
     s = sub.add_parser(
         "admin", help="grant, revoke or list the site admin claim on Firebase accounts (needs the [ui] extra)"

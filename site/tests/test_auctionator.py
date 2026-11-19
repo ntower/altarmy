@@ -173,6 +173,8 @@ def test_mangled_files_only_raise_value_error() -> None:
         with contextlib.suppress(ValueError):
             snapshots.parse_blizzard(_mangled([feed], rng), t=1, realm="R", faction="Horde")
         with contextlib.suppress(ValueError):
+            snapshots.parse_blizzard(feed, t=1, realm="R", faction="Horde", commodities=_mangled([feed], rng))
+        with contextlib.suppress(ValueError):
             snapshots.decode_state(_mangled([state], rng))
         with contextlib.suppress(ValueError):
             snapshots.decode_state(gzip.compress(_mangled([gzip.decompress(state)], rng)))

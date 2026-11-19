@@ -48,7 +48,7 @@ UPLOAD_OUTCOMES = ("accepted", "rejected")
 SNAPSHOT_STATUSES = ("accepted", "quarantined")
 # The CLI jobs whose runs are recorded. ahledger is gone (`jobs.CADENCE` has the scheduled ones); its
 # old runs stay.
-JOBS = ("ingest", "merge", "prune", "ahledger")
+JOBS = ("ingest", "merge", "prune", "ahledger", "feed")
 
 
 def _version(primary_key: bool = True) -> Column[str]:

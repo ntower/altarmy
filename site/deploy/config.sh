@@ -29,6 +29,11 @@ WIF_POOL=github
 WIF_PROVIDER=github-actions
 GITHUB_REPO=ntower/altarmy
 
+# The hourly auction feed (`altarmy-site feed`, blizzard.py): one Battle.net API client, both environments'
+# jobs reading it (setup.sh blizzard ENV)
+BLIZZARD_ID_SECRET=blizzard-client-id      # Secret Manager: BLIZZARD_CLIENT_ID
+BLIZZARD_KEY_SECRET=blizzard-client-secret # Secret Manager: BLIZZARD_CLIENT_SECRET
+
 # Per environment: prod | staging. Sets SERVICE, DB_NAME, DB_USER, SECRET, JOB_PREFIX, MAX_INSTANCES, RUN_SA
 # (the runtime service account), FIREBASE_ENV (the env file with its Firebase web config) and ARCHIVE_BUCKET
 # (the long-term price archive the prune job writes: setup.sh archive ENV).

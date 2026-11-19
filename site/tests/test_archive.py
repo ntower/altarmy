@@ -129,7 +129,7 @@ def test_a_day_is_written_whole(database: db.Database, conn: Connection, tmp_pat
     assert (first["source"], first["status"], first["item_count"]) == ("altarmy", "accepted", 1)
     assert first["scanned_at"] == T0.isoformat()
     assert first["book"]["items"] == [{"item": ORE, "levels": [[100, 3, 1, False], [120, 5, 1, False]]}]
-    assert first["auctions"] is None
+    assert "auctions" not in first  # a feed snapshot's are in auctions/
     assert [o[:2] for o in first["observations"]] == [[ORE, 100]]
     assert "uploader_uid" not in first and "someone" not in json.dumps(first)
     assert second["book"]["items"] == [{"item": ORE, "levels": [[120, 5, 1, False]]}]
@@ -200,6 +200,65 @@ def test_archived_days_are_pruned_as_they_age(conn: Connection) -> None:
     assert conn.execute(select(pd.c.day)).scalars().all() == [DAY0 + timedelta(days=1)]
 
 
+def test_a_snapshot_whose_full_scan_isnt_archived_is_never_pruned(conn: Connection) -> None:
+    ah = house(conn)
+    other = prices.auction_house(conn, FOREVER, "Normal", "Alliance")
+    for at in (
+        T0,
+        T0 + timedelta(days=1),
+    ):  # price_current points at the second: only its body keeps the first
+        feed.record_auction_snapshot(
+            conn, ah, snap(int(at.timestamp()), auction(1, ORE, unit=64 + at.day)), FOREVER_VERSION
+        )
+    prices.record_book(conn, other, book_scan({ORE: [(100, 3)]}, T0))
+    prices.record_book(conn, other, book_scan({ORE: [(110, 3)]}, T0 + timedelta(days=1)))
+    archive.set_through(conn, DAY0)  # the days, but not the feed's auctions
+    prices.prune(conn, now=T0 + timedelta(days=prices.KEEP_DAYS + 1))
+    bodies = conn.execute(select(schema.snapshot_bodies.c.format).order_by(schema.snapshot_bodies.c.format))
+    assert bodies.scalars().all() == ["auctions", "auctions", "book"]  # the feed's, unarchived; day 1's scan
+    feed_snap = select(func.count()).where(schema.price_snapshots.c.source == prices.BLIZZARD)
+    assert conn.execute(feed_snap).scalar_one() == 2
+
+
+# --- the feed's auctions, archived sooner ------------------------------------------------------------
+def feed_snapshot(conn: Connection, at: datetime, *auctions: dict[str, Any]) -> None:
+    feed.record_auction_snapshot(conn, house(conn), snap(int(at.timestamp()), *auctions), FOREVER_VERSION)
+
+
+def test_feed_auctions_settle_after_feed_settled_days(conn: Connection) -> None:
+    assert archive.pending_auction_days(conn, DAY0 + timedelta(days=9)) == []  # no feed snapshots
+    feed_snapshot(conn, T0, auction(1, ORE, unit=64))
+    soon = DAY0 + timedelta(days=archive.FEED_SETTLED_DAYS)
+    assert archive.pending_auction_days(conn, soon - timedelta(days=1)) == []
+    assert archive.pending_auction_days(conn, soon) == [DAY0]
+    archive.set_through(conn, DAY0, track=archive.AUCTIONS)
+    assert archive.pending_auction_days(conn, soon + timedelta(days=1)) == [DAY0 + timedelta(days=1)]
+    assert archive.archived_through(conn) is None  # the days' own track is untouched
+
+
+def test_feed_auctions_are_archived_and_pruned_long_before_the_days(
+    database: db.Database, conn: Connection, tmp_path: Path
+) -> None:
+    feed_snapshot(conn, T0, auction(1, ORE, unit=64), auction(2, BAR, unit=200))
+    feed_snapshot(conn, T0 + timedelta(hours=1), auction(1, ORE, unit=64))
+    feed_snapshot(conn, T0 + timedelta(days=1), auction(1, ORE, unit=64))
+    today = DAY0 + timedelta(days=archive.FEED_SETTLED_DAYS)
+    written = archive.run_auctions(database, archive.Folder(tmp_path), today=today)
+    assert written == [archive.WrittenAuctions(DAY0, 2)]
+    with gzip.open(tmp_path / archive.auctions_name(DAY0), "rt", encoding="utf-8") as f:
+        first, second = (json.loads(line) for line in f)
+    assert (first["realm"], first["faction"], first["status"]) == ("Normal", "Horde", "accepted")
+    assert first["scanned_at"] == T0.isoformat()
+    assert first["auctions"] == [[1, ORE, 1, 64, None, "LONG"], [2, BAR, 1, 200, None, "LONG"]]
+    assert second["auctions"] == [[1, ORE, 1, 64, None, "LONG"]]
+    assert archive.run_auctions(database, archive.Folder(tmp_path), today=today) == []  # nothing new
+
+    prices.prune(conn, now=T0 + timedelta(days=archive.FEED_SETTLED_DAYS))
+    # day 0's auctions go; day 1's wait for their own day; the snapshots stay (the days aren't archived)
+    assert count(conn, "snapshot_bodies") == 1
+    assert count(conn, "price_snapshots") == 3
+
+
 def test_row_estimate_counts_on_sqlite(conn: Connection) -> None:
     prices.record_book(conn, house(conn), book_scan({ORE: [(100, 3)], BAR: [(5, 1)]}, T0))
     assert db.row_estimate(conn, schema.price_observations) == count(conn, "price_observations")
@@ -222,6 +281,22 @@ def test_cli_prune_archives_first(
     assert lines(out, "snapshots", long_ago.date())[0]["book"] is not None
     with database.begin() as c:
         assert [r.ok for r in jobs.recent(c, FOREVER)] == [True]
+
+
+def test_cli_prune_archives_the_feed_auctions_sooner(
+    database: db.Database, conn: Connection, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    if not database.engine.url.drivername.startswith("sqlite"):
+        pytest.skip("the CLI's --db takes a SQLite file")
+    recently = db.utcnow() - timedelta(days=archive.FEED_SETTLED_DAYS)
+    feed_snapshot(conn, recently, auction(1, ORE, unit=64))
+    out = tmp_path / "archive"
+    cli.main(["--db", str(database.engine.url.database), "prune", "--archive", str(out)])
+    said = capsys.readouterr().out
+    assert f"Archived 1 days of feed auctions ({recently.date()} to {recently.date()}): 1 snapshots." in said
+    assert "Pruned the feed auctions archived" in said and "Nothing archived yet" in said
+    assert (out / archive.auctions_name(recently.date())).exists()
+    assert count(conn, "snapshot_bodies") == 0
 
 
 def test_cli_prune_without_an_archive_keeps_everything(
