@@ -174,7 +174,8 @@ IS.STAT_LABELS = {
     frost_res = "Frost Resistance",
     shadow_res = "Shadow Resistance",
     arcane_res = "Arcane Resistance",
-    sp = "Spell Damage",
+    all_res = "All Resistances",
+    sp ="Spell Damage",
     heal = "Healing",
     hit = "Hit Rating",
     crit = "Crit Rating",
@@ -721,6 +722,28 @@ local function confirmedNegativeKeys(tooltipRaw)
     return out
 end
 
+local SCHOOL_RESISTANCE_SHORT_KEYS = {
+    "holy_res", "fire_res", "nature_res", "frost_res", "shadow_res", "arcane_res",
+}
+
+--- The resistance every school shares is one stat, all_res: an "all Resistances" bonus is
+--- worth the scale's AllResist, not six separate schools. Whatever a school has beyond the
+--- shared amount stays on that school.
+local function foldAllResistances(out)
+    local shared
+    for i = 1, #SCHOOL_RESISTANCE_SHORT_KEYS do
+        local n = out[SCHOOL_RESISTANCE_SHORT_KEYS[i]] or 0
+        if n <= 0 then return end
+        if shared == nil or n < shared then shared = n end
+    end
+    out.all_res = (out.all_res or 0) + shared
+    for i = 1, #SCHOOL_RESISTANCE_SHORT_KEYS do
+        local key = SCHOOL_RESISTANCE_SHORT_KEYS[i]
+        local rest = out[key] - shared
+        out[key] = rest > 0 and rest or nil
+    end
+end
+
 local function normalizeRawStats(raw, link, negativeKeys)
     local out = {}
     if not raw then return out end
@@ -735,6 +758,7 @@ local function normalizeRawStats(raw, link, negativeKeys)
             out[short] = (out[short] or 0) + (tonumber(value) or 0)
         end
     end
+    foldAllResistances(out)
     return out
 end
 

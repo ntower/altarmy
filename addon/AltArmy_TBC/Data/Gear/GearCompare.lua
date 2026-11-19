@@ -254,71 +254,6 @@ local function splitScalarAndConditionalStats(stats)
     return scalar, stats.conditional or {}
 end
 
--- Resistance short keys fanned out by "all Resistances"-style equip lines. When a row set has a
--- changed row for every one of these keys and the rows are otherwise identical (same new/old/
--- weight), they're collapsed into one "All Resistances" row instead of six separate ones.
-local ALL_RESISTANCE_SHORT_KEYS = {
-    "holy_res", "fire_res", "nature_res", "frost_res", "shadow_res", "arcane_res",
-}
-
-local function collapseAllResistanceRows(rows)
-    local byKey = {}
-    local matchCount = 0
-    for i = 1, #rows do
-        local row = rows[i]
-        if row.statKey then
-            for j = 1, #ALL_RESISTANCE_SHORT_KEYS do
-                if row.statKey == ALL_RESISTANCE_SHORT_KEYS[j] then
-                    byKey[row.statKey] = row
-                    matchCount = matchCount + 1
-                    break
-                end
-            end
-        end
-    end
-    if matchCount ~= #ALL_RESISTANCE_SHORT_KEYS then return rows end
-
-    -- "Identical value" means the same new/old amount (what's actually displayed); per-school
-    -- Pawn weights can differ slightly even when the amounts match, so weight isn't part of the
-    -- equality check. The merged row shows the highest of the six weights so sort position/
-    -- importance stays sensible even when they're not perfectly uniform.
-    local first = byKey[ALL_RESISTANCE_SHORT_KEYS[1]]
-    local maxWeight = first.weight or 0
-    for j = 2, #ALL_RESISTANCE_SHORT_KEYS do
-        local row = byKey[ALL_RESISTANCE_SHORT_KEYS[j]]
-        if row.newValue ~= first.newValue or row.oldValue ~= first.oldValue then
-            return rows
-        end
-        if (row.weight or 0) > maxWeight then
-            maxWeight = row.weight or 0
-        end
-    end
-
-    local isResistanceKey = {}
-    for j = 1, #ALL_RESISTANCE_SHORT_KEYS do
-        isResistanceKey[ALL_RESISTANCE_SHORT_KEYS[j]] = true
-    end
-    local collapsed = {}
-    local inserted = false
-    for i = 1, #rows do
-        local row = rows[i]
-        if not (row.statKey and isResistanceKey[row.statKey]) then
-            collapsed[#collapsed + 1] = row
-        elseif not inserted then
-            local merged = {}
-            for k, v in pairs(first) do merged[k] = v end
-            merged.label = "All Resistances"
-            merged.statKey = nil
-            merged.weight = maxWeight
-            merged.unimportant = maxWeight <= 0
-            merged.weightedDelta = merged.delta and merged.delta * maxWeight or nil
-            collapsed[#collapsed + 1] = merged
-            inserted = true
-        end
-    end
-    return collapsed
-end
-
 local function buildConditionalRows(newConditional, oldConditional)
     local labels = {}
     local seenLabel = {}
@@ -370,7 +305,6 @@ local function buildConditionalRows(newConditional, oldConditional)
                 }
             end
         end
-        statRows = collapseAllResistanceRows(statRows)
 
         if #statRows > 0 then
             rows[#rows + 1] = {
@@ -415,7 +349,6 @@ local function buildStatComparisonRows(newLink, oldLink, classFile, specKey, cha
             }
         end
     end
-    rows = collapseAllResistanceRows(rows)
     table.sort(rows, compareStatComparisonRows)
     local conditionalRows = buildConditionalRows(newConditional, oldConditional)
     for i = 1, #conditionalRows do
@@ -455,7 +388,6 @@ local function buildRawStatRows(newLink, oldLink, charData, entry, opts)
             offhandHint = offhandHintForKey(key, offhandScaled),
         }
     end
-    rows = collapseAllResistanceRows(rows)
     local conditionalRows = buildConditionalRows(newConditional, oldConditional)
     for i = 1, #conditionalRows do
         rows[#rows + 1] = conditionalRows[i]

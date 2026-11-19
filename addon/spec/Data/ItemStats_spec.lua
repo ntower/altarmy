@@ -1345,6 +1345,54 @@ describe("ItemStats", function()
         assert.are.equal("Shadow Resistance", IS.GetDisplayLabel("ITEM_MOD_SHADOW_RESISTANCE"))
     end)
 
+    it("GetNormalized folds the resistance every school shares into all_res", function()
+        -- +5 all resistances plus +8 more Arcane: all_res 5, and the extra Arcane on its own.
+        _G.GetItemStats = function()
+            return {
+                ["RESISTANCE1_NAME"] = 5, ["RESISTANCE2_NAME"] = 5, ["RESISTANCE3_NAME"] = 5,
+                ["RESISTANCE4_NAME"] = 5, ["RESISTANCE5_NAME"] = 5, ["RESISTANCE6_NAME"] = 13,
+            }
+        end
+        _G.CreateFrame = function(frameType)
+            if frameType == "GameTooltip" then
+                return makeTooltipMock({ "New Helm" })
+            end
+            return {}
+        end
+        package.loaded["ItemStats"] = nil
+        require("ItemStats")
+        IS = AltArmy.ItemStats
+        IS.ClearCache()
+
+        local stats = IS.GetNormalized("|Hitem:11:0|h[New Helm]|h")
+        assert.are.equal(5, stats.all_res)
+        assert.are.equal(8, stats.arcane_res)
+        assert.is_nil(stats.fire_res)
+        assert.is_nil(stats.holy_res)
+        assert.are.equal("All Resistances", IS.GetDisplayLabel("all_res"))
+    end)
+
+    it("GetNormalized keeps single-school resistances when not every school has one", function()
+        _G.GetItemStats = function()
+            return { ["RESISTANCE2_NAME"] = 10, ["RESISTANCE4_NAME"] = 10 }
+        end
+        _G.CreateFrame = function(frameType)
+            if frameType == "GameTooltip" then
+                return makeTooltipMock({ "New Helm" })
+            end
+            return {}
+        end
+        package.loaded["ItemStats"] = nil
+        require("ItemStats")
+        IS = AltArmy.ItemStats
+        IS.ClearCache()
+
+        local stats = IS.GetNormalized("|Hitem:11:0|h[New Helm]|h")
+        assert.are.equal(10, stats.fire_res)
+        assert.are.equal(10, stats.frost_res)
+        assert.is_nil(stats.all_res)
+    end)
+
     it("GetNormalized parses all-resistances equip line with a conditional addendum", function()
         _G.GetItemStats = function() return {} end
         _G.CreateFrame = function(frameType)
@@ -1366,21 +1414,15 @@ describe("ItemStats", function()
         IS.ClearCache()
 
         local stats = IS.GetNormalized("|Hitem:99:0|h[Monkey Greaves]|h")
-        assert.are.equal(3, stats.holy_res)
-        assert.are.equal(3, stats.fire_res)
-        assert.are.equal(3, stats.nature_res)
-        assert.are.equal(3, stats.frost_res)
-        assert.are.equal(3, stats.shadow_res)
-        assert.are.equal(3, stats.arcane_res)
+        -- One all-resistances bonus is one stat, not six (scored once at the AllResist weight).
+        assert.are.equal(3, stats.all_res)
+        assert.is_nil(stats.fire_res)
+        assert.is_nil(stats.holy_res)
         assert.is_not_nil(stats.conditional)
         local conditional = stats.conditional["in Forest and Grassland areas"]
         assert.is_not_nil(conditional)
-        assert.are.equal(5, conditional.holy_res)
-        assert.are.equal(5, conditional.fire_res)
-        assert.are.equal(5, conditional.nature_res)
-        assert.are.equal(5, conditional.frost_res)
-        assert.are.equal(5, conditional.shadow_res)
-        assert.are.equal(5, conditional.arcane_res)
+        assert.are.equal(5, conditional.all_res)
+        assert.is_nil(conditional.fire_res)
     end)
 
     it("GetNormalized parses all-resistances equip line without a conditional addendum", function()
@@ -1403,12 +1445,10 @@ describe("ItemStats", function()
         IS.ClearCache()
 
         local stats = IS.GetNormalized("|Hitem:99:0|h[Monkey Greaves]|h")
-        assert.are.equal(3, stats.holy_res)
-        assert.are.equal(3, stats.fire_res)
-        assert.are.equal(3, stats.nature_res)
-        assert.are.equal(3, stats.frost_res)
-        assert.are.equal(3, stats.shadow_res)
-        assert.are.equal(3, stats.arcane_res)
+        -- One all-resistances bonus is one stat, not six (scored once at the AllResist weight).
+        assert.are.equal(3, stats.all_res)
+        assert.is_nil(stats.fire_res)
+        assert.is_nil(stats.holy_res)
         assert.is_nil(stats.conditional)
     end)
 

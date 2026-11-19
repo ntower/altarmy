@@ -45,11 +45,14 @@ describe("PawnScale", function()
         assert.are.equal(1, w.shadow_sp)
     end)
 
-    it("PawnScaleToWeights fans out AllResist to every resistance key", function()
+    it("PawnScaleToWeights keeps AllResist as its own weight, not added to each school", function()
+        -- AllResist (0.2) is the worth of +1 to all resistances, the five schools' 0.04 summed;
+        -- a single school is worth only its own weight.
         local w = GU.PawnScaleToWeights({ AllResist = 1, FireResist = 0.2 })
-        assert.are.equal(1.2, w.fire_res)
-        assert.are.equal(1, w.frost_res)
-        assert.are.equal(1, w.arcane_res)
+        assert.are.equal(1, w.all_res)
+        assert.are.equal(0.2, w.fire_res)
+        assert.is_nil(w.frost_res)
+        assert.is_nil(w.arcane_res)
     end)
 
     it("PawnScaleToWeights maps weapon DPS keys and ignores sockets", function()

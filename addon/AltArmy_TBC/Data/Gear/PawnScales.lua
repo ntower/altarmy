@@ -266,6 +266,14 @@ local WAND_LEVELING_CUTOFF = MAX_LEVEL - 1
 local WAND_LEVELING_MAGE = { minLevel = 1, maxLevel = WAND_LEVELING_CUTOFF, RangedDps = 3.5, MeleeDps = 0.25 }
 local WAND_LEVELING_WARLOCK = { minLevel = 1, maxLevel = WAND_LEVELING_CUTOFF, RangedDps = 5, MeleeDps = 0.25 }
 local WAND_LEVELING_PRIEST = { minLevel = 1, maxLevel = WAND_LEVELING_CUTOFF, RangedDps = 6, MeleeDps = 0.25 }
+-- Tanks: resistance only matters in max-level resistance sets, so leveling tanks weigh it like
+-- every other spec does: small rather than zero, so it still breaks ties between otherwise equal items.
+local TANK_LEVELING_RESIST = {
+    minLevel = 1, maxLevel = WAND_LEVELING_CUTOFF,
+    AllResist = COMMON.AllResist, FireResist = COMMON.FireResist, FrostResist = COMMON.FrostResist,
+    ArcaneResist = COMMON.ArcaneResist, ShadowResist = COMMON.ShadowResist,
+    NatureResist = COMMON.NatureResist,
+}
 
 PS.LEVEL_OVERRIDES = {
     MAGE = {
@@ -282,6 +290,12 @@ PS.LEVEL_OVERRIDES = {
         holy = { WAND_LEVELING_PRIEST },
         discipline = { WAND_LEVELING_PRIEST },
         shadow = { WAND_LEVELING_PRIEST },
+    },
+    WARRIOR = {
+        protection = { TANK_LEVELING_RESIST },
+    },
+    PALADIN = {
+        protection = { TANK_LEVELING_RESIST },
     },
 }
 

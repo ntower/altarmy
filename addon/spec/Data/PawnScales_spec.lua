@@ -46,6 +46,19 @@ describe("PawnScales", function()
         assert.are.equal(0.25, PS.GetRawScale("PRIEST", "holy", 25).MeleeDps)
     end)
 
+    it("tank specs weigh resistance like other specs below max level (small, not zero), and fully at max level", function()
+        for _, classFile in ipairs({ "WARRIOR", "PALADIN" }) do
+            local leveling = PS.GetRawScale(classFile, "protection", 40)
+            assert.are.equal(0.2, leveling.AllResist)
+            assert.are.equal(0.04, leveling.FireResist)
+            assert.are.equal(0.04, leveling.NatureResist)
+            assert.are.equal(1, leveling.Stamina)
+            local capped = PS.GetRawScale(classFile, "protection", 70)
+            assert.are.equal(1, capped.AllResist)
+            assert.are.equal(0.2, capped.FireResist)
+        end
+    end)
+
     it("GetRawScale leaves non-overridden keys intact", function()
         local leveled = PS.GetRawScale("MAGE", "frost", 30)
         local default = PS.GetRawScale("MAGE", "frost")

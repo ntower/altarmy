@@ -7,15 +7,6 @@ AltArmy.GearUpgrade = AltArmy.GearUpgrade or {}
 
 local GU = AltArmy.GearUpgrade
 
-local ALL_RESIST_KEYS = {
-    "holy_res",
-    "fire_res",
-    "nature_res",
-    "frost_res",
-    "shadow_res",
-    "arcane_res",
-}
-
 --- Pawn scale stat name -> internal short key (ItemStats normalized keys).
 GU.PAWN_KEY_MAP = {
     Strength = "str",
@@ -62,6 +53,9 @@ GU.PAWN_KEY_MAP = {
     ShadowResist = "shadow_res",
     NatureResist = "nature_res",
     HolyResist = "holy_res",
+    -- +1 to all resistances, scored once (ItemStats folds the shared amount into all_res);
+    -- the scales set it to the five schools' weights summed, so it isn't added to each school.
+    AllResist = "all_res",
 }
 
 local IGNORED_PAWN_KEYS = {
@@ -99,11 +93,7 @@ function GU.PawnScaleToWeights(pawnValues)
     for pawnKey, raw in pairs(pawnValues) do
         local value = tonumber(raw)
         if value and value > 0 and not IGNORED_PAWN_KEYS[pawnKey] then
-            if pawnKey == "AllResist" then
-                for i = 1, #ALL_RESIST_KEYS do
-                    addWeight(out, ALL_RESIST_KEYS[i], value)
-                end
-            elseif pawnKey == "Dps" then
+            if pawnKey == "Dps" then
                 addWeight(out, "melee_dps", value)
             elseif pawnKey == "SpellDamage" then
                 addWeight(out, "sp", value)

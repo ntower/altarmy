@@ -48,7 +48,8 @@ still on the drop prompt returns to Grid; a focused item stays in Upgrade Check.
   best upgrade. One-hand weapons consider both hands for dual-wield classes, so a one-hander that
   only beats the off-hand opens against the off-hand — matching quest reward / loot alerts.
 - Stat delta rows vs equipped piece; dual-wield offhand DPS is scaled to match upgrade scoring.
-- All six resistance schools collapse into a single "All Resistances" row when their values match.
+- The resistance all six schools share shows as one "All Resistances" row; any extra a school has
+  beyond that is its own row (+5 all and +8 more Arcane: All Resistances +5, Arcane Resistance +8).
 - Situational/conditional bonuses (e.g. "Increases X in \<condition\>") are grouped under a header
   row naming the condition, with their stats listed underneath; excluded from the weighted
   score for now.
@@ -63,6 +64,10 @@ still on the drop prompt returns to Grid; a focused item stays in Upgrade Check.
 ## Upgrade scoring and alerts
 
 - Built-in spec scales (Pawn-style weights) for “is this an upgrade?” WoW Forever uses its own scale table (hit and crit merged into single stats, since Forever has no separate spell/physical version of either) rather than TBC's.
+- Resistance: "all resistances" is scored once at the scale's AllResist weight (0.2 per point;
+  1 for tanks), a single school at its own weight (0.04; 0.2 for tanks). Holy has no weight of
+  its own. Below max level, Protection warriors and paladins use the non-tank weights. Resistance
+  weights are small rather than zero, so they still break ties.
 - Optional gear-score providers for scoring and missing-data hints.
 - Chat alerts (clickable) for loot, Need/Greed rolls, quest rewards, and level-up upgrades for the current character and/or alts.
 - Loot / roll alerts announce a given item at most once per 60 seconds (e.g. crafting a stack of the same item alerts once). The window is in-memory only and resets on reload/logout.

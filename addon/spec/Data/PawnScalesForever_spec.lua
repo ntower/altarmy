@@ -79,6 +79,20 @@ describe("PawnScalesForever", function()
         end)
     end)
 
+    describe("tank resistance overrides", function()
+        it("tank specs weigh resistance like other specs below max level (small, not zero), and fully at max level", function()
+            for _, classFile in ipairs({ "WARRIOR", "PALADIN" }) do
+                local leveling = PSF.GetRawScale(classFile, "protection", 40)
+                assert.are.equal(0.2, leveling.AllResist)
+                assert.are.equal(0.04, leveling.ShadowResist)
+                assert.are.equal(1, leveling.Stamina)
+                local capped = PSF.GetRawScale(classFile, "protection", 70)
+                assert.are.equal(1, capped.AllResist)
+                assert.are.equal(0.2, capped.ShadowResist)
+            end
+        end)
+    end)
+
     describe("independence from PawnScales.lua", function()
         it("RAW is a distinct table object per class", function()
             assert.is_not.equal(PS.RAW, PSF.RAW)

@@ -355,7 +355,7 @@ describe("GearCompare", function()
         assert.is_nil(groupedRow.indent)
     end)
 
-    it("BuildComparison collapses identical resistance rows into a single All Resistances row", function()
+    it("BuildComparison shows equal resistances as one All Resistances row at the AllResist weight", function()
         local oldGetItemStats = _G.GetItemStats
         _G.GetItemStats = function(link)
             local id = tonumber(tostring(link):match("item:(%d+)"))
@@ -381,10 +381,13 @@ describe("GearCompare", function()
         assert.are.equal(2, #rows)
         assert.are.equal("All Resistances", rows[1].label)
         assert.are.equal(5, rows[1].delta)
+        -- Scored once at AllResist (0.2), not six schools at AllResist + school weight each.
+        assert.are.equal(0.2, rows[1].weight)
+        assert.are.equal(1, rows[1].weightedDelta)
         assert.is_true(rows[2].formatAsWeightedChange)
     end)
 
-    it("BuildComparison does not collapse resistance rows when values differ", function()
+    it("BuildComparison splits unequal resistances into All Resistances plus the extra per school", function()
         local oldGetItemStats = _G.GetItemStats
         _G.GetItemStats = function(link)
             local id = tonumber(tostring(link):match("item:(%d+)"))
@@ -407,18 +410,19 @@ describe("GearCompare", function()
         AltArmy.ItemStats.ClearCache()
 
         local rows = result.sections[1].rows
-        local resistanceLabels = {}
+        local deltaByLabel = {}
         for _, row in ipairs(rows) do
-            if not row.formatAsWeightedChange and row.label ~= "All Resistances" then
-                resistanceLabels[row.label] = true
+            if not row.formatAsWeightedChange then
+                deltaByLabel[row.label] = row.delta
             end
         end
-        assert.is_true(resistanceLabels["Holy Resistance"])
-        assert.is_true(resistanceLabels["Fire Resistance"])
-        assert.is_true(resistanceLabels["Nature Resistance"])
-        assert.is_true(resistanceLabels["Frost Resistance"])
-        assert.is_true(resistanceLabels["Shadow Resistance"])
-        assert.is_true(resistanceLabels["Arcane Resistance"])
+        assert.are.equal(3, deltaByLabel["All Resistances"])
+        assert.are.equal(2, deltaByLabel["Holy Resistance"])
+        assert.are.equal(2, deltaByLabel["Fire Resistance"])
+        assert.are.equal(2, deltaByLabel["Nature Resistance"])
+        assert.are.equal(2, deltaByLabel["Frost Resistance"])
+        assert.are.equal(2, deltaByLabel["Shadow Resistance"])
+        assert.is_nil(deltaByLabel["Arcane Resistance"])
     end)
 
     it("BuildComparison always places conditional groups after scalar stat rows", function()

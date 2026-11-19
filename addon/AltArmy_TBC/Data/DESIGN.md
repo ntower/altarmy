@@ -161,12 +161,15 @@ same shape:
 
 ```lua
 {
-    fire_res = 3, -- always-on
+    all_res = 3, -- always-on
     conditional = {
-        ["in Forest and Grassland areas"] = { fire_res = 5, --[[ ... ]] },
+        ["in Forest and Grassland areas"] = { all_res = 5 },
     },
 }
 ```
+
+The resistance all six schools share is folded into `all_res` (scored once at the scale's
+`AllResist`); a school's `*_res` holds only what it has beyond that.
 
 `GearCompare.lua`'s row builders pull `stats.conditional` out before doing arithmetic over the
 rest and render each conditional sub-stat as its own row, excluded from the weighted score.
