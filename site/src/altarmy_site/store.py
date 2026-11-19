@@ -380,6 +380,54 @@ def load_item_details(conn: Connection, game_version: str, ids: Iterable[int]) -
 
 
 @dataclass(frozen=True)
+class FoundItem:
+    """An item whose name matched a search (`search_items`)."""
+
+    id: int
+    name: str
+    quality: int
+    icon: str | None
+    priced: bool  # has a daily price somewhere: it has been on an auction house
+
+
+def search_items(conn: Connection, game_version: str, query: str, limit: int = 20) -> list[FoundItem]:
+    """Items whose name contains `query` (any case), or whose id it is: priced items first, then an exact
+    name, then names starting with it, then shorter names. A name needs 2 characters at least; an id any."""
+    q = query.strip().lower()
+    if len(q) < 2 and not q.isdigit():
+        return []
+    t, pd = schema.items, schema.price_daily
+    name = func.lower(t.c.name)
+    matches: ColumnElement[bool] = name.contains(q, autoescape=True)
+    if q.isdigit():
+        matches = matches | (t.c.id == int(q))
+    priced = (
+        select(pd.c.item_id)
+        .join(schema.auction_houses, schema.auction_houses.c.id == pd.c.auction_house_id)
+        .where(schema.auction_houses.c.game_version == game_version, pd.c.item_id == t.c.id)
+        .exists()
+    )
+    query_ = (
+        select(t.c.id, t.c.name, t.c.quality, t.c.icon, priced.label("priced"))
+        .where(t.c.game_version == game_version, matches)
+        .order_by(
+            case((priced, 0), else_=1),
+            case(
+                (t.c.id == (int(q) if q.isdigit() else -1), 0),
+                (name == q, 1),
+                (name.startswith(q, autoescape=True), 2),
+                else_=3,
+            ),
+            func.length(t.c.name),
+            t.c.name,
+            t.c.id,
+        )
+        .limit(limit)
+    )
+    return [FoundItem(r.id, r.name, r.quality, r.icon, bool(r.priced)) for r in conn.execute(query_)]
+
+
+@dataclass(frozen=True)
 class Place:
     """Somewhere a recipe item comes from (an `item_sources` row)."""
 

@@ -147,6 +147,15 @@ def find_auction_house_by_alias(conn: Connection, game_version: str, realm: str,
     return None
 
 
+def is_auction_house(conn: Connection, game_version: str, auction_house_id: int) -> bool:
+    """Whether `auction_house_id` is one of the version's auction houses."""
+    ah = schema.auction_houses
+    found = conn.execute(
+        select(ah.c.id).where(ah.c.id == auction_house_id, ah.c.game_version == game_version)
+    ).first()
+    return found is not None
+
+
 def auction_house_for_auctionator_key(conn: Connection, game_version: str, key: str) -> int:
     """The auction house an Auctionator realm key names: a known alias, else parsed from the key (a
     trailing faction means a split auction house; the realm is then as Auctionator spells it)."""
@@ -1525,25 +1534,33 @@ class FlowDay:
 
 @dataclass(frozen=True)
 class History:
-    days: list[DayPoint]  # the last HISTORY_DAYS, oldest first
-    hours: list[HourPoint]  # the last HOURLY_DAYS, oldest first
+    days: list[DayPoint]  # the window asked for (HISTORY_DAYS by default), oldest first
+    hours: list[HourPoint]  # at most the last HOURLY_DAYS, oldest first
     flows: list[FlowDay]  # oldest first
 
 
 def history(
-    conn: Connection, auction_house_id: int | None, item_id: int, now: datetime | None = None
+    conn: Connection,
+    auction_house_id: int | None,
+    item_id: int,
+    now: datetime | None = None,
+    *,
+    days: int = HISTORY_DAYS,
 ) -> History:
-    """An item's price history at the auction house: its daily low, median, high, open and close, its hourly
-    low and market price, and what went each day (`price_daily`, `price_hourly`, `price_sales_daily`)."""
+    """An item's price history at the auction house over the last `days` (at most DAILY_KEEP_DAYS; hourly at
+    most HOURLY_DAYS): its daily low, median, high, open and close, its hourly low and market price, and what
+    went each day (`price_daily`, `price_hourly`, `price_sales_daily`)."""
     if auction_house_id is None:
         return History([], [], [])
     today = db.utc(now or db.utcnow()).date()
+    window = max(1, min(days, DAILY_KEEP_DAYS))
+    hourly = min(window, HOURLY_DAYS)
     pd, ph, ps = schema.price_daily, schema.price_hourly, schema.price_sales_daily
     mine = (pd.c.auction_house_id == auction_house_id, pd.c.item_id == item_id)
-    days = [
+    daily = [
         DayPoint(r.day, r.low, r.median, r.high, r.open, r.close)
         for r in conn.execute(
-            select(pd).where(*mine, pd.c.day >= today - timedelta(days=HISTORY_DAYS)).order_by(pd.c.day)
+            select(pd).where(*mine, pd.c.day >= today - timedelta(days=window)).order_by(pd.c.day)
         )
     ]
     hours = []
@@ -1552,7 +1569,7 @@ def history(
         .where(
             ph.c.auction_house_id == auction_house_id,
             ph.c.item_id == item_id,
-            ph.c.day >= today - timedelta(days=HOURLY_DAYS),
+            ph.c.day >= today - timedelta(days=hourly),
         )
         .order_by(ph.c.day)
     ):
@@ -1566,9 +1583,9 @@ def history(
             .where(
                 ps.c.auction_house_id == auction_house_id,
                 ps.c.item_id == item_id,
-                ps.c.day >= today - timedelta(days=HISTORY_DAYS),
+                ps.c.day >= today - timedelta(days=window),
             )
             .order_by(ps.c.day)
         )
     ]
-    return History(days, hours, flows)
+    return History(daily, hours, flows)

@@ -2778,6 +2778,10 @@ def get_item_market(state: State, user: CurrentUser, item_id: int) -> MarketHist
     with _connect(state) as conn:
         ah = service.selected_auction_house(conn, user.uid, state.key)
         h = prices.history(conn, ah, item_id)
+    return _market_history(h)
+
+
+def _market_history(h: prices.History) -> MarketHistory:
     return MarketHistory(
         days=[
             DayPointOut(
@@ -3018,6 +3022,44 @@ def get_admin_vendor_suspects(state: State, user: AdminUser) -> VendorSuspectsOu
         moved=[MovedOut(**asdict(s)) for s in found.moved],
         overridden=[OverriddenOut(**asdict(s)) for s in found.overridden],
     )
+
+
+class FoundItemOut(BaseModel):
+    id: int
+    name: str
+    quality: int
+    icon: str | None
+    priced: bool  # has been on an auction house
+
+
+@router.get("/admin/items")
+def get_admin_items(
+    state: State,
+    user: AdminUser,
+    q: Annotated[str, Query(max_length=100)] = "",
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+) -> list[FoundItemOut]:
+    """Items whose name contains `q`, or whose id it is: the Trends page's search (admins)."""
+    with _connect(state) as conn:
+        found = store.search_items(conn, state.key, q, limit)
+    return [FoundItemOut(**asdict(f)) for f in found]
+
+
+@router.get("/admin/items/{item_id}/history")
+def get_admin_item_history(
+    state: State,
+    user: AdminUser,
+    item_id: int,
+    auction_house_id: int,
+    days: Annotated[int, Query(ge=1, le=prices.DAILY_KEEP_DAYS)] = prices.HISTORY_DAYS,
+) -> MarketHistory:
+    """An item's price history at any of the version's auction houses over the last `days`: the Trends
+    page (admins). 404 for a house that isn't this version's."""
+    with _connect(state) as conn:
+        if not prices.is_auction_house(conn, state.key, auction_house_id):
+            raise HTTPException(404, "No such auction house.")
+        h = prices.history(conn, auction_house_id, item_id, days=days)
+    return _market_history(h)
 
 
 @router.get("/admin/ingestion")

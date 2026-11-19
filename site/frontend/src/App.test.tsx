@@ -103,7 +103,7 @@ describe('the shell by tier', () => {
     mockApi({ '/api/status': status(), '/api/admin/ingestion': ingestion })
     window.history.pushState(null, '', '/manage')
     renderWithProviders(<App />, ADMIN)
-    expect(nav()).toEqual(['Manage', 'Admin'])
+    expect(nav()).toEqual(['Manage', 'Trends', 'Admin'])
     fireEvent.click(screen.getByRole('link', { name: 'Admin' }))
     expect(window.location.pathname).toBe('/admin')
     expect(await screen.findByRole('table', { name: 'Jobs' })).toBeInTheDocument()

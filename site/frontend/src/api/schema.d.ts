@@ -24,6 +24,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Admin Items
+         * @description Items whose name contains `q`, or whose id it is: the Trends page's search (admins).
+         */
+        get: operations["get_admin_items_api_admin_items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/items/{item_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Admin Item History
+         * @description An item's price history at any of the version's auction houses over the last `days`: the Trends
+         *     page (admins). 404 for a house that isn't this version's.
+         */
+        get: operations["get_admin_item_history_api_admin_items__item_id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/jobs/ingest": {
         parameters: {
             query?: never;
@@ -1089,6 +1130,19 @@ export interface components {
             posted: number;
             /** Sold */
             sold: number;
+        };
+        /** FoundItemOut */
+        FoundItemOut: {
+            /** Icon */
+            icon: string | null;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Priced */
+            priced: boolean;
+            /** Quality */
+            quality: number;
         };
         /** GroupCount */
         GroupCount: {
@@ -2551,6 +2605,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IngestionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_admin_items_api_admin_items_get: {
+        parameters: {
+            query: {
+                q?: string;
+                limit?: number;
+                /** @description which game's data: tbc or forever */
+                game_version: "tbc" | "forever";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FoundItemOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_admin_item_history_api_admin_items__item_id__history_get: {
+        parameters: {
+            query: {
+                auction_house_id: number;
+                days?: number;
+                /** @description which game's data: tbc or forever */
+                game_version: "tbc" | "forever";
+            };
+            header?: never;
+            path: {
+                item_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketHistory"];
                 };
             };
             /** @description Validation Error */

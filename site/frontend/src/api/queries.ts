@@ -587,6 +587,36 @@ export function useRunIngest() {
   })
 }
 
+/** Items whose name contains `q`, or whose id it is (admins: the Trends page); nothing under 2 characters but an id. */
+export function useAdminItemSearch(q: string, enabled: boolean) {
+  const query = q.trim()
+  return useQuery({
+    queryKey: ['admin-items', GAME_VERSION, query],
+    queryFn: () => call(client.GET('/api/admin/items', { params: { query: { game_version: GAME_VERSION, q: query } } })),
+    enabled: enabled && (query.length >= 2 || /^\d+$/.test(query)),
+    placeholderData: keepPreviousData,
+  })
+}
+
+/** An item's price history at any auction house over the last `days` (admins: the Trends page). */
+export function useAdminItemHistory(itemId: number | null, houseId: number | null, days: number, enabled: boolean) {
+  const version = useDataVersion()
+  return useQuery({
+    queryKey: ['admin-item-history', GAME_VERSION, version, itemId, houseId, days],
+    queryFn: () =>
+      call(
+        client.GET('/api/admin/items/{item_id}/history', {
+          params: {
+            path: { item_id: itemId! },
+            query: { game_version: GAME_VERSION, auction_house_id: houseId!, days },
+          },
+        }),
+      ),
+    enabled: enabled && itemId !== null && houseId !== null,
+    placeholderData: keepPreviousData,
+  })
+}
+
 /** Each realm's scans (every tier): the realms one can browse, and how fresh their prices are. */
 export function useCoverage() {
   const version = useDataVersion()

@@ -2,7 +2,7 @@ import { useSyncExternalStore, type MouseEvent } from 'react'
 
 /** The site's pages. Hosting (and the local server) serve index.html for each, so they are real paths; a page may
  * have paths under it (`/profit/gold`), which are still that page. */
-export const ROUTES = ['/', '/addon', '/profit', '/manage', '/admin'] as const
+export const ROUTES = ['/', '/addon', '/profit', '/manage', '/trends', '/admin'] as const
 export type Route = (typeof ROUTES)[number]
 
 const listeners = new Set<() => void>()

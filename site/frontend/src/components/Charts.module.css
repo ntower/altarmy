@@ -160,3 +160,51 @@ text.toneYou {
   stroke: var(--mantine-color-teal-6);
   stroke-width: 2.5;
 }
+
+/* the Trends page: each day's low-to-high band under its median, and what was bought each day */
+.trendBand {
+  fill: var(--mantine-color-teal-6);
+  opacity: 0.14;
+  stroke: none;
+}
+
+.soldBar {
+  fill: var(--mantine-color-gray-5);
+}
+
+.soldBarOver {
+  fill: var(--mantine-color-text);
+}
+
+.trendLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--mantine-color-dimmed);
+  font: 11px var(--mantine-font-family);
+}
+
+.trendLegend li::before {
+  content: '';
+  display: inline-block;
+  width: 14px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.keyMedian::before {
+  border-top: 2.5px solid var(--mantine-color-teal-6);
+}
+
+.keyBand::before {
+  height: 8px;
+  background: var(--mantine-color-teal-6);
+  opacity: 0.25;
+}
+
+.keyHour::before {
+  border-top: 1px solid var(--mantine-color-blue-4);
+}

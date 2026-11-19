@@ -10,6 +10,7 @@ import { AutoImportBody } from './AutoImport'
 import cards from './Cards.module.css'
 import { IconDownload, IconExternal, IconUpload } from './icons'
 import { ManageTab } from './ManageTab'
+import { TrendsTab } from './TrendsTab'
 import { PasteForm, Summary } from './PasteForm'
 import { UploadForm, UploadScanButton } from './UploadForm'
 
@@ -207,6 +208,16 @@ export function AdminPage() {
   return (
     <Page title="Admin" lead="What the scheduled jobs and uploads have been doing.">
       {admin ? <AdminTab /> : <Alert color="yellow">This page is for site admins. Sign in with an admin account.</Alert>}
+    </Page>
+  )
+}
+
+/** Site admins only, like the Admin page: an item's auction house prices over time, at any house. */
+export function TrendsPage() {
+  const { admin } = useSession()
+  return (
+    <Page title="Trends" lead="An item's auction house prices over time, at any auction house.">
+      {admin ? <TrendsTab /> : <Alert color="yellow">This page is for site admins. Sign in with an admin account.</Alert>}
     </Page>
   )
 }

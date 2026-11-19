@@ -2015,7 +2015,7 @@ def test_serves_the_front_end_for_its_own_pages(
         "/profit/skill/dreamscythe-horde/Tailor%20Guy/tailoring",
         "/profit/skill/dreamscythe-horde/tailoring/45",
     )
-    for page in (*pages, "/manage", "/admin"):
+    for page in (*pages, "/manage", "/admin", "/trends"):
         assert client.get(page).text == "<html>app</html>"
     assert client.get("/assets/app.js").text == "js"
     assert client.get("/assets/missing.js").status_code == 404
@@ -2040,6 +2040,48 @@ def test_everyone_is_an_admin_against_the_auth_emulator(
         assert dev.get("/api/me", headers=headers).json()["admin"]
         assert dev.get("/api/admin/ingestion", headers=headers).status_code == 200
     assert dev.get("/api/admin/ingestion", headers={"Authorization": "Bearer nonsense"}).status_code == 401
+
+
+def test_admins_search_items_by_name_or_id(
+    client: TestClient, db2_paths: dict[str, Path], conn: Connection
+) -> None:
+    ingest.build_db(db2_paths, conn, FOREVER)
+
+    def found(q: str) -> list[str]:
+        return [i["name"] for i in client.get("/api/admin/items", params={"q": q}, headers=ADMIN).json()]
+
+    assert found("CLOTH") == ["Linen Cloth"]  # any case
+    assert found("3") == ["Green Robe"]  # an id
+    assert found("c") == []  # too short
+    assert found("re") == ["Green Robe", "Coarse Thread"]  # shorter names first
+    scanned(conn, {2: [(100, 5)]})
+    body = client.get("/api/admin/items", params={"q": "re"}, headers=ADMIN).json()
+    assert [(i["name"], i["priced"]) for i in body] == [("Coarse Thread", True), ("Green Robe", False)]
+    assert body[0]["quality"] == 1 and "icon" in body[0]
+    for headers in (FREE, LINKED, SIGNED_IN):
+        assert client.get("/api/admin/items", params={"q": "re"}, headers=headers).status_code == 403
+    assert client.get("/api/admin/items", headers={"Authorization": "Bearer nonsense"}).status_code == 401
+
+
+def test_admins_see_an_items_history_at_any_house(client: TestClient, priced: Connection) -> None:
+    now = db.utcnow()
+    alliance = scanned(priced, {1: [(30, 5)]}, now - timedelta(days=40), faction="Alliance")
+    scanned(priced, {1: [(25, 5)]}, now, faction="Alliance")  # not the selected (Horde) house
+
+    def history(**params: Any) -> Any:
+        return client.get("/api/admin/items/1/history", params=params, headers=ADMIN)
+
+    month = history(auction_house_id=alliance).json()  # 30 days by default
+    assert [d["low"] for d in month["days"]] == [25]
+    assert [h["low"] for h in month["hours"]] == [25]
+    assert [d["low"] for d in history(auction_house_id=alliance, days=90).json()["days"]] == [30, 25]
+    assert history(auction_house_id=alliance, days=401).status_code == 422
+    tbc = prices.auction_house(priced, "tbc", "Classic Beta PvE", "Alliance")
+    assert history(auction_house_id=tbc).status_code == 404  # another version's house
+    assert history(auction_house_id=99999).status_code == 404
+    for headers in (FREE, LINKED, SIGNED_IN):
+        r = client.get("/api/admin/items/1/history", params={"auction_house_id": alliance}, headers=headers)
+        assert r.status_code == 403
 
 
 def test_the_admin_page_shows_jobs_uploads_and_snapshots(client: TestClient, conn: Connection) -> None:
