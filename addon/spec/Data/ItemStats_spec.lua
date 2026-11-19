@@ -1295,6 +1295,56 @@ describe("ItemStats", function()
         assert.are.equal(3, newStats.mp5 - oldStats.mp5)
     end)
 
+    it("GetNormalized does not double-count a resistance the API reports under two keys", function()
+        -- Repro: Rod of Corrosion on Forever showed "Nature Resistance" (x0.2) and an unweighted
+        -- "ITEM_MOD_NATURE_RESISTANCE" row for the same +10.
+        _G.GetItemStats = function()
+            return {
+                ["RESISTANCE3_NAME"] = 10,
+                ["ITEM_MOD_NATURE_RESISTANCE"] = 10,
+            }
+        end
+        _G.CreateFrame = function(frameType)
+            if frameType == "GameTooltip" then
+                return makeTooltipMock({ "Rod of Corrosion", "+10 Nature Resistance" })
+            end
+            return {}
+        end
+        package.loaded["ItemStats"] = nil
+        require("ItemStats")
+        IS = AltArmy.ItemStats
+        IS.ClearCache()
+
+        local stats = IS.GetNormalized("|Hitem:11:0|h[New Helm]|h")
+        assert.are.equal(10, stats.nature_res)
+        assert.is_nil(stats.ITEM_MOD_NATURE_RESISTANCE)
+        assert.is_nil(stats.ITEM_MOD_NATURE_RESISTANCE_SHORT)
+    end)
+
+    it("GetNormalized maps ITEM_MOD_<SCHOOL>_RESISTANCE keys to resistance stats", function()
+        _G.GetItemStats = function()
+            return {
+                ["ITEM_MOD_FIRE_RESISTANCE_SHORT"] = 7,
+                ["ITEM_MOD_SHADOW_RESISTANCE"] = 5,
+            }
+        end
+        _G.CreateFrame = function(frameType)
+            if frameType == "GameTooltip" then
+                return makeTooltipMock({ "Some Cloak" })
+            end
+            return {}
+        end
+        package.loaded["ItemStats"] = nil
+        require("ItemStats")
+        IS = AltArmy.ItemStats
+        IS.ClearCache()
+
+        local stats = IS.GetNormalized("|Hitem:11:0|h[New Helm]|h")
+        assert.are.equal(7, stats.fire_res)
+        assert.are.equal(5, stats.shadow_res)
+        assert.are.equal("Shadow Resistance", IS.GetDisplayLabel("ITEM_MOD_SHADOW_RESISTANCE"))
+    end)
+
     it("GetNormalized parses all-resistances equip line with a conditional addendum", function()
         _G.GetItemStats = function() return {} end
         _G.CreateFrame = function(frameType)

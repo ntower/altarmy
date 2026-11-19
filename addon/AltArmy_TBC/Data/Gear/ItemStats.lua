@@ -49,6 +49,20 @@ IS.STAT_ALIASES = {
     ["RESISTANCE4_NAME"] = "frost_res",
     ["RESISTANCE5_NAME"] = "shadow_res",
     ["RESISTANCE6_NAME"] = "arcane_res",
+    -- Forever's GetItemStats also reports resistances as ITEM_MOD_<SCHOOL>_RESISTANCE
+    -- (finalizeMergedResistances folds them into RESISTANCE*_NAME).
+    ["ITEM_MOD_HOLY_RESISTANCE_SHORT"] = "holy_res",
+    ["ITEM_MOD_HOLY_RESISTANCE"] = "holy_res",
+    ["ITEM_MOD_FIRE_RESISTANCE_SHORT"] = "fire_res",
+    ["ITEM_MOD_FIRE_RESISTANCE"] = "fire_res",
+    ["ITEM_MOD_NATURE_RESISTANCE_SHORT"] = "nature_res",
+    ["ITEM_MOD_NATURE_RESISTANCE"] = "nature_res",
+    ["ITEM_MOD_FROST_RESISTANCE_SHORT"] = "frost_res",
+    ["ITEM_MOD_FROST_RESISTANCE"] = "frost_res",
+    ["ITEM_MOD_SHADOW_RESISTANCE_SHORT"] = "shadow_res",
+    ["ITEM_MOD_SHADOW_RESISTANCE"] = "shadow_res",
+    ["ITEM_MOD_ARCANE_RESISTANCE_SHORT"] = "arcane_res",
+    ["ITEM_MOD_ARCANE_RESISTANCE"] = "arcane_res",
     ["ITEM_MOD_EXTRA_ARMOR_SHORT"] = "bonus_armor",
     ["ITEM_MOD_EXTRA_ARMOR"] = "bonus_armor",
     -- Spell power / damage / healing
@@ -481,6 +495,42 @@ local function finalizeMergedManaRegen(merged)
     merged["ITEM_MOD_MANA_REGENERATION"] = nil
     merged["ITEM_MOD_POWER_REGEN0_SHORT"] = nil
     merged["ITEM_MOD_POWER_REGEN0"] = nil
+end
+
+-- One school's resistance can arrive as RESISTANCEn_NAME and as ITEM_MOD_<SCHOOL>_RESISTANCE
+-- (Forever reports both for the same +10). Keep the larger under RESISTANCEn_NAME.
+local RESISTANCE_SCHOOL_KEYS = {
+    { "RESISTANCE1_NAME", "ITEM_MOD_HOLY_RESISTANCE_SHORT", "ITEM_MOD_HOLY_RESISTANCE" },
+    { "RESISTANCE2_NAME", "ITEM_MOD_FIRE_RESISTANCE_SHORT", "ITEM_MOD_FIRE_RESISTANCE" },
+    { "RESISTANCE3_NAME", "ITEM_MOD_NATURE_RESISTANCE_SHORT", "ITEM_MOD_NATURE_RESISTANCE" },
+    { "RESISTANCE4_NAME", "ITEM_MOD_FROST_RESISTANCE_SHORT", "ITEM_MOD_FROST_RESISTANCE" },
+    { "RESISTANCE5_NAME", "ITEM_MOD_SHADOW_RESISTANCE_SHORT", "ITEM_MOD_SHADOW_RESISTANCE" },
+    { "RESISTANCE6_NAME", "ITEM_MOD_ARCANE_RESISTANCE_SHORT", "ITEM_MOD_ARCANE_RESISTANCE" },
+}
+
+local function finalizeMergedResistances(merged)
+    if not merged then return end
+    for i = 1, #RESISTANCE_SCHOOL_KEYS do
+        local keys = RESISTANCE_SCHOOL_KEYS[i]
+        local best = nil
+        for j = 1, #keys do
+            local value = merged[keys[j]]
+            if value ~= nil and not isInvalidApiStatValue(value) then
+                local n = tonumber(value) or 0
+                if best == nil or n > best then
+                    best = n
+                end
+            end
+            if j > 1 then
+                merged[keys[j]] = nil
+            end
+        end
+        if best ~= nil then
+            merged[keys[1]] = best
+        elseif isInvalidApiStatValue(merged[keys[1]]) then
+            merged[keys[1]] = nil
+        end
+    end
 end
 
 local FERAL_AP_KEYS = {
@@ -982,6 +1032,7 @@ local function collectFreshParseSnapshot(link)
     finalizeMergedSpellStats(mergedRaw)
     finalizeMergedSchoolSpellStats(mergedRaw)
     finalizeMergedManaRegen(mergedRaw)
+    finalizeMergedResistances(mergedRaw)
     finalizeMergedFeralAttackPower(mergedRaw, tooltipRaw)
     local normalized = normalizeRawStats(mergedRaw, link, confirmedNegativeKeys(tooltipRaw))
     applyConditionalStats(normalized, conditionalRaw, link)
@@ -1070,6 +1121,7 @@ local function fetchStats(link)
     finalizeMergedSpellStats(mergedRaw)
     finalizeMergedSchoolSpellStats(mergedRaw)
     finalizeMergedManaRegen(mergedRaw)
+    finalizeMergedResistances(mergedRaw)
     finalizeMergedFeralAttackPower(mergedRaw, tooltipRaw)
 
     local parseSnapshot = {
