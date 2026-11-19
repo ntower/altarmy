@@ -209,6 +209,10 @@ blizzard() { # blizzard prod|staging: the Battle.net API client's secrets for th
       --role roles/secretmanager.secretAccessor "${G[@]}" >/dev/null
     echo "  roles/secretmanager.secretAccessor on $secret -> $RUN_SA"
   done
+  # deploy.sh asks whether the secret exists before it defines the feed job: CI sees its metadata, not its value
+  gcloud secrets add-iam-policy-binding "$BLIZZARD_KEY_SECRET" --member "serviceAccount:$DEPLOY_SA" \
+    --role roles/secretmanager.viewer "${G[@]}" >/dev/null
+  echo "  roles/secretmanager.viewer on $BLIZZARD_KEY_SECRET -> $DEPLOY_SA"
 }
 
 job_runner() { # job-runner prod|staging: the service may start its ingest jobs (the Admin page's Run now)
