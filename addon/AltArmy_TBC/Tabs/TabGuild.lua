@@ -87,7 +87,7 @@ local function currentRealm()
         local r = GSS._CurrentRealm()
         if r and r ~= "" then return r end
     end
-    return (GetRealmName and GetRealmName()) or ""
+    return (AltArmy.CurrentRealm and AltArmy.CurrentRealm() or GetRealmName and GetRealmName()) or ""
 end
 
 --- Guilds owned by account characters on the current realm (picker / auto-browse).
@@ -246,7 +246,7 @@ local function groupPrefsRealm(group)
     end
     local GSS = AltArmy.GuildShareSettings
     return (GSS and GSS._CurrentRealm and GSS._CurrentRealm())
-        or (GetRealmName and GetRealmName())
+        or (AltArmy.CurrentRealm and AltArmy.CurrentRealm() or GetRealmName and GetRealmName())
         or ""
 end
 

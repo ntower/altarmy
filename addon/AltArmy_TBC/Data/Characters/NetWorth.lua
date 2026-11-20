@@ -206,7 +206,7 @@ local function displayName(realm, name, multiRealm)
 end
 
 local function currentRealmName()
-    return (GetRealmName and GetRealmName()) or ""
+    return (AltArmy.CurrentRealm and AltArmy.CurrentRealm() or GetRealmName and GetRealmName()) or ""
 end
 
 local function realmAllowed(realm, allRealms, currentRealm)

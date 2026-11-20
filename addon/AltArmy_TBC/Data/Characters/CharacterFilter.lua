@@ -173,7 +173,8 @@ function CF.Context(currentRealm)
     local getRealm = rawget(_G, "GetRealmName")
     local factionGroup = rawget(_G, "UnitFactionGroup")
     return {
-        currentRealm = currentRealm or (getRealm and getRealm()) or "",
+        currentRealm = currentRealm or (AltArmy.CurrentRealm and AltArmy.CurrentRealm())
+            or (getRealm and getRealm()) or "",
         currentFaction = factionGroup and factionGroup("player") or nil,
         maxLevel = CF.MaxLevel(),
         factionOf = CF.FactionLookup(),

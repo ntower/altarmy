@@ -131,12 +131,53 @@ function S.ApplyUnit(id, realm, guid, domain, unit, hash, now)
     return true
 end
 
+--- On WoW Forever a realm is its region and ruleset (ForeverRealm): an older linked Alt Army sends its old realm
+--- names, or "" on 1.60.1. Returns the realm `id`'s character `guid` is kept under (its group; for "" the realm
+--- that account already has it under, else ours) and `unit` with an identity's realm the same when it is one with
+--- it (so LinkValidate's wrongRealm still refuses another group). A character kept elsewhere moves there.
+function S.ForeverRealm(id, realm, guid, domain, unit)
+    local FR = AltArmy.ForeverRealm
+    if not (FR and FR.IsForever and FR.IsForever()) or type(realm) ~= "string" then
+        return realm, unit
+    end
+    local acct = S.Ensure().accounts[id]
+    local chars = acct and acct.Characters or {}
+    local group = FR.Normalize(realm, true)
+    if group == "" then
+        for r, list in pairs(chars) do
+            if r ~= "" and type(list) == "table" and list[guid] ~= nil then group = r end
+        end
+        if group == "" then group = FR.Normalize("") end
+    end
+    if domain == "identity" and type(unit) == "table" and unit.realm ~= group
+        and FR.Normalize(unit.realm, true) == FR.Normalize(realm, true)
+    then
+        local copy = {}
+        for k, v in pairs(unit) do copy[k] = v end
+        copy.realm = group
+        unit = copy
+    end
+    for r, list in pairs(chars) do
+        if r ~= group and type(list) == "table" and type(list[guid]) == "table" then
+            chars[group] = chars[group] or {}
+            local moving, have = list[guid], chars[group][guid]
+            list[guid] = nil
+            if next(list) == nil then chars[r] = nil end
+            local kept = have and FR._MergeCopies and FR._MergeCopies(have, moving, "lastUpdate") or have or moving
+            kept.realm = group
+            chars[group][guid] = kept
+        end
+    end
+    return group, unit
+end
+
 --- Take one unit as it arrived from `id`: checked (LinkValidate), then kept. Returns true, or false and why.
 --- What every way in (a sync, the debug harness) goes through. `hash` is the sender's for the unit (what its
 --- manifests will say), else ours is taken.
 function S.Receive(id, realm, guid, domain, unit, now, hash)
     local V, DS = AltArmy.LinkValidate, AltArmy.DataStore
     local versions = DS and DS._DATA_VERSIONS or {}
+    realm, unit = S.ForeverRealm(id, realm, guid, domain, unit)
     local acct = S.Ensure().accounts[id]
     local known = acct and acct.Characters[realm] and acct.Characters[realm][guid]
     if not known then

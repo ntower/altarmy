@@ -138,15 +138,18 @@ describe("CharacterSections", function()
         end)
     end)
     describe("Forever's coalesced realms", function()
+        local keepDS
         before_each(function()
             require("RealmFilter")
+            keepDS = AltArmy.DataStore
             AltArmy.DataStore = { IsWowForever = true }
+            dofile("AltArmy_TBC/Data/DataStore/ForeverRealm.lua")
         end)
         after_each(function()
-            AltArmy.DataStore = nil
+            AltArmy.DataStore = keepDS
         end)
 
-        it("puts one cluster, region and ruleset's realms in one section, first when it is this one", function()
+        it("puts one region and ruleset's realms in one section, first when it is this one", function()
             local list = {
                 { name = "Ariel", realm = "CAMWOW EU4 Realm 1 PvE", faction = "Horde" },
                 { name = "Frells", realm = "CAMWOW US2 Realm 3 PvE", faction = "Horde" },
@@ -156,7 +159,19 @@ describe("CharacterSections", function()
                 currentFaction = "Horde" })
             assert.are.same({ "# US PvE — Horde (2)", "Frells", "Frell", "# EU PvE — Horde (1)", "Ariel" },
                 shape(elements))
-            assert.are.equal("CAMWOW US PvE|Horde", elements[1].key)
+            assert.are.equal("US PvE|Horde", elements[1].key)
+        end)
+
+        it("keeps characters saved under no realm out of this ruleset's section", function()
+            -- Saved by an older Alt Army on 1.60.1; their ruleset is known once each logs in.
+            local list = {
+                { name = "Malfurn", realm = "US RP", faction = "Alliance" },
+                { name = "Janaomi", realm = "", faction = "Alliance" },
+            }
+            local elements = CS.BuildElements(list, { grouped = true, currentRealm = "US RP",
+                currentFaction = "Alliance" })
+            assert.are.same({ "# US RP — Alliance (1)", "Malfurn", "# Unknown ruleset — Alliance (1)", "Janaomi" },
+                shape(elements))
         end)
     end)
 end)

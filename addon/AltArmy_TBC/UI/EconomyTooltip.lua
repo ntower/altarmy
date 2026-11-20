@@ -318,7 +318,7 @@ function ET.Lookup(itemID, now)
     if not (crate or writ) then return nil end
     local Book = AltArmy.AuctionBook
     if not Book then return nil end
-    local realm = GetRealmName and GetRealmName() or ""
+    local realm = AltArmy.CurrentRealm and AltArmy.CurrentRealm() or GetRealmName and GetRealmName() or ""
     local faction = UnitFactionGroup and UnitFactionGroup("player") or ""
     local scan = Book.Newest(realm, faction)
     if not scan then return nil end

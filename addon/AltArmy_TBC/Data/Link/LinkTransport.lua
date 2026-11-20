@@ -241,7 +241,8 @@ function env.self()
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
     return {
         name = DS.GetCurrentPlayerName and DS:GetCurrentPlayerName() or (UnitName and UnitName("player")),
-        realm = DS.GetCurrentPlayerRealm and DS:GetCurrentPlayerRealm() or (GetRealmName and GetRealmName()),
+        realm = DS.GetCurrentPlayerRealm and DS:GetCurrentPlayerRealm()
+            or (AltArmy.CurrentRealm and AltArmy.CurrentRealm()),
         faction = UnitFactionGroup and UnitFactionGroup("player") or nil,
         addon = getMeta and getMeta("AltArmy_TBC", "Version") or nil,
         interface = GetBuildInfo and select(4, GetBuildInfo()) or nil,

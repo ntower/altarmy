@@ -65,7 +65,7 @@ end
 --- character's id says which link, so it never stands for one of ours of the same name).
 local function CharacterEntries()
     local list = SD.GetCharacterList()
-    local currentRealm = GetRealmName and GetRealmName() or ""
+    local currentRealm = AltArmy.CurrentRealm and AltArmy.CurrentRealm() or GetRealmName and GetRealmName() or ""
     list = AltArmy.GlobalRealmFilter.FilterList(list, currentRealm)
     table.sort(list, function(a, b)
         if (a.realm or "") ~= (b.realm or "") then return (a.realm or "") < (b.realm or "") end

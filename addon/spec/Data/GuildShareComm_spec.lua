@@ -1205,6 +1205,51 @@ describe("GuildShareComm helpers", function()
       end)
     end)
 
+    describe("region and ruleset realms (WoW Forever 1.60.1+)", function()
+      local GROUP = "US PvE"
+      local keep = {}
+
+      before_each(function()
+        keep.RF, keep.DS, keep.FR = AltArmy.RealmFilter, AltArmy.DataStore, AltArmy.ForeverRealm
+        keep.rules, keep.enum, keep.region = _G.C_GameRules, _G.Enum, _G.GetCurrentRegionName
+        _G.Enum = { GameRule = { PvPRuleset = 1, RPRuleset = 2, HardcoreRuleset = 3 } }
+        _G.C_GameRules = { IsGameRuleActive = function() return false end }
+        _G.GetCurrentRegionName = function() return "US" end
+        AltArmy.DataStore = { IsWowForever = true, GetRealms = function() return { [GROUP] = true } end }
+        dofile("AltArmy_TBC/Data/DataStore/ForeverRealm.lua")
+        dofile("AltArmy_TBC/Data/Characters/RealmFilter.lua")
+        AltArmy.GuildShareSettings.GetShareableCharacters = function(_, realm)
+          if realm ~= GROUP then return {} end
+          return { { name = "Frell Blast", realm = GROUP,
+            char = { name = "Frell Blast", guid = "Player-1-B", Professions = {} } } }
+        end
+      end)
+
+      after_each(function()
+        AltArmy.RealmFilter, AltArmy.DataStore, AltArmy.ForeverRealm = keep.RF, keep.DS, keep.FR
+        _G.C_GameRules, _G.Enum, _G.GetCurrentRegionName = keep.rules, keep.enum, keep.region
+      end)
+
+      it("answers an older Alt Army naming the old realm name, echoing it", function()
+        Comm._DispatchReceivedMessage("CQ", { v = 2, name = "Frell Blast", realm = "CAMWOW US2 Realm 5 PvE",
+          guid = "Player-1-B" }, "Kairu Stormhoof")
+        assert.truthy(saved.cardFor)
+        assert.are.equal("CAMWOW US2 Realm 5 PvE", sent[1].payload.realm)
+      end)
+
+      it("answers an older Alt Army on 1.60.1, which names the realm \"\"", function()
+        Comm._DispatchReceivedMessage("RQ", { name = "Frell Blast", realm = "", guid = "Player-1-B" },
+          "Kairu Stormhoof")
+        assert.truthy(saved.recipesFor)
+      end)
+
+      it("does not answer for another ruleset", function()
+        Comm._DispatchReceivedMessage("CQ", { v = 2, name = "Frell Blast", realm = "US PvP",
+          guid = "Player-1-B" }, "Kairu Stormhoof")
+        assert.is_nil(saved.cardFor)
+      end)
+    end)
+
     it("does not answer a request whose ID belongs to another character", function()
       Comm._DispatchReceivedMessage("RQ", { name = "Frell Blast", realm = "R", guid = "Player-1-Z" }, "Peer")
       assert.is_nil(saved.recipesFor)

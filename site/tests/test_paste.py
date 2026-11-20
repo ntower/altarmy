@@ -127,6 +127,12 @@ def test_the_version_line_may_name_the_account() -> None:
         paste.decode(encoded("V|2|16001|x|a|b\nC|R|A|Horde|MAGE|30|"))
 
 
+def test_a_character_of_no_realm_is_left_out() -> None:
+    # An Alt Army before 2026-11-20 exported Forever 1.60.1's characters with realm "".
+    got = paste.decode(encoded("V|2|16001|x\nC||A|Horde|MAGE|30|\nT|1225459|1\nC|R|B|Horde|MAGE|1|"))
+    assert [c.name for c in got.characters] == ["B"]
+
+
 def test_talents_belong_to_the_character_before_them() -> None:
     got = paste.decode(
         encoded("V|1|16001|x\nC|R|A|Horde|MAGE|30\nT|1225459|1\nT|1225457|5\nT|7|0\nC|R|B|Horde|MAGE|1")

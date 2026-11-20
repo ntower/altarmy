@@ -41,6 +41,9 @@ The addon writes what the site reads, and the golden files live with the addon:
   that changes the writer, the reader and the fixture, and `site-check` fails if they disagree. `site-check` also
   runs on commits touching only those addon files (the fixtures, the writers, the TOC), so such a commit redeploys
   the site unchanged.
+- **Forever realms**: since Forever 1.60.1 the addon files characters and scans under `"<region> <ruleset>"`
+  ("US PvE"; `addon/AltArmy_TBC/Data/DataStore/ForeverRealm.lua`), which `site/src/altarmy_site/versions.py`'s
+  `REGION_RULESET` maps to its fixed realms; characters saved under realm "" (older addons on 1.60.1) are skipped.
 - The TOC's `## Interface:` lists exactly the interfaces of `site/src/altarmy_site/versions.py`'s versions
   (`site/tests/test_versions.py`): a game patch moving one updates both.
 - `addon/scripts/generate-waylaid-crates.py` and `generate-writs.py` read the site's development database

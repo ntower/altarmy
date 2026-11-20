@@ -4,7 +4,7 @@
 -- Format (v2): "AAX1:" .. LibDeflate:EncodeForPrint(LibDeflate:CompressDeflate(lines)), where lines are
 --   V|2|<interface>|<build>|<account id>          the client, so the site knows which game it is, and this
 --                                                 WoW account (AltArmyTBC_Data.accountId; omitted if unset)
---   C|<realm>|<name>|<faction>|<CLASS_FILE>|<level>|<guid>
+--   C|<realm>|<name>|<faction>|<CLASS_FILE>|<level>|<guid>   (on WoW Forever <realm> is "<region> <ruleset>")
 --   P|<profession>|<rank>|<maxRank>|<recipe ids>  belongs to the C line before it; ids comma-separated
 --   T|<spell id>|<rank>                           a Legacy talent of the C line before it (rank > 0)
 --   R|<faction id>|<standing>                     its standing (1 Hated .. 8 Exalted) with a city faction

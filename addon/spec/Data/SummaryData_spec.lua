@@ -339,6 +339,53 @@ describe("SummaryData", function()
       assert.are.same(out.instructions, {})
     end)
 
+    describe("a character saved under no realm (Forever 1.60.1, an older Alt Army: ruleset unknown)", function()
+      local function completeChar(extra)
+        local char = {
+          level = 70,
+          talents = { tabs = { 0, 0, 21 } },
+          dataVersions = {
+            character = 1, guildMembership = 1, containers = 1, equipment = 1, professions = 1,
+            reputations = 2, mail = 1, auctions = 1, currencies = 1,
+          },
+          Professions = {},
+          cooldownSpecs = {
+            masterTransmutation = false, spellfireTailor = false, shadoweaveTailor = false,
+            moonclothTailor = false,
+          },
+        }
+        for k, v in pairs(extra or {}) do char[k] = v end
+        DS.GetCharacter = function() return char end
+        DS.GetCharacterLevel = function(_, c) return (c and c.level) or 0 end
+        DS.HasModuleData = function(_, c, mod)
+          local v = c.dataVersions and c.dataVersions[mod]
+          return v ~= nil and v > 0
+        end
+        DS.GetProfessions = function(_, c) return c.Professions or {} end
+        DS.GetNumRecipes = function() return 0 end
+        return char
+      end
+
+      it("asks to log in with it", function()
+        completeChar()
+        local out = SD.GetMissingDataInfo("Janaomi Juliastus", "")
+        assert.is_true(out.hasMissing)
+        assert.are.same({ "* Log in with this character" }, out.instructions)
+      end)
+
+      it("asks once, with other data its login gathers", function()
+        local char = completeChar()
+        char.dataVersions.equipment = nil
+        local out = SD.GetMissingDataInfo("Janaomi Juliastus", "")
+        assert.are.same({ "* Log in with this character" }, out.instructions)
+      end)
+
+      it("asks nothing of the same character saved under its ruleset", function()
+        completeChar()
+        assert.is_false(SD.GetMissingDataInfo("Janaomi Juliastus", "US RPPvP").hasMissing)
+      end)
+    end)
+
     it("does not nag to open the Skills window when the client has no skill-line API (e.g. WoW Forever)", function()
       local char = {
         level = 20,

@@ -156,7 +156,8 @@ local function start(profession)
     local talents = talentRanks()
     session = {
         profession = exact, character = UnitName and UnitName("player") or "?",
-        realm = GetRealmName and GetRealmName() or "?", startRank = rank, maxRank = maxRank, rank = rank,
+        realm = AltArmy.CurrentRealm and AltArmy.CurrentRealm() or GetRealmName and GetRealmName() or "?",
+        startRank = rank, maxRank = maxRank, rank = rank,
         startedAt = time and time() or 0, talents = talents,
         workingOvertime = talents and talents[SPELL_WORKING_OVERTIME] or nil,
         crafts = 0, events = {},

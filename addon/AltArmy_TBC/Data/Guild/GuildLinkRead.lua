@@ -94,7 +94,7 @@ end
 local function currentRealm()
     local GSS = AltArmy.GuildShareSettings
     if GSS and GSS._CurrentRealm then return GSS._CurrentRealm() end
-    return (GetRealmName and GetRealmName()) or ""
+    return (AltArmy.CurrentRealm and AltArmy.CurrentRealm() or GetRealmName and GetRealmName()) or ""
 end
 
 local function currentGuild()

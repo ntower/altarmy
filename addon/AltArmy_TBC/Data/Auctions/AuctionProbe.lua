@@ -45,7 +45,7 @@ local function save(result)
     result.version = P.VERSION
     result.t = now()
     result.interface = GetBuildInfo and select(4, GetBuildInfo()) or nil
-    result.realm = GetRealmName and GetRealmName() or nil
+    result.realm = AltArmy.CurrentRealm and AltArmy.CurrentRealm() or GetRealmName and GetRealmName() or nil
     result.faction = UnitFactionGroup and UnitFactionGroup("player") or nil
     local D = AltArmy.Debug
     if D and D.SaveAuctionProbe then

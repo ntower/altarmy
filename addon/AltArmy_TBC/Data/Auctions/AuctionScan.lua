@@ -183,7 +183,7 @@ end
 
 local function store()
     local faction = UnitFactionGroup and UnitFactionGroup("player") or nil
-    local realm = GetRealmName and GetRealmName() or nil
+    local realm = AltArmy.CurrentRealm and AltArmy.CurrentRealm() or GetRealmName and GetRealmName() or nil
     if tally.listings > 0 and faction and faction ~= "" and realm and realm ~= "" then
         book().Store({
             t = now(),
@@ -269,7 +269,7 @@ end
 
 local function storeSummary(rows)
     local faction = UnitFactionGroup and UnitFactionGroup("player") or nil
-    local realm = GetRealmName and GetRealmName() or nil
+    local realm = AltArmy.CurrentRealm and AltArmy.CurrentRealm() or GetRealmName and GetRealmName() or nil
     if rows < peak * S.REPLACED then
         stop() -- someone else's search replaced ours: its few rows are not the auction house
         return
@@ -351,7 +351,7 @@ end
 
 --- True when the auction house the player stands at was scanned (full or summary) under AUTO_GAP ago.
 local function scannedRecently()
-    local realm = GetRealmName and GetRealmName() or nil
+    local realm = AltArmy.CurrentRealm and AltArmy.CurrentRealm() or GetRealmName and GetRealmName() or nil
     local faction = UnitFactionGroup and UnitFactionGroup("player") or nil
     local newest = realm and faction and book().Newest(realm, faction)
     return newest ~= nil and now() - (newest.t or 0) < S.AUTO_GAP

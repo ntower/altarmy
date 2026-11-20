@@ -67,7 +67,7 @@ local function record()
         result = { version = P.VERSION, log = {}, sends = {}, pongs = {}, bursts = {}, reports = {} }
         result.interface = GetBuildInfo and select(4, GetBuildInfo()) or nil --luacheck: ignore 113
         result.wowProjectID = WOW_PROJECT_ID --luacheck: ignore 113
-        result.realm = GetRealmName and GetRealmName() or nil --luacheck: ignore 113
+        result.realm = AltArmy.CurrentRealm and AltArmy.CurrentRealm() or nil
         result.faction = UnitFactionGroup and UnitFactionGroup("player") or nil --luacheck: ignore 113
         result.player = UnitName and UnitName("player") or nil --luacheck: ignore 113
     end

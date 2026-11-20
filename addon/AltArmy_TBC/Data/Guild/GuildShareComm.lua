@@ -204,7 +204,7 @@ end
 local function currentRealm()
     local GSS = AltArmy.GuildShareSettings
     if GSS and GSS._CurrentRealm then return GSS._CurrentRealm() end
-    return (GetRealmName and GetRealmName()) or ""
+    return (AltArmy.CurrentRealm and AltArmy.CurrentRealm() or GetRealmName and GetRealmName()) or ""
 end
 
 local function currentGuild()
@@ -264,11 +264,15 @@ end
 --- entry carries its own realm. Elsewhere realms are one only with themselves, so this is the realm's set.
 function Comm._SelectShareCharsInGroup(flagOn, guild, realm)
     local realms = { realm }
+    -- An older Alt Army on Forever 1.60.1 names the realm "": a guildmate reaching us plays on our ruleset.
+    local group = realm
+    local FR = AltArmy.ForeverRealm
+    if (realm or "") == "" and FR and FR.IsForever and FR.IsForever() then group = FR.Current() or "" end
     local DS = AltArmy.DataStore
     if DS and DS.GetRealms then
         local others = {}
         for r in pairs(DS:GetRealms() or {}) do
-            if r ~= realm and sameRealm(r, realm) then others[#others + 1] = r end
+            if r ~= realm and sameRealm(r, group) then others[#others + 1] = r end
         end
         table.sort(others)
         for _, r in ipairs(others) do realms[#realms + 1] = r end

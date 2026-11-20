@@ -65,6 +65,10 @@ Canonical table: `DATA_VERSIONS` in [`DataStore.lua`](DataStore/DataStore.lua).
 - **v1**: Level-up milestones in `char.levelHistory.milestones[level]` with `reachedAt`, `playedTotal`, `playedLevel`, `zone`, `money`, `restXP`, `gear`, `deaths` (bracket count). Death log in `char.levelHistory.deaths[]` with `at`, `level`, `zone`, `playedTotal`, `killerName`, `killerGuid`. Account import gate `levelHistoryImport.questieAt` and `levelHistoryImport.nitAt`; per-character `levelHistory.meta.importedRxpAt`.
 - **OrphanImports**: Imports for characters AltArmy has never scanned live in `OrphanImports.levelHistory[realm][name]` (same `levelHistory` shape). Merged into `Characters` on first login via `ScanCharacter`. Not shown in Summary/Gear UI.
 
+## Forever realm keys (no version number)
+
+WoW Forever 1.60.1 (2026-11-20) names no realm, so every realm-keyed store on Forever moves to `"<region> <ruleset>"` ("US PvE") at each load (`ForeverRealm.Migrate`, idempotent; see `DESIGN.md`). No module's `dataVersions` changes: the entries keep their shape, only their key and `realm` field move, so nothing asks for a rescan. Entries an Alt Army before this saved under realm "" during 1.60.1 go back to the character's copy saved before, else to it at its next login; account-wide "" entries to the logged-in group. TBC is untouched.
+
 ## Domains without `dataVersions` keys
 
 These are persisted on the character (or in other SavedVariables) but are not tracked in `DATA_VERSIONS` today:

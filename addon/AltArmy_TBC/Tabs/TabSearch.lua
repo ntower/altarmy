@@ -455,7 +455,7 @@ local tooltipChunkState = nil
 local tooltipChunkGeneration = 0
 
 local function ApplyTooltipOnlyRealmFilter(rows)
-    local currentRealm = (GetRealmName and GetRealmName()) or ""
+    local currentRealm = (AltArmy.CurrentRealm and AltArmy.CurrentRealm() or GetRealmName and GetRealmName()) or ""
     if RF and RF.filterListByRealm then
         return AltArmy.GlobalRealmFilter.FilterList(rows or {}, currentRealm)
     end
@@ -463,7 +463,7 @@ local function ApplyTooltipOnlyRealmFilter(rows)
 end
 
 local function ApplyRecipeRealmFilter(rows)
-    local currentRealm = (GetRealmName and GetRealmName()) or ""
+    local currentRealm = (AltArmy.CurrentRealm and AltArmy.CurrentRealm() or GetRealmName and GetRealmName()) or ""
     if RF and RF.filterListByRealm then
         return AltArmy.GlobalRealmFilter.FilterList(rows or {}, currentRealm)
     end
@@ -1457,7 +1457,7 @@ function frame.RunSearch(_self, query)
         recipeCollapseState.mergedList = localRecipeList
         recipeList = localRecipeList
     end
-    local currentRealm = (GetRealmName and GetRealmName()) or ""
+    local currentRealm = (AltArmy.CurrentRealm and AltArmy.CurrentRealm() or GetRealmName and GetRealmName()) or ""
     if AltArmy.GlobalRealmFilter and AltArmy.GlobalRealmFilter.FilterList then
         itemList = AltArmy.GlobalRealmFilter.FilterList(itemList, currentRealm)
         localRecipeList = AltArmy.GlobalRealmFilter.FilterList(localRecipeList, currentRealm)

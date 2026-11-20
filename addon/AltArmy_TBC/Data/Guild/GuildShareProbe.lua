@@ -396,7 +396,8 @@ function Probe.Run(query)
         return false
     end
     local GSS = AltArmy.GuildShareSettings
-    local myRealm = (GSS and GSS._CurrentRealm and GSS._CurrentRealm()) or (GetRealmName and GetRealmName()) or ""
+    local myRealm = (GSS and GSS._CurrentRealm and GSS._CurrentRealm())
+        or (AltArmy.CurrentRealm and AltArmy.CurrentRealm()) or ""
     local row, rosterSource = rosterRowFor(sender)
     local seen = senders[sender]
     local suffix = Probe.SuffixOf(seen and seen.raw) or Probe.SuffixOf(row and row.name)
@@ -482,7 +483,8 @@ function Probe.RunCards(query, n)
         return false
     end
     local GSS = AltArmy.GuildShareSettings
-    local myRealm = (GSS and GSS._CurrentRealm and GSS._CurrentRealm()) or (GetRealmName and GetRealmName()) or ""
+    local myRealm = (GSS and GSS._CurrentRealm and GSS._CurrentRealm())
+        or (AltArmy.CurrentRealm and AltArmy.CurrentRealm()) or ""
     local realm = entry.charRealm or guidRealms[entry.guid] or myRealm
     pending = {
         mode = "cards",

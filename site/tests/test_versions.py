@@ -120,6 +120,19 @@ def test_a_forever_realm_of_an_unknown_region_or_ruleset_is_its_coalesced_group(
     assert forever.realm_name("Classic Beta PvE") == "Classic Beta PvE"  # another shape: as it is
 
 
+def test_a_forever_region_and_ruleset_is_its_fixed_realm() -> None:
+    # Forever 1.60.1 names no realm: the addon files characters and scans under "<region> <ruleset>".
+    forever = VERSIONS["forever"]
+    assert forever.realm_name("US PvE") == "Americas Normal"
+    assert forever.realm_name("US PvP") == "Americas PvP"
+    assert forever.realm_name("EU RP") == "Europe RP"
+    assert forever.realm_name("EU RPPvP") == "Europe RP-PvP"
+    assert forever.realm_name("US Hardcore") == "Americas Hardcore"
+    assert forever.realm_name("ZZ PvE") == "ZZ PvE"  # an unknown region: as it is
+    assert forever.realm_name("Living Flame") == "Living Flame"  # no ruleset word
+    assert VERSIONS["tbc"].realm_name("US PvE") == "US PvE"
+
+
 def test_every_region_has_each_ruleset_and_tbc_realms_stay_as_they_are() -> None:
     forever = VERSIONS["forever"]
     assert {(s.region, s.ruleset) for s in forever.realms} == {

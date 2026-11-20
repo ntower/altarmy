@@ -349,7 +349,7 @@ local function resolveIsCurrentChar(name, realm)
         return DS:IsCurrentCharacter(name, realm)
     end
     local currentName = (UnitName and UnitName("player")) or (GetUnitName and GetUnitName("player")) or ""
-    local currentRealm = GetRealmName and GetRealmName() or ""
+    local currentRealm = AltArmy.CurrentRealm and AltArmy.CurrentRealm() or GetRealmName and GetRealmName() or ""
     return (name == currentName and realm == currentRealm)
 end
 
@@ -481,6 +481,12 @@ function AltArmy.SummaryData.GetMissingDataInfo(name, realm)
     if not char then return out end
 
     local isCurrent = resolveIsCurrentChar(name, realm)
+
+    -- Saved under no realm (an older Alt Army on WoW Forever 1.60.1): its ruleset is learned, and the entry moved
+    -- there ("Unknown ruleset" in the Summary until then), when it logs in.
+    if (realm or "") == "" then
+        addUniqueInstruction(out, "* Log in with this character")
+    end
 
     for moduleName in pairs(MODULE_INSTRUCTIONS) do
         appendModuleMissingInstruction(out, char, DS, isCurrent, moduleName)

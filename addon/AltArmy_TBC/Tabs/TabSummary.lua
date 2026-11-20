@@ -970,7 +970,7 @@ end
 --- Update visible rows from the character list using current vertical scrollbar position.
 Update = function()
     local rawList = AltArmy.Characters and AltArmy.Characters.GetList and AltArmy.Characters:GetList() or {}
-    local currentRealm = (GetRealmName and GetRealmName()) or ""
+    local currentRealm = (AltArmy.CurrentRealm and AltArmy.CurrentRealm() or GetRealmName and GetRealmName()) or ""
     local RF = AltArmy.RealmFilter
     local CF = AltArmy.CharacterFilter
     local settings = GetSummarySettings()

@@ -147,6 +147,10 @@ def parse_characters(data: bytes, retail_bags: bool = True) -> list[Character]:
 def _characters(root: LuaTable, retail_bags: bool) -> list[Character]:
     chars: list[Character] = []
     for realm, by_key in _table(root.get("Characters")).items():
+        if str(realm) == "":
+            # An Alt Army before 2026-11-20 saved Forever 1.60.1's characters under no realm: a copy, whose
+            # real one comes once the character logs in with a newer addon.
+            continue
         entries = {
             str(key): c
             for key, char in _table(by_key).items()

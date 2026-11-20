@@ -274,7 +274,7 @@ local function PoolRow()
 end
 
 local function CurrentScan()
-    local realm = GetRealmName and GetRealmName() or ""
+    local realm = AltArmy.CurrentRealm and AltArmy.CurrentRealm() or GetRealmName and GetRealmName() or ""
     local faction = UnitFactionGroup and UnitFactionGroup("player") or ""
     return Book.Newest(realm, faction), realm, faction
 end

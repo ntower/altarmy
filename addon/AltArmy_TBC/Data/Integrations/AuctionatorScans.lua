@@ -37,7 +37,7 @@ function AS.Record(now)
     now = now or time()
     local faction = UnitFactionGroup and UnitFactionGroup("player") or nil
     if not faction or faction == "" then return end
-    local realm = GetRealmName and GetRealmName() or ""
+    local realm = AltArmy.CurrentRealm and AltArmy.CurrentRealm() or GetRealmName and GetRealmName() or ""
     local key = auctionatorKey() or realm
     local scans = AS.GetLog().scans
 

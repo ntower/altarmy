@@ -80,7 +80,7 @@ local function GetCurrentRealm()
         local _, realm = DS:GetCurrentPlayerIdentity()
         return realm
     end
-    return (GetRealmName and GetRealmName()) or ""
+    return (AltArmy.CurrentRealm and AltArmy.CurrentRealm() or GetRealmName and GetRealmName()) or ""
 end
 
 local function UpdateHeaderSortIndicators()

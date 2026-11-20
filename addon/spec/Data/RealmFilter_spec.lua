@@ -217,15 +217,19 @@ describe("RealmFilter", function()
     local EU4PVP = "CAMWOW EU4 Realm 4 PvP"
     local SHARD3 = "CAMWOW US3 Realm 1 PvE" -- another shard of the same region: they play together
 
+    local keepDS
     before_each(function()
+      keepDS = AltArmy.DataStore
       AltArmy.DataStore = { IsWowForever = true }
+      dofile("AltArmy_TBC/Data/DataStore/ForeverRealm.lua")
     end)
     after_each(function()
-      AltArmy.DataStore = nil
+      AltArmy.DataStore = keepDS
     end)
 
-    it("groups realms of one cluster, region and ruleset", function()
-      assert.are.equal("CAMWOW US PvE", RF.realmGroup(US3))
+    it("groups realms of one region and ruleset (Forever 1.60.1 names none: the group is the realm)", function()
+      assert.are.equal("US PvE", RF.realmGroup(US3))
+      assert.are.equal("US PvE", RF.realmGroup("US PvE"))
       assert.are.equal(RF.realmGroup(US3), RF.realmGroup(US5))
       assert.is_true(RF.sameRealm(US3, US5))
     end)
@@ -247,7 +251,7 @@ describe("RealmFilter", function()
       assert.are.equal("", RF.realmGroup(nil))
     end)
 
-    it("labels a group without its cluster", function()
+    it("labels a realm by its group", function()
       assert.are.equal("US PvE", RF.realmLabel(US3))
       assert.are.equal("EU PvP", RF.realmLabel(EU4PVP))
       assert.are.equal("Classic Beta PvE", RF.realmLabel("Classic Beta PvE"))

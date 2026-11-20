@@ -38,6 +38,7 @@ Data\Economy\CraftContext.lua
 Data\Economy\WritCosts.lua
 Data\Economy\CurrencyGrid.lua
 Data\DataStore\DataStore.lua
+Data\DataStore\ForeverRealm.lua
 Data\DataStore\DataStoreItemSpellCompat.lua
 Data\ClassColor.lua
 Data\Cooldowns\CooldownData.lua

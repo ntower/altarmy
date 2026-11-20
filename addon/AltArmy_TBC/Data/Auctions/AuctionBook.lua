@@ -5,7 +5,7 @@
 -- SavedVariable so the website's uploader need not parse AltArmyTBC_Data. A scan:
 --   { t, realm, faction, complete, listings, bidOnly, source, items }
 --   t         GetServerTime() when the listings arrived
---   realm     GetRealmName(); faction: UnitFactionGroup("player") — whose auction house it is
+--   realm     AltArmy.CurrentRealm(); faction: UnitFactionGroup("player") — whose auction house it is
 --   complete  every listing was read (only complete scans are stored)
 --   listings  listings read; bidOnly: those without a buyout (counted, never priced)
 --   source    "own" (Alt Army asked for the listings) or "heard" (another addon did)

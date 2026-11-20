@@ -4,26 +4,20 @@ AltArmy.RealmFilter = AltArmy.RealmFilter or {}
 
 local RF = AltArmy.RealmFilter
 
--- WoW Forever's mega-server: GetRealmName() says "<cluster> <region><shard> Realm <n> <ruleset>" ("CAMWOW US2
--- Realm 3 PvE"), and the realms of one cluster, region and ruleset are coalesced, whatever their shard (US2 and
--- US3 play together; UnitRealmRelationship 2: party, mail, trade and the auction house reach across them), so the
--- addon treats them as one realm. Elsewhere, and for a name of another shape, a realm is its name.
-local FOREVER_REALM = "^(.-%a+)%d*%s+Realm%s+%d+%s+(%S+)$"
+-- WoW Forever: everyone of one region and ruleset plays together (party, mail, trade, the auction house), and
+-- since 1.60.1 the game names no realm, so a realm there is "<region> <ruleset>" ("US PvE"; ForeverRealm). Older
+-- names ("CAMWOW US2 Realm 3 PvE", from older linked accounts or guildmates) are one with their group. "" stays
+-- "": an older Alt Army on 1.60.1 saved every ruleset's characters there, and each one's ruleset is known only
+-- once it logs in (DataStore then moves it), so none is filed with the group the player is on now. Elsewhere a
+-- realm is its name.
 
-local function isForever()
-    local DS = AltArmy.DataStore
-    return DS ~= nil and DS.IsWowForever == true
-end
-
---- The realm `realm` is one with: on Forever its cluster, region and ruleset ("CAMWOW US PvE"), else itself.
---- Compare realms with this (or sameRealm), never a character's storage realm: that stays the name it reports.
+--- The realm `realm` is one with: on Forever its region and ruleset ("US PvE"), else itself. Compare realms with
+--- this (or sameRealm).
 function RF.realmGroup(realm)
     realm = realm or ""
-    if isForever() then
-        local region, ruleset = realm:match(FOREVER_REALM)
-        if region then
-            return region .. " " .. ruleset
-        end
+    local FR = AltArmy.ForeverRealm
+    if FR and FR.IsForever and FR.IsForever() then
+        return FR.Normalize(realm, true)
     end
     return realm
 end
@@ -33,11 +27,12 @@ function RF.sameRealm(a, b)
     return RF.realmGroup(a) == RF.realmGroup(b)
 end
 
---- The realm as shown: on Forever its group without the cluster ("US PvE"), else the name.
+--- The realm as shown: on Forever its group ("US PvE", or "Unknown ruleset" for ""), else the name.
 function RF.realmLabel(realm)
     local group = RF.realmGroup(realm)
-    if group ~= (realm or "") then
-        return (group:gsub("^%S+%s+", ""))
+    if group == "" then
+        local FR = AltArmy.ForeverRealm
+        if FR and FR.IsForever and FR.IsForever() then return "Unknown ruleset" end
     end
     return group
 end

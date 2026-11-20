@@ -44,7 +44,7 @@ local function currentRealm()
         local r = DS:GetCurrentPlayerRealm()
         if r and r ~= "" then return r end
     end
-    return (GetRealmName and GetRealmName()) or ""
+    return (AltArmy.CurrentRealm and AltArmy.CurrentRealm() or GetRealmName and GetRealmName()) or ""
 end
 GSS._CurrentRealm = currentRealm
 

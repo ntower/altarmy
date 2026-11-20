@@ -67,6 +67,9 @@ class RealmSpec:
 # Realm 3 PvE"); every realm of a region and ruleset is one, whatever its shard (the client says coalesced:
 # party, mail, auction house; US2 and US3 play together)
 COALESCED_REALM = re.compile(r"^(?P<group>.*?(?P<region>[A-Za-z]+))\d*\s+Realm\s+\d+\s+(?P<ruleset>\S+)$")
+# Since Forever 1.60.1 (2026-11-20) the client names no realm, and the addon files characters and scans under
+# their region and ruleset ("US PvE"), read from the game rules
+REGION_RULESET = re.compile(r"^(?P<region>[A-Za-z]+)\s+(?P<ruleset>\S+)$")
 # (key, label, the region codes realm names use): US and EU seen; Asia's codes are a guess
 REGIONS = (
     ("americas", "Americas", ("US",)),
@@ -176,12 +179,14 @@ class GameVersion:
 
     def canonical_realm(self, name: str) -> RealmSpec | None:
         """The fixed realm a realm name stands for (its name or an alias, ignoring case and spaces; with
-        `coalesced_realms`, a `COALESCED_REALM` name's region and ruleset)."""
+        `coalesced_realms`, a `COALESCED_REALM` or `REGION_RULESET` name's region and ruleset)."""
         wanted = _squash(name)
         for spec in self.realms:
             if wanted in {_squash(n) for n in (spec.name, *spec.aliases)}:
                 return spec
         coalesced = self._coalesced(name)
+        if coalesced is None and self.coalesced_realms:
+            coalesced = REGION_RULESET.match(name.strip())
         if coalesced is not None:
             region, ruleset = _region_of(coalesced["region"]), _ruleset_of(coalesced["ruleset"])
             for spec in self.realms:

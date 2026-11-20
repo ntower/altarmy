@@ -662,7 +662,7 @@ function GTD.CanShowGuildTab()
         realm = DS:GetCurrentPlayerRealm()
     end
     if not realm or realm == "" then
-        realm = (GetRealmName and GetRealmName()) or ""
+        realm = (AltArmy.CurrentRealm and AltArmy.CurrentRealm() or GetRealmName and GetRealmName()) or ""
     end
     return GTD.ShouldShowGuildTab(flagOn, GTD.HasGuildedCharactersOnRealm(realm))
 end

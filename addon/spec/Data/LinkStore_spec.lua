@@ -175,4 +175,70 @@ describe("LinkStore", function()
     S.SetLink("acct", { suspended = "another game" })
     assert.is_nil(S.AccountOf(GUID))
   end)
+
+  describe("on WoW Forever, whose realms are now region and ruleset (ForeverRealm)", function()
+    local OLD, GROUP = "CAMWOW US2 Realm 5 PvE", "US PvE"
+    local keep = {}
+
+    local function oldIdentity(name, realm)
+      local u = identity(name)
+      u.realm = realm
+      return u
+    end
+
+    before_each(function()
+      keep.forever, keep.rules, keep.enum, keep.region = DS.IsWowForever, _G.C_GameRules, _G.Enum,
+        _G.GetCurrentRegionName
+      DS.IsWowForever = true
+      _G.Enum = { GameRule = { PvPRuleset = 1, RPRuleset = 2, HardcoreRuleset = 3 } }
+      _G.C_GameRules = { IsGameRuleActive = function() return false end }
+      _G.GetCurrentRegionName = function() return "US" end
+      dofile("AltArmy_TBC/Data/DataStore/ForeverRealm.lua")
+      dofile("AltArmy_TBC/Data/Characters/RealmFilter.lua")
+    end)
+
+    after_each(function()
+      DS.IsWowForever, _G.C_GameRules, _G.Enum, _G.GetCurrentRegionName = keep.forever, keep.rules, keep.enum,
+        keep.region
+    end)
+
+    it("keeps an older linked account's character (an old realm name) under the group", function()
+      assert.is_true(S.Receive("acct", OLD, GUID, "identity", oldIdentity("Theirs", OLD), 100))
+      local chars = S.Ensure().accounts.acct.Characters
+      assert.is_nil(chars[OLD])
+      assert.are.equal("Theirs", chars[GROUP][GUID].name)
+      assert.are.equal(GROUP, chars[GROUP][GUID].realm)
+    end)
+
+    it("keeps a character an older Alt Army on 1.60.1 sends under \"\" where that account has it", function()
+      S.Receive("acct", GROUP, GUID, "identity", oldIdentity("Theirs", GROUP), 100)
+      assert.is_true(S.Receive("acct", "", GUID, "identity", oldIdentity("Theirs", ""), 200))
+      local chars = S.Ensure().accounts.acct.Characters
+      assert.is_nil(chars[""])
+      assert.are.equal(GROUP, chars[GROUP][GUID].realm)
+    end)
+
+    it("moves a character the account now sends under its group from where it was", function()
+      S.Ensure().accounts.acct = { Characters = { [""] = { [GUID] = { name = "Theirs", realm = "", guid = GUID,
+        level = 9 } } }, hashes = {} }
+      assert.is_true(S.Receive("acct", GROUP, GUID, "identity", oldIdentity("Theirs", GROUP), 300))
+      local chars = S.Ensure().accounts.acct.Characters
+      assert.is_nil(chars[""])
+      assert.are.equal(10, chars[GROUP][GUID].level)
+    end)
+
+    it("finds our character a linked account mailed under an old realm name, or by its GUID", function()
+      require("LinkMail")
+      local LM = AltArmy.LinkMail
+      local root = { Characters = { [GROUP] = { [GUID] = { guid = GUID, name = "Mine" } } } }
+      assert.are.equal("Mine", LM._OwnCharacter(root, OLD, GUID).name)
+      assert.are.equal("Mine", LM._OwnCharacter(root, "", GUID).name)
+      assert.is_nil(LM._OwnCharacter(root, "CAMWOW US2 Realm 5 PvP", GUID))
+    end)
+
+    it("still refuses an identity of another group than the one it came under", function()
+      assert.are.same({ false, "wrongRealm" },
+        { S.Receive("acct", GROUP, GUID, "identity", oldIdentity("Theirs", "CAMWOW US2 Realm 5 PvP"), 100) })
+    end)
+  end)
 end)

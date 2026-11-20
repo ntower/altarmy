@@ -72,8 +72,19 @@ local function SurnameSeparator()
     return " "
 end
 
+--- The realm the current character is filed under: on WoW Forever (whose 1.60.1 names no realm) its region and
+--- ruleset, "US PvE" (ForeverRealm.Current); elsewhere the server GetRealmName names. "" while not known.
 local function GetCurrentRealm()
+    local FR = AltArmy.ForeverRealm
+    if DS.IsWowForever and FR and FR.Current then
+        return FR.Current() or ""
+    end
     return (GetRealmName and GetRealmName()) or ""
+end
+
+--- The current character's realm, wherever a module needs it: never GetRealmName directly (see above).
+function AltArmy.CurrentRealm()
+    return GetCurrentRealm()
 end
 
 --- Full character name. WoW Forever's UnitName returns the first name and the surname as two
@@ -115,7 +126,20 @@ end
 local function GetCurrentCharTable()
     local realm = GetCurrentRealm()
     local key, name = GetCurrentKey()
-    if not realm or not key then return nil end
+    if not realm or realm == "" or not key then return nil end
+    local empty = AltArmyTBC_Data.Characters[""]
+    if type(empty) == "table" and empty[key] ~= nil then
+        -- Saved under no realm by an Alt Army that took Forever 1.60.1's "" for one: this is its home.
+        local old = empty[key]
+        empty[key] = nil
+        if next(empty) == nil then AltArmyTBC_Data.Characters[""] = nil end
+        AltArmyTBC_Data.Characters[realm] = AltArmyTBC_Data.Characters[realm] or {}
+        local have = AltArmyTBC_Data.Characters[realm][key]
+        local FR = AltArmy.ForeverRealm
+        local kept = (have and FR and FR._MergeCopies) and FR._MergeCopies(have, old, "lastUpdate") or have or old
+        if type(kept) == "table" then kept.realm = realm end
+        AltArmyTBC_Data.Characters[realm][key] = kept
+    end
     if not AltArmyTBC_Data.Characters[realm] then
         AltArmyTBC_Data.Characters[realm] = {}
     end
@@ -800,6 +824,9 @@ frame:SetScript("OnEvent", function(_, event, ...)
             EnsureAccountId()
             RemoveUnknownStubs()
             MigrateCharacterKeys()
+            if DS.IsWowForever and AltArmy.ForeverRealm then
+                AltArmy.ForeverRealm.MigrateGlobals(AltArmy.ForeverRealm.Current())
+            end
             GetCurrentCharTable()
             MigrateDataVersions()
             if DS.MigratePhantomLevelHistoryImports then
@@ -814,6 +841,12 @@ frame:SetScript("OnEvent", function(_, event, ...)
         return
     end
     if event == "PLAYER_ALIVE" or event == "PLAYER_ENTERING_WORLD" then
+        local FR = AltArmy.ForeverRealm
+        if DS.IsWowForever and FR and not DS._foreverMigratedAtLogin and FR.Current() then
+            -- Again once the group is surely known: account-wide "" entries wait for it (ForeverRealm.Migrate).
+            DS._foreverMigratedAtLogin = true
+            FR.MigrateGlobals(FR.Current())
+        end
         trackResting()
         if DS.MigrateRecipePrimaryIds then
             DS:MigrateRecipePrimaryIds()

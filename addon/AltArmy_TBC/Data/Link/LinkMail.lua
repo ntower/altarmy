@@ -257,8 +257,11 @@ function M.Tick(env, peers)
     end
 end
 
---- Our character with GUID `guid` on `realm`, in our own data root.
+--- Our character with GUID `guid` on `realm`, in our own data root. On WoW Forever `realm` is taken as its group
+--- (ForeverRealm): an older linked Alt Army names the old realm, or "" on 1.60.1.
 local function ownCharacter(root, realm, guid)
+    local FR = AltArmy.ForeverRealm
+    if FR and FR.IsForever and FR.IsForever() then realm = FR.Normalize(realm) end
     local chars = type(root) == "table" and type(root.Characters) == "table" and root.Characters[realm]
     if type(chars) ~= "table" then
         return nil
@@ -269,6 +272,8 @@ local function ownCharacter(root, realm, guid)
     end
     return nil
 end
+
+M._OwnCharacter = ownCharacter
 
 --- A MAIL from `peer`: one of its characters mailed one of ours. Its rows go into that character's
 --- MailCache (once), unless that mailbox was read since the mail arrived; answered MAILA whatever we did.

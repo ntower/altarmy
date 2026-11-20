@@ -370,6 +370,12 @@ def test_an_addon_scan_on_a_coalesced_realm_lands_on_its_regions_house(conn: Con
     assert got.auction_house_id == prices.find_auction_house(conn, FOREVER_KEY, "Americas Normal", "Horde")
 
 
+def test_an_addon_scan_under_a_region_and_ruleset_lands_on_its_house(conn: Connection) -> None:
+    scan = book.Scan(T0, "US PvE", "Horde", 1, 0, "own", {ORE: (book.Level(70, 2, 1),)})
+    (got,) = uploads._record_books(conn, ME, FOREVER_KEY, [scan], at(T0 + 60))
+    assert got.auction_house_id == prices.find_auction_house(conn, FOREVER_KEY, "Americas Normal", "Horde")
+
+
 # --- the local loader ---------------------------------------------------------------------------------
 FIXTURES = Path(__file__).parent / "fixtures" / "snapshots"
 

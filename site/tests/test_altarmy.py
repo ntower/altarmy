@@ -275,6 +275,15 @@ def names(data: bytes) -> list[tuple[str, int]]:
     return [(c.name, c.level) for c in altarmy.parse_characters(data)]
 
 
+def test_characters_saved_under_no_realm_are_left_out() -> None:
+    # An Alt Army before 2026-11-20 on Forever 1.60.1 saved the session's character under realm "": a copy
+    # whose real one comes once that character logs in with a newer addon.
+    lost = (
+        b'AltArmyTBC_Data = {\n["Characters"] = {\n[""] = {\n' + _entry("Lost", level=60, updated=9).encode()
+    )
+    assert altarmy.parse_characters(lost + b"},\n},\n}\n") == []
+
+
 def test_characters_keyed_by_guid_are_named_by_their_name_field() -> None:
     data = _sv(_entry("Frell Ofelements", level=20, updated=100, guid="Player-1-A"))
     assert '["Player-1-A"]' in data.decode()

@@ -160,6 +160,9 @@ def _parse(lines: list[str]) -> Export:
     if current is not None:
         chars.append(_character(*current))
     account = account_id(head[4]) if len(head) == 5 else None
+    # An Alt Army before 2026-11-20 exported Forever 1.60.1's characters under no realm: copies, whose real
+    # ones come once the characters log in with a newer addon.
+    chars = [c for c in chars if c.realm]
     return Export(interface, head[3], sorted(chars, key=lambda c: (c.realm, c.name)), account)
 
 
