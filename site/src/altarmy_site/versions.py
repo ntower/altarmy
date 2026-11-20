@@ -143,7 +143,9 @@ class GameVersion:
     # 6 Honored, 7 Revered, 8 Exalted; see `reputation`); standings not listed get nothing off
     reputation_discounts: tuple[tuple[int, int], ...] = ()
     # The hourly auction snapshots (`snapshots`): each time-left bucket's (more than, at most) seconds left,
-    # Classic's until a Forever snapshot shows them; the durations an auction can be posted for, in hours;
+    # Classic's (Forever's too: on 2026-11-19 its new auctions started in MEDIUM, LONG or VERY_LONG, those
+    # posted in MEDIUM were gone within 2 hours and those posted in LONG moved to MEDIUM 6 hours later, in
+    # 10 hourly snapshots of 4 houses); the durations an auction can be posted for, in hours;
     # and the longest gap between two snapshots that still tells what ended in between
     time_left_buckets: tuple[tuple[str, int, int], ...] = (
         ("SHORT", 0, 1800),
