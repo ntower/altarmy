@@ -17,7 +17,7 @@ local DS = AltArmy.DataStore
 local ET = AltArmy.EconomyTooltip -- the rows' tooltips (UI/EconomyTooltip.lua)
 if not (Theme and W and WC and Writs and Book and DS and ET and AltArmy.CraftPlan and AltArmy.CraftContext
     and AltArmy.ColumnFit and frame.CreateScanFooter and frame.CreateEmptyState and frame.AddLevelEntries
-    and frame.ToggleLevel) then
+    and frame.ToggleLevel and frame.AddTotalByEntries and frame.PickTotalBy) then
     return
 end
 
@@ -98,17 +98,18 @@ UI.filter = Theme.CreateFilterDropdown({
     text = "Filter",
     getEntries = function()
         local o = W.EnsureOptions()
-        -- The levels at the bottom: the writs have no Apprentice level.
-        return frame.AddLevelEntries({
+        -- The levels below the checkboxes (the writs have no Apprentice level), then the total's basis.
+        return frame.AddTotalByEntries(frame.AddLevelEntries({
             { kind = "checkbox", key = "hideUnavailable", label = "Hide unavailable writs",
                 checked = o.writsOnlyAvailable, enabled = true },
             { kind = "checkbox", key = "hideUncraftable", label = "Hide writs I can not fulfill via crafting",
                 checked = o.writsOnlyCraftable, enabled = true },
-        }, W.WRIT_TIERS, o.writsHiddenTiers, W.WritTierLabel)
+        }, W.WRIT_TIERS, o.writsHiddenTiers, W.WritTierLabel), o.writsTotalBy)
     end,
     onToggle = function(key, checked)
         local o = W.EnsureOptions()
-        if frame.ToggleLevel(key, checked, o.writsHiddenTiers) then
+        if frame.ToggleLevel(key, checked, o.writsHiddenTiers) or frame.PickTotalBy(key, o, "writsTotalBy") then
+            if ET and ET.ResetCache then ET.ResetCache() end -- item tooltips' totals follow the pick
             if frame.RefreshWrits then frame.RefreshWrits() end
             return
         end
@@ -338,7 +339,7 @@ local function RefreshWrits()
     ctx, UI.classOf = AltArmy.CraftContext.Build(DS, realm, faction, book, Writs)
     local orders = AltArmy.WritOrders and AltArmy.WritOrders.Orders() or nil
     local o = W.EnsureOptions()
-    local rows = WC.Filter(WC.BuildRows(book, Writs, orders, ctx),
+    local rows = WC.Filter(WC.BuildRows(book, Writs, orders, ctx, o.writsTotalBy),
         { hideUncraftable = o.writsOnlyCraftable, hideUnavailable = o.writsOnlyAvailable,
             hiddenTiers = o.writsHiddenTiers })
     table.sort(rows, function(a, b) return WC.Compare(a, b, o.writsSortKey, o.writsSortAscending) end)

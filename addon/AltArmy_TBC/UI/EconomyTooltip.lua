@@ -190,8 +190,9 @@ function ET.AddCrateLines(tt, rd, opts)
             AddUnavailableLine(tt, "Fill via craft")
         end
         if rd.total then
-            AddTotalLine(tt, "Total cost", rd.total)
-            AddTotalLine(tt, "Total cost per " .. ET.FavorIcon(), rd.perFavor)
+            local via = rd.totalBy == "ah" and " (via AH)" or ""
+            AddTotalLine(tt, "Total cost" .. via, rd.total)
+            AddTotalLine(tt, "Total cost per " .. ET.FavorIcon() .. via, rd.perFavor)
         end
         if #rd.options > 0 then
             tt:AddLine(" ")
@@ -258,9 +259,10 @@ function ET.AddWritLines(tt, rd, opts)
     -- Less the pouch's average, so an estimate ("~") like the reward.
     if rd.total then
         local mark = (rd.goldBack or 0) > 0 and "~" or ""
-        AddTotalLine(tt, "Total cost", rd.total, mark)
+        local via = rd.totalBy == "ah" and " (via AH)" or ""
+        AddTotalLine(tt, "Total cost" .. via, rd.total, mark)
         if rd.perRep then
-            AddTotalLine(tt, "Total cost per rep", rd.perRep, mark)
+            AddTotalLine(tt, "Total cost per rep" .. via, rd.perRep, mark)
         end
     end
     if rd.craft then
@@ -334,11 +336,13 @@ function ET.Lookup(itemID, now)
     end
     local kind, row
     if crate then
-        kind, row = "crate", AltArmy.WaylaidCosts.BuildRow(crate, cache.book, scan.summary, ctx)
+        local o = AltArmy.WaylaidCosts.EnsureOptions()
+        kind, row = "crate", AltArmy.WaylaidCosts.BuildRow(crate, cache.book, scan.summary, ctx, o.waylaidTotalBy)
     else
         if not ctx then return nil end -- WritCosts.BuildRow needs the context
         local orders = AltArmy.WritOrders and AltArmy.WritOrders.Orders() or nil
-        kind, row = "writ", AltArmy.WritCosts.BuildRow(writ, cache.book, orders, ctx)
+        local o = AltArmy.WaylaidCosts.EnsureOptions()
+        kind, row = "writ", AltArmy.WritCosts.BuildRow(writ, cache.book, orders, ctx, o.writsTotalBy)
     end
     cache.rows[itemID] = { kind = kind, row = row, classOf = classOf or {}, at = now }
     return kind, row, scan, classOf or {}

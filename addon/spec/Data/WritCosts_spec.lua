@@ -106,6 +106,18 @@ describe("WritCosts", function()
             assert.is_nil(shot.perRep)
         end)
 
+        it("counts the total at the auction house when asked, picking the item cheapest to buy", function()
+            local rows = byId(WC.BuildRows(context().book, WRITS, nil, context(), "ah"))
+            local robe = rows[264047]
+            assert.equals("ah", robe.totalBy)
+            assert.equals(12, robe.item) -- 900 to buy, against the first Robe's 1000
+            assert.equals(900, robe.buy)
+            assert.equals("craft", robe.best) -- still the cheaper way, for the tooltip
+            assert.equals(-2100, robe.total) -- 900 bought + 500 for the writ - 3500 back
+            assert.equals(-28, robe.perRep) -- -2100 / 75 rep, rounded
+            assert.is_nil(rows[264037].total) -- nothing listed to buy
+        end)
+
         it("takes the order the game told us over the assumed one", function()
             local orders = { [94247] = { item = 1, count = 3, t = 1 } }
             local robe = byId(WC.BuildRows(context().book, WRITS, orders, context()))[264047]

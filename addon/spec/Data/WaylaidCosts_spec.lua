@@ -158,6 +158,27 @@ describe("WaylaidCosts", function()
             assert.equals(400, r.bestCost)
         end)
 
+        it("counts the total at the auction house fill when asked, though crafting is cheaper", function()
+            local dearBars = { [902] = { lv(3000, 1) }, [3] = { lv(70, 10) }, [5] = { lv(50, 20) } }
+            local best = byId(W.BuildRows(dearBars, CRATES, false, context(dearBars)))[902]
+            assert.equals("craft", best.best)
+            assert.equals("best", best.totalBy)
+            assert.equals(2000, best.total) -- 3000 + 500 crafted - 1500
+            local ah = byId(W.BuildRows(dearBars, CRATES, false, context(dearBars), "ah"))[902]
+            assert.equals("craft", ah.best) -- still the cheaper way, for the tooltip
+            assert.equals("ah", ah.totalBy)
+            assert.equals(2200, ah.total) -- 3000 + 700 bought - 1500
+            assert.equals(73, ah.perFavor) -- / 30 Favor, rounded
+        end)
+
+        it("has no auction house total when the fill isn't listed in full", function()
+            local r = byId(W.BuildRows(book, CRATES, false, context(book), "ah"))[902]
+            assert.equals(500, r.craft)
+            assert.is_nil(r.buy)
+            assert.is_nil(r.total)
+            assert.is_nil(r.perFavor)
+        end)
+
         it("has no craft price when nobody knows the recipe", function()
             local r = byId(W.BuildRows(book, CRATES, false, context(book, {})))[902]
             assert.is_nil(r.craft)
@@ -422,7 +443,16 @@ describe("WaylaidCosts", function()
             assert.is_true(o.itemTooltips)
             assert.same({}, o.waylaidHiddenTiers)
             assert.same({}, o.writsHiddenTiers)
+            assert.equals("best", o.waylaidTotalBy)
+            assert.equals("best", o.writsTotalBy)
             assert.equals(o, AltArmyTBC_Options.economy)
+        end)
+
+        it("keeps the total's basis, dropping a bad one", function()
+            _G.AltArmyTBC_Options = { economy = { waylaidTotalBy = "ah", writsTotalBy = "nope" } }
+            local o = W.EnsureOptions()
+            assert.equals("ah", o.waylaidTotalBy)
+            assert.equals("best", o.writsTotalBy)
         end)
 
         it("keeps the levels hidden, dropping bad entries", function()

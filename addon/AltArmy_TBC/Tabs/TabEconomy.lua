@@ -366,6 +366,28 @@ local function ToggleLevel(key, checked, hidden)
 end
 frame.ToggleLevel = ToggleLevel
 
+--- The Filter menu's total basis, appended to `entries` under a divider below the levels: two radios, keyed
+--- "totalBy:best" and "totalBy:ah", the one of `totalBy` ticked (WaylaidCosts.TOTAL_BY). Shared with the
+--- Craftsman's Writs view.
+local function AddTotalByEntries(entries, totalBy)
+    entries[#entries + 1] = { kind = "divider", key = "totalByDivider" }
+    entries[#entries + 1] = { kind = "radio", key = "totalBy:best", label = "Sort total by best possible price",
+        checked = totalBy ~= "ah", enabled = true }
+    entries[#entries + 1] = { kind = "radio", key = "totalBy:ah", label = "Sort total by auction house only",
+        checked = totalBy == "ah", enabled = true }
+    return entries
+end
+frame.AddTotalByEntries = AddTotalByEntries
+
+--- A Filter menu pick of a total basis: sets `o[field]` and returns true; false for any other key.
+local function PickTotalBy(key, o, field)
+    local by = type(key) == "string" and key:match("^totalBy:(.+)$")
+    if not (by and W.TOTAL_BY[by]) then return false end
+    o[field] = by
+    return true
+end
+frame.PickTotalBy = PickTotalBy
+
 
 -- "Filter" dropdown in the main toolbar row (as on the Craftsman's Writs view), parented to this view's panel
 -- so it shows only here. Its entries are re-read on every open and toggle.
@@ -374,16 +396,17 @@ UI.filter = Theme.CreateFilterDropdown({
     text = "Filter",
     getEntries = function()
         local o = W.EnsureOptions()
-        return AddLevelEntries({
+        return AddTotalByEntries(AddLevelEntries({
             { kind = "checkbox", key = "hideUnavailable", label = "Hide unavailable crates",
                 checked = o.waylaidOnlyAvailable, enabled = true },
             { kind = "checkbox", key = "hideUncraftable", label = "Hide crates I can not fulfill via crafting",
                 checked = o.waylaidOnlyCraftable, enabled = true },
-        }, W.CRATE_TIERS, o.waylaidHiddenTiers, W.CrateTierLabel)
+        }, W.CRATE_TIERS, o.waylaidHiddenTiers, W.CrateTierLabel), o.waylaidTotalBy)
     end,
     onToggle = function(key, checked)
         local o = W.EnsureOptions()
-        if ToggleLevel(key, checked, o.waylaidHiddenTiers) then
+        if ToggleLevel(key, checked, o.waylaidHiddenTiers) or PickTotalBy(key, o, "waylaidTotalBy") then
+            if ET.ResetCache then ET.ResetCache() end -- item tooltips' totals follow the pick
             if frame.RefreshWaylaid then frame.RefreshWaylaid() end
             return
         end
@@ -592,7 +615,7 @@ local function RefreshWaylaid()
     if AltArmy.CraftContext and AltArmy.CraftPlan then
         ctx, UI.classOf = AltArmy.CraftContext.Build(DS, realm, faction, UI.cache.book, Crates)
     end
-    local rows = W.FilterRows(W.BuildRows(UI.cache.book, Crates, scan.summary, ctx),
+    local rows = W.FilterRows(W.BuildRows(UI.cache.book, Crates, scan.summary, ctx, o.waylaidTotalBy),
         { hideUnavailable = o.waylaidOnlyAvailable, hideUncraftable = o.waylaidOnlyCraftable,
             hiddenTiers = o.waylaidHiddenTiers })
     table.sort(rows, function(a, b) return W.Compare(a, b, o.waylaidSortKey, o.waylaidSortAscending) end)

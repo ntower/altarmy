@@ -18,6 +18,16 @@ local TIER_ORDER = { Apprentice = 1, Journeyman = 2, Expert = 3, Artisan = 4 }
 W.CRATE_TIERS = { "Apprentice", "Journeyman", "Expert", "Artisan" }
 W.WRIT_TIERS = { "Journeyman", "Expert", "Artisan" }
 
+-- What the views' Total column (and its sort) counts the fill at: "best", the cheaper of buying and crafting
+-- (the default), or "ah", buying on the auction house only. The Filter menus pick one per view.
+W.TOTAL_BY = { best = true, ah = true }
+
+--- The fill cost a total counts for `row` (or a priced bundle) under `totalBy` ("ah": `buy`; else `bestCost`).
+function W.FillCost(row, totalBy)
+    if totalBy == "ah" then return row.buy end
+    return row.bestCost
+end
+
 -- What turning in a filled crate (its Sealed crate) gives, by tier and kind: Merchant's Favor and copper.
 -- Gathered crates are white, Crafted ones green; green gives twice white. Not in the game data: Apprentice,
 -- Journeyman and Expert were measured in game (2026-10-07), Artisan (2026-11-11).
@@ -104,6 +114,10 @@ function W.EnsureOptions()
     end
     if type(o.waylaidOnlyCraftable) ~= "boolean" then -- Hide crates I can not fulfill via crafting
         o.waylaidOnlyCraftable = false
+    end
+    -- The Filter menus' total basis: "best" unless "ah" was picked.
+    for _, key in ipairs({ "waylaidTotalBy", "writsTotalBy" }) do
+        if not W.TOTAL_BY[o[key]] then o[key] = "best" end
     end
     -- The Filter menus' levels: the tiers unticked, as a set of tier names (every level shown by default).
     for _, key in ipairs({ "waylaidHiddenTiers", "writsHiddenTiers" }) do
@@ -194,13 +208,14 @@ end
 --- way to fill it with any one of its bundles: bought on the auction house (`buy`, `buyBundle`, `buyApprox`: only a
 --- bundle listed in full) or crafted by the realm's characters (`craft`, `craftBundle`, its `plan` and `steps`, `who`,
 --- `craftShort`, `craftApprox`; `canCraft`), the cheaper of the two (`best`, `bestCost`, `bundle`: the bundle it fills
---- with). `total`: the crate plus that fill less the gold the turn-in gives back; `perFavor` that per point of
+--- with). `total`: the crate plus that fill (`totalBy` "ah": the auction house fill, whatever crafting costs;
+--- the row keeps it as `totalBy`) less the gold the turn-in gives back; `perFavor` that per point of
 --- Merchant's Favor, rounded (negative when the turn-in pays more than it cost; nil without a crate price, a fill or a
 --- known reward). `options`: every bundle priced both ways for the tooltip. `crate` is one of
 --- AltArmy.WaylaidCrates.LIST. `summary`: the book is a summary scan's (one level per item, its cheapest price), so a
 --- fill of more than one unit is a lower bound; only the row is marked `summary` (the view says so on the scan's age,
 --- not on each cost). `ctx`: a CraftPlan context (CraftContext.Build) for the craft prices.
-function W.BuildRow(crate, book, summary, ctx)
+function W.BuildRow(crate, book, summary, ctx, totalBy)
     local ladder = book[crate.id]
     local row = {
         id = crate.id, name = crate.name, short = crate.short, tier = crate.tier, kind = crate.kind,
@@ -231,18 +246,20 @@ function W.BuildRow(crate, book, summary, ctx)
     elseif row.buy then
         row.best, row.bestCost, row.bundle = "buy", row.buy, row.buyBundle
     end
-    if row.bestCost and row.price and reward then
-        row.total = row.price + row.bestCost - reward.copper
+    row.totalBy = totalBy == "ah" and "ah" or "best"
+    local fill = W.FillCost(row, row.totalBy)
+    if fill and row.price and reward then
+        row.total = row.price + fill - reward.copper
         row.perFavor = math.floor(row.total / reward.favor + 0.5)
     end
     return row
 end
 
 --- One row per crate of `crates.LIST` (W.BuildRow each).
-function W.BuildRows(book, crates, summary, ctx)
+function W.BuildRows(book, crates, summary, ctx, totalBy)
     local rows = {}
     for _, crate in ipairs(crates.LIST) do
-        rows[#rows + 1] = W.BuildRow(crate, book, summary, ctx)
+        rows[#rows + 1] = W.BuildRow(crate, book, summary, ctx, totalBy)
     end
     return rows
 end

@@ -225,6 +225,7 @@ read_globals = {
     "UIDropDownMenu_ClearMenu",
     "UIDropDownMenu_CreateInfo",
     "UIDropDownMenu_AddButton",
+    "MenuResponse",
     -- Reputations
     "ExpandFactionHeader",
     "CollapseFactionHeader",

@@ -3938,9 +3938,11 @@ end
 
 --- Professions-style "Filter" button whose menu holds checkboxes, dividers and buttons.
 --- opts.parent, opts.text (default "Filter")
---- opts.getEntries() -> { { kind = "checkbox"|"divider"|"button", key, label, checked, enabled, icon }, ... }
+--- opts.getEntries() -> { { kind = "checkbox"|"radio"|"divider"|"button", key, label, checked, enabled, icon }, ... }
 ---   (re-read on open and after every toggle, so checked/enabled stay live)
---- opts.onToggle(key, checked) for checkboxes; opts.onSelect(key) for buttons (closes the menu).
+--- opts.onToggle(key, checked) for checkboxes, and for radios with checked = true when one is picked (the
+--- caller keeps a group's radios exclusive: picking the ticked one does nothing); opts.onSelect(key) for buttons
+--- (closes the menu).
 --- Native: WowStyle1FilterDropdownTemplate + Blizzard_Menu. Fallback: skinned button + popup.
 function Theme.CreateFilterDropdown(opts)
     opts = opts or {}
@@ -3981,6 +3983,16 @@ function Theme.CreateFilterDropdown(opts)
                             return live ~= nil and live.enabled ~= false
                         end)
                     end
+                elseif e.kind == "radio" then
+                    root:CreateRadio(filterEntryLabel(e), function()
+                        local live = liveEntry(key)
+                        return live and live.checked or false
+                    end, function()
+                        local live = liveEntry(key)
+                        if opts.onToggle and not (live and live.checked) then opts.onToggle(key, true) end
+                        -- Stay open after a pick, as the checkboxes do (a radio closes the menu by default).
+                        return MenuResponse and MenuResponse.Refresh or nil
+                    end)
                 elseif e.kind == "divider" then
                     root:CreateDivider()
                 elseif e.kind == "button" then
@@ -4018,13 +4030,19 @@ function Theme.CreateFilterDropdown(opts)
     local function rowFor(e)
         local row = rows[e.key]
         if row then return row end
-        if e.kind == "checkbox" then
+        if e.kind == "checkbox" or e.kind == "radio" then
+            local key = e.key
             row = Theme.CreateLabeledCheckbox(popup, {
                 rowHeight = rowHeight,
                 fullWidthHover = true,
                 rightInset = insets.right,
                 onClick = function(checked)
-                    if opts.onToggle then opts.onToggle(e.key, checked) end
+                    if row.isRadio then
+                        -- A radio can't be unticked: picking the ticked one leaves it ticked.
+                        if checked and opts.onToggle then opts.onToggle(key, true) end
+                    elseif opts.onToggle then
+                        opts.onToggle(key, checked)
+                    end
                     rebuild()
                 end,
             })
@@ -4066,7 +4084,8 @@ function Theme.CreateFilterDropdown(opts)
                 row:SetPoint("TOPLEFT", popup, "TOPLEFT", insets.left, -y)
                 row:SetPoint("RIGHT", popup, "RIGHT", -insets.right, 0)
                 row:SetHeight(rowHeight)
-                if e.kind == "checkbox" then
+                if e.kind == "checkbox" or e.kind == "radio" then
+                    row.isRadio = e.kind == "radio"
                     row.label:SetText(filterEntryLabel(e))
                     row.check:SetChecked(e.checked and true or false)
                     local on = e.enabled ~= false

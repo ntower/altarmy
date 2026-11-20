@@ -39,16 +39,24 @@ local function price(item, count, book, ctx)
     return out
 end
 
+--- The fill cost a total counts under `totalBy` ("ah": `buy`; else `bestCost`), as WaylaidCosts.FillCost.
+local function fillCost(priced, totalBy)
+    if totalBy == "ah" then return priced.buy end
+    return priced.bestCost
+end
+
 --- One writ's row (BuildRows makes one per writ): what the writ itself costs on the auction house
 --- (`writPrice`, its cheapest listing), its order (`item`, `count`; `assumed` until the game told us the
 --- order), what buying `count` units costs on the auction house (`buy`, `buyShort`, `buyApprox`) and what
 --- crafting them costs (`craft`, the `plan`, its `steps`, `who` crafts; `canCraft`), the better of the two
 --- (`best`, `bestCost`), `goldBack`: the coin pouch's average (POUCH, by tier), `total`: the writ bought and
---- its order fulfilled the cheaper way, less the pouch (nil without either), `perRep`: that per point of
+--- its order fulfilled the cheaper way (`totalBy` "ah": bought on the auction house, whatever crafting costs; the
+--- row keeps it as `totalBy`), less the pouch (nil without either), `perRep`: that per point of
 --- reputation, rounded (negative when the turn-in pays more than it cost), and `held`: how many of the
 --- writ the characters hold (`ctx.heldBy`). A writ naming several items is priced as whichever comes
---- cheapest.
-function WC.BuildRow(writ, book, orders, ctx)
+--- cheapest (by the total's way: `totalBy`).
+function WC.BuildRow(writ, book, orders, ctx, totalBy)
+    totalBy = totalBy == "ah" and "ah" or "best"
     local order = orders and orders[writ.quest]
     local candidates = writ.items
     if order and order.item then candidates = { order.item } end
@@ -56,7 +64,8 @@ function WC.BuildRow(writ, book, orders, ctx)
     local chosen
     for _, item in ipairs(candidates) do
         local priced = price(item, count, book, ctx)
-        if not chosen or (priced.bestCost and (not chosen.bestCost or priced.bestCost < chosen.bestCost)) then
+        local cost, chosenCost = fillCost(priced, totalBy), chosen and fillCost(chosen, totalBy)
+        if not chosen or (cost and (not chosenCost or cost < chosenCost)) then
             chosen = priced
         end
     end
@@ -68,8 +77,10 @@ function WC.BuildRow(writ, book, orders, ctx)
     }
     for k, v in pairs(chosen) do row[k] = v end
     row.canCraft = row.plan ~= nil
-    if row.bestCost and row.writPrice then
-        row.total = row.bestCost + row.writPrice - row.goldBack
+    row.totalBy = totalBy
+    local fill = fillCost(row, totalBy)
+    if fill and row.writPrice then
+        row.total = fill + row.writPrice - row.goldBack
         if (row.rep or 0) > 0 then
             row.perRep = math.floor(row.total / row.rep + 0.5)
         end
@@ -79,10 +90,10 @@ function WC.BuildRow(writ, book, orders, ctx)
 end
 
 --- One row per writ of `writs.LIST` (WC.BuildRow each).
-function WC.BuildRows(book, writs, orders, ctx)
+function WC.BuildRows(book, writs, orders, ctx, totalBy)
     local rows = {}
     for _, writ in ipairs(writs.LIST) do
-        rows[#rows + 1] = WC.BuildRow(writ, book, orders, ctx)
+        rows[#rows + 1] = WC.BuildRow(writ, book, orders, ctx, totalBy)
     end
     return rows
 end
