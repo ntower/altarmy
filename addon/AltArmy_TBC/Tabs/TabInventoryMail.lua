@@ -449,7 +449,24 @@ local function LastChecked(char)
     return "Mailbox checked: " .. SD.FormatLastOnline(at, false)
 end
 
-Refresh = function()
+--- The list's width, and what in the current layout depends on it: how many attachment icons a row's line
+--- holds (rows; this fits the columns to the width) or how many slot columns the grid has. A resize that
+--- keeps it only moves the cells (Reflow), not a full redraw.
+local function ListWidth()
+    local width = viewport.scroll:GetWidth()
+    if not width or width <= 0 then width = UI.FALLBACK_WIDTH end
+    return width
+end
+local function WidthShape(width)
+    if IO.GetLayout(IO.EnsureOptions(), "mail") == "grid" then
+        return "grid:" .. IL.ColumnsForWidth(width, UI.SLOT, UI.GAP)
+    end
+    FitColumns(width)
+    return "rows:" .. IconsPerLine()
+end
+
+local function Draw()
+    state.shape = nil
     pendingIcons.Clear()
     ReleaseRows()
     gridSlots.ReleaseAll()
@@ -483,8 +500,8 @@ Refresh = function()
         viewport.UpdateRange()
         return
     end
-    local width = viewport.scroll:GetWidth()
-    if not width or width <= 0 then width = UI.FALLBACK_WIDTH end
+    local width = ListWidth()
+    state.shape = WidthShape(width)
     local query = frame.GetSearchQuery and frame.GetSearchQuery() or ""
     local height, attachments
     if IO.GetLayout(IO.EnsureOptions(), "mail") == "grid" then
@@ -500,6 +517,19 @@ Refresh = function()
     local seen = LastChecked(char)
     status:SetText(seen ~= "" and (summary .. "  |cff9d9d9d" .. seen .. "|r") or summary)
 end
+
+--- Redraw the view. A redraw asked for during one (a resize the client fires mid-redraw) runs next frame
+--- instead: nested, the two would each lay out their own rows and slots.
+Refresh = function()
+    if state.drawing then
+        if frame.ScheduleRefresh then frame.ScheduleRefresh() end
+        return
+    end
+    state.drawing = true
+    local ok, err = pcall(Draw)
+    state.drawing = false
+    if not ok then error(err, 0) end
+end
 frame.RefreshMail = Refresh
 
 -- The search text changed: both layouts re-sort (matches first), so redraw from the top, where they are.
@@ -508,9 +538,20 @@ frame.ApplySearchMail = function()
     viewport.SetOffset(0)
 end
 
--- Both layouts follow the window's width (the resize grip).
+-- Both layouts follow the window's width (the resize grip). Dragging it fires this every frame: while the
+-- icons per line (rows) or the grid's columns stay the same, only the cells move to the new column widths.
 viewport.scroll:HookScript("OnSizeChanged", function()
-    if panel:IsVisible() then
+    if not panel:IsVisible() then return end
+    local width = ListWidth()
+    if not state.shape or WidthShape(width) ~= state.shape then
         Refresh()
+        return
+    end
+    if state.shape:sub(1, 5) == "rows:" then -- WidthShape fitted the columns
+        PlaceCells(headerRow, headerRow.cells)
+        for _, row in ipairs(state.rows) do PlaceCells(row, row.cells) end
+        noMatchDivider:SetWidth(TotalColWidth())
+    else
+        noMatchDivider:SetWidth(width)
     end
 end)

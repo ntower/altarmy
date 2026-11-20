@@ -343,7 +343,7 @@ local function CreateContainerView(panel, kind)
         end
     end
 
-    function view.Refresh()
+    local function Draw()
         pendingIcons.Clear()
         view.slots.ReleaseAll()
         view.bar.ReleaseAll()
@@ -386,6 +386,19 @@ local function CreateContainerView(panel, kind)
         else
             view.status:SetText(SlotTotalText(blocks))
         end
+    end
+
+    --- Redraw the view. A redraw asked for during one (a resize the client fires mid-redraw) runs next frame
+    --- instead: nested, the two would each lay out their own slots.
+    function view.Refresh()
+        if view.drawing then
+            if frame.ScheduleRefresh then frame.ScheduleRefresh() end
+            return
+        end
+        view.drawing = true
+        local ok, err = pcall(Draw)
+        view.drawing = false
+        if not ok then error(err, 0) end
     end
 
     views[kind] = view

@@ -355,9 +355,12 @@ function ISB.CreatePool(parent, opts)
         return obj
     end
     function pool.ReleaseAll()
-        for i = #pool.active, 1, -1 do
-            local obj = pool.active[i]
-            pool.active[i] = nil
+        -- Detach the list first: hiding or unanchoring a frame can run a script that releases again (a
+        -- resize firing mid-redraw), which must not empty the list this loop walks.
+        local list = pool.active
+        pool.active = {}
+        for i = #list, 1, -1 do
+            local obj = list[i]
             reset(obj)
             obj:Hide()
             obj:ClearAllPoints()

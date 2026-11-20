@@ -412,6 +412,24 @@ describe("ItemSlotButton", function()
       assert.are.same({ 1, 1 }, { made, resets })
     end)
 
+    it("survives a ReleaseAll started from inside a release (a resize firing mid-redraw)", function()
+      local pool
+      local nested = false
+      pool = ISB.CreatePool({}, {
+        create = function() return stubFrame() end,
+        reset = function()
+          if not nested then
+            nested = true
+            pool.ReleaseAll()
+          end
+        end,
+      })
+      for _ = 1, 4 do pool.Acquire() end
+      assert.has_no.errors(function() pool.ReleaseAll() end)
+      assert.are.equal(0, #pool.active)
+      assert.are.equal(4, #pool.free)
+    end)
+
     it("reuses released buttons and empties them", function()
       local pool = ISB.CreatePool({}, { caps = {} })
       local a = pool.Acquire()
