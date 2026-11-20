@@ -89,6 +89,53 @@ describe('TrendsPage', () => {
     )
   })
 
+  it('draws a week or less by the hour, and zooms in on a stretch dragged across', async () => {
+    const start = Date.parse('2026-11-18T00:00:00Z')
+    const hourly: MarketHistory = {
+      days: [{ day: '2026-11-18', low: 90, median: 100, high: 9000, open: null, close: null }],
+      // two days of hours, the market moving 100, 101, 102, ... and the lowest listing 5 under it
+      hours: Array.from({ length: 48 }, (_, i) => ({
+        at: new Date(start + i * 3_600_000).toISOString(),
+        low: 95 + i,
+        market: 100 + i,
+        units: 10 + i,
+      })),
+      flows: [],
+    }
+    const fetch = mockApi({
+      '/api/status': status(),
+      '/api/coverage': coverage,
+      '/api/admin/items': (url: URL) => (url.searchParams.get('q') === '2589' ? [linen] : []),
+      '/api/admin/items/2589/history': hourly,
+    })
+    window.history.pushState(null, '', '/trends?item=2589&house=1&days=1')
+    renderWithProviders(<TrendsPage />, ADMIN)
+    expect(await screen.findByRole('img', { name: 'Units of Linen Cloth listed each hour' })).toBeInTheDocument()
+    expect(screen.getByText('hourly lowest listing')).toBeInTheDocument()
+    expect(screen.getByText(/Last market price/)).toBeInTheDocument()
+    // the last 24 hours only: the market from 124 to 147
+    expect(screen.getByText(/\+18\.5% over the range/)).toBeInTheDocument()
+    expect(paths(fetch).find((u) => u.pathname === '/api/admin/items/2589/history')?.searchParams.get('days')).toBe('1')
+
+    // hovering reads an hour
+    const target = screen.getByTestId('chart-hover')
+    target.getBoundingClientRect = () => ({ left: 0, width: 720, top: 0, height: 240, right: 720, bottom: 240, x: 0, y: 0, toJSON: () => ({}) })
+    fireEvent.pointerMove(target, { clientX: 704, clientY: 50 })
+    expect(screen.getByText('57 listed')).toBeInTheDocument()
+
+    // dragging across the left half zooms in on it, and Zoom out goes back
+    expect(screen.queryByRole('button', { name: 'Zoom out' })).not.toBeInTheDocument()
+    fireEvent.pointerDown(target, { clientX: 80, clientY: 50 })
+    fireEvent.pointerMove(target, { clientX: 380, clientY: 50 })
+    expect(screen.getByTestId('chart-brush')).toBeInTheDocument()
+    fireEvent.pointerUp(target, { clientX: 380, clientY: 50 })
+    expect(screen.queryByTestId('chart-brush')).not.toBeInTheDocument()
+    fireEvent.pointerMove(target, { clientX: 704, clientY: 50 })
+    expect(screen.queryByText('57 listed')).not.toBeInTheDocument() // the newest hour is out of view
+    await userEvent.click(screen.getByRole('button', { name: 'Zoom out' }))
+    expect(screen.queryByRole('button', { name: 'Zoom out' })).not.toBeInTheDocument()
+  })
+
   it('opens the item and house the URL names', async () => {
     const fetch = mockApi({
       '/api/status': status(),

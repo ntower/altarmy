@@ -8,10 +8,13 @@ import { setSearchParam, useSearchParam } from '../lib/router'
 import { useSession } from '../lib/session'
 import { QUALITY_COLORS, iconUrl } from '../lib/wow'
 import { Money } from './Money'
-import { TrendChart } from './TrendChart'
+import { HOURLY_SPAN, TrendChart, hourPoints } from './TrendChart'
 
-/** The ranges offered, in days; two weeks is as far back as the hourly prices go. */
+/** The ranges offered, in days; a week or less is drawn by the hour, and two weeks is as far back as the hours go. */
 export const RANGES = [
+  { label: '24h', value: '1' },
+  { label: '3d', value: '3' },
+  { label: '7d', value: '7' },
   { label: '14d', value: '14' },
   { label: '30d', value: '30' },
   { label: '90d', value: '90' },
@@ -30,15 +33,20 @@ function defaultHouse(coverage: readonly Coverage[], selection: { realm: string;
   return newest?.auction_house_id ?? null
 }
 
-/** What the range came to: the last median, its change from the first, and the units seen bought. */
-function summary(h: MarketHistory) {
-  const medians = h.days.filter((d) => d.median != null).map((d) => d.median!)
-  const first = medians[0]
-  const last = medians[medians.length - 1]
-  const change = first && last !== undefined && medians.length > 1 ? (last - first) / first : null
+/** What the range came to: the last median (by the hour, the last market price), its change from the first, and the
+ * units seen bought. */
+function summary(h: MarketHistory, days: number) {
+  const hours = hourPoints(h, days)
+  const hourly = days * 86_400_000 <= HOURLY_SPAN && hours.length > 1
+  const series = hourly ? hours.map((p) => p.market) : h.days.filter((d) => d.median != null).map((d) => d.median!)
+  const first = series[0]
+  const last = series[series.length - 1]
+  const change = first && last !== undefined && series.length > 1 ? (last - first) / first : null
   const sold = h.flows.reduce((n, f) => n + f.sold, 0)
-  return { last, change, sold }
+  return { hourly, last, change, sold }
 }
+
+const rangeText = (days: number) => (days === 1 ? '24 hours' : `${days} days`)
 
 /**
  * The Trends page (admins only, `TrendsPage`): search an item by name or id, pick any auction house with prices and a
@@ -80,7 +88,7 @@ export function TrendsTab() {
     }))
 
   const name = item?.name ?? (itemId !== null ? `item ${itemId}` : '')
-  const s = history.data && summary(history.data)
+  const s = history.data && summary(history.data, days)
   const empty = history.data && history.data.days.length + history.data.hours.length < 2
 
   return (
@@ -144,8 +152,8 @@ export function TrendsTab() {
         <Text c="dimmed">Loading…</Text>
       ) : empty ? (
         <Text c="dimmed">
-          Not enough of {name}&apos;s prices recorded at {house ? realmLabel(house) : 'this house'} over the last {days}{' '}
-          days to draw.
+          Not enough of {name}&apos;s prices recorded at {house ? realmLabel(house) : 'this house'} over the last {rangeText(days)} to
+          draw.
         </Text>
       ) : (
         <Stack gap="xs">
@@ -153,7 +161,7 @@ export function TrendsTab() {
             <Text size="sm">
               {s.last !== undefined && (
                 <>
-                  Last median <Money copper={s.last} />
+                  {s.hourly ? 'Last market price' : 'Last median'} <Money copper={s.last} />
                 </>
               )}
               {s.change !== null && (
@@ -167,7 +175,7 @@ export function TrendsTab() {
               </Text>
             </Text>
           )}
-          <TrendChart history={history.data} name={name} />
+          <TrendChart key={`${itemId}-${houseId}-${days}`} history={history.data} name={name} days={days} />
         </Stack>
       )}
     </Stack>

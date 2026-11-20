@@ -208,3 +208,32 @@ text.toneYou {
 .keyHour::before {
   border-top: 1px solid var(--mantine-color-blue-4);
 }
+
+/* the Trends page by the hour: the market price bold, the lowest listing dashed under it */
+.marketLine {
+  fill: none;
+  stroke: var(--mantine-color-blue-6);
+  stroke-width: 2;
+}
+
+.lowLine {
+  fill: none;
+  stroke: var(--mantine-color-blue-4);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
+.keyMarket::before {
+  border-top: 2px solid var(--mantine-color-blue-6);
+}
+
+.keyLow::before {
+  border-top: 1px dashed var(--mantine-color-blue-4);
+}
+
+/* the stretch being dragged across to zoom in */
+.brush {
+  fill: var(--mantine-color-blue-6);
+  opacity: 0.12;
+  pointer-events: none;
+}
