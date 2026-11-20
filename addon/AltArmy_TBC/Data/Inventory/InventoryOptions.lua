@@ -1,5 +1,6 @@
--- AltArmy TBC — the Inventory tab's saved state (AltArmyTBC_Options.inventory): each view's layout and
--- the mail sort. The chosen character and sub-view are per opening (Tabs/TabInventory.lua), not saved.
+-- AltArmy TBC — the Inventory tab's saved state (AltArmyTBC_Options.inventory): each view's layout,
+-- the mail sort and the Mail view's "Combine stacks" (mailCombineStacks). The chosen
+-- character and sub-view are per opening (Tabs/TabInventory.lua), not saved.
 -- Pure: no WoW API, so the tab's choices are unit-tested.
 -- luacheck: globals AltArmyTBC_Options
 
@@ -65,6 +66,9 @@ function IO.EnsureOptions()
     end
     if type(o.mailSortAscending) ~= "boolean" then
         o.mailSortAscending = IO.DEFAULT_MAIL_SORT.ascending
+    end
+    if type(o.mailCombineStacks) ~= "boolean" then
+        o.mailCombineStacks = false
     end
     return o
 end

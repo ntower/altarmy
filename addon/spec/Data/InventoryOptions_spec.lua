@@ -40,6 +40,16 @@ describe("InventoryOptions", function()
         end)
     end)
 
+    describe("mail combine stacks", function()
+        it("defaults to off, keeps a boolean and repairs anything else", function()
+            assert.is_false(IO.EnsureOptions().mailCombineStacks)
+            _G.AltArmyTBC_Options = { inventory = { mailCombineStacks = true } }
+            assert.is_true(IO.EnsureOptions().mailCombineStacks)
+            _G.AltArmyTBC_Options = { inventory = { mailCombineStacks = "yes" } }
+            assert.is_false(IO.EnsureOptions().mailCombineStacks)
+        end)
+    end)
+
     describe("mail sort", function()
         it("defaults to latest expiry first and repairs bad values", function()
             local o = IO.EnsureOptions()

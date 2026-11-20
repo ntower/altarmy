@@ -225,6 +225,19 @@ function ISB.NameMatches(name, queryLower)
     return name:lower():find(queryLower, 1, true) ~= nil
 end
 
+--- An item entry's ({ itemID, link }) name, or nil when it is not an item or the client has not cached it.
+function ISB.EntryName(entry)
+    if not entry or not (entry.itemID or entry.link) then return nil end
+    return (itemInfo(entry.link or entry.itemID))
+end
+
+--- Whether an item entry ({ itemID, link }) matches the lowercased search, as ApplySearch rings it (false
+--- for an empty query, an entry without an item, or an item whose name is not cached).
+function ISB.EntryMatches(entry, queryLower)
+    if not queryLower or queryLower == "" then return false end
+    return ISB.NameMatches(ISB.EntryName(entry), queryLower)
+end
+
 local function setSearchLook(btn, glow, dimmed)
     if glow then btn.searchGlow:Show() else btn.searchGlow:Hide() end
     if btn.SetAlpha then btn:SetAlpha(dimmed and ISB.DIMMED_ALPHA or 1) end
@@ -233,15 +246,17 @@ end
 
 --- Draw the slot for the lowercased search `queryLower`: an item whose name matches gets the ring, every
 --- other slot (empty ones too) is dimmed and greyed; an empty query draws the slot plainly.
+--- Returns true when the slot matched (never for an empty query).
 function ISB.ApplySearch(btn, queryLower)
     if not queryLower or queryLower == "" then
         setSearchLook(btn, false, false)
-        return
+        return false
     end
     local entry = btn.entry
     local isItem = entry ~= nil and (entry.itemID ~= nil or entry.link ~= nil)
-    local match = isItem and ISB.NameMatches(btn.itemName, queryLower)
+    local match = isItem and ISB.NameMatches(btn.itemName, queryLower) or false
     setSearchLook(btn, match, not match)
+    return match
 end
 
 --- Show or hide the hovered bag's glow on the slot.

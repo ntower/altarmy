@@ -46,6 +46,8 @@ local UI = {
     GRAY = { 0.6, 0.6, 0.6 },
     COIN_ICON = "Interface\\Icons\\INV_Misc_Coin_01", -- the inbox's money icon (DataStoreMail)
     GOLD_ROW_GAP = 20, -- between the item grid and the gold line
+    DIVIDER_HEIGHT = 24, -- the "Does not match search" row between the search's matches and the rest
+    NO_MATCH_TEXT = "Does not match search",
 }
 
 local state = { rows = {}, rowPool = {} }
@@ -169,6 +171,12 @@ local goldText = child:CreateFontString(nil, "OVERLAY", Theme.FONTS.body)
 goldText:SetJustifyH("LEFT")
 goldText:Hide()
 
+-- Rows layout under a search: between the messages with a matching attachment and the rest.
+local noMatchDivider = Theme.CreateLabeledDividerRow(child)
+noMatchDivider:SetHeight(UI.DIVIDER_HEIGHT)
+noMatchDivider:SetText(UI.NO_MATCH_TEXT)
+noMatchDivider:Hide()
+
 local empty = listViewport:CreateFontString(nil, "OVERLAY", Theme.FONTS.emptyState)
 empty:SetPoint("CENTER", listViewport, "CENTER", 0, 20)
 empty:SetWidth(440)
@@ -216,7 +224,11 @@ local function MessageLines(tooltip, msg)
 end
 
 local function SlotTooltipExtra(_, tooltip, entry)
-    if entry.message then MessageLines(tooltip, entry.message) end
+    if entry.message then
+        MessageLines(tooltip, entry.message)
+    elseif (entry.messageCount or 0) > 1 then -- Combine stacks: from several messages
+        tooltip:AddLine(string.format("In %d messages", entry.messageCount), UI.GRAY[1], UI.GRAY[2], UI.GRAY[3])
+    end
 end
 
 local function ShowRowTooltip(row)
@@ -282,28 +294,60 @@ local function RowIcon(row, i)
     return btn
 end
 
---- "rows": one inbox row per message; the attachment icons wrap to more lines when there are many.
-local function LayoutRows(messages, width)
+--- Whether a message has an attachment the lowercased search matches.
+local function MessageMatches(msg, queryLower)
+    for _, item in ipairs(msg.items) do
+        if ISB.EntryMatches(item, queryLower) then return true end
+    end
+    return false
+end
+
+--- An item's name for sorting and Combine stacks; one the client has not cached yet redraws on arrival.
+local function SlotName(entry)
+    local name = ISB.EntryName(entry)
+    if not name and entry.itemID then TrackPendingIcon(entry.itemID) end
+    return name
+end
+
+--- "rows": one inbox row per message; the attachment icons wrap to more lines when there are many. Under a
+--- search, the messages with a match come first (each part in the column sort), then a divider, then the rest.
+--- Combine stacks merges a message's stacks of one item into one icon with the total.
+local function LayoutRows(messages, width, queryLower)
     FitColumns(width)
     PlaceCells(headerRow, headerRow.cells)
     UpdateHeaderSortIndicators(headerRow)
     headerRow:Show()
     local o = IO.EnsureOptions()
     IL.SortMessages(messages, o.mailSortKey, o.mailSortAscending)
+    local matched
+    if queryLower ~= "" then
+        messages, matched = IL.PartitionBySearch(messages, function(msg)
+            return MessageMatches(msg, queryLower)
+        end)
+    end
     local y = 0
     local attachments = 0
-    for _, msg in ipairs(messages) do
+    for index, msg in ipairs(messages) do
+        if matched and index == matched + 1 then
+            noMatchDivider:ClearAllPoints()
+            noMatchDivider:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -y)
+            noMatchDivider:SetWidth(TotalColWidth())
+            noMatchDivider:Show()
+            y = y + UI.DIVIDER_HEIGHT
+        end
         local row = PoolRow()
         state.rows[#state.rows + 1] = row
         row.message = msg
+        local items = o.mailCombineStacks and IL.CombineMailStacks(msg.items, SlotName) or msg.items
         local perLine = IconsPerLine()
-        local lines = math.max(1, math.ceil(#msg.items / perLine))
+        local lines = math.max(1, math.ceil(#items / perLine))
         local height = math.max(UI.ROW_HEIGHT, lines * (UI.ICON + UI.ICON_GAP) + UI.ROW_PAD * 2)
         row:SetHeight(height)
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -y)
         PlaceCells(row, row.cells)
-        for i, item in ipairs(msg.items) do
+        attachments = attachments + #msg.items
+        for i, item in ipairs(items) do
             local btn = RowIcon(row, i)
             local col = (i - 1) % perLine
             local line = math.floor((i - 1) / perLine)
@@ -314,7 +358,6 @@ local function LayoutRows(messages, width)
                 itemID = item.itemID, count = item.count, link = item.link, icon = item.icon, message = msg,
             }
             TrackPendingIcon(ISB.SetItem(btn, entry))
-            attachments = attachments + 1
         end
         local subject = msg.subject and msg.subject ~= "" and msg.subject or "(no subject)"
         local mark = IL.MessageMark(msg)
@@ -333,21 +376,50 @@ local function LayoutRows(messages, width)
     return y, attachments
 end
 
---- "grid": every attachment as an item slot, then the gold in the mail.
-local function LayoutGrid(messages, width)
+--- "grid": every attachment as an item slot, then the gold in the mail. Under a search, two grids: the
+--- matching slots, a "Does not match search" divider, then the rest (each still A to Z).
+local function LayoutGrid(messages, width, queryLower)
     headerRow:Hide()
+    -- A to Z, then the bigger stack.
+    local nameOf = SlotName
     local slots = IL.MailGrid(messages)
+    local attachments = #slots
+    if IO.EnsureOptions().mailCombineStacks then slots = IL.CombineMailStacks(slots, nameOf) end
+    slots = IL.SortMailGrid(slots, nameOf)
+    local parts = { slots }
+    if queryLower ~= "" then
+        local ordered, matched = IL.PartitionBySearch(slots, function(entry)
+            return ISB.EntryMatches(entry, queryLower)
+        end)
+        parts = { {}, {} }
+        for i, entry in ipairs(ordered) do
+            local part = i <= matched and parts[1] or parts[2]
+            part[#part + 1] = entry
+        end
+    end
     local columns = IL.ColumnsForWidth(width, UI.SLOT, UI.GAP) -- as many as the viewport fits
-    local m = IL.GridMetrics(#slots, UI.SLOT, UI.GAP, columns)
-    for i, entry in ipairs(slots) do
-        local btn = gridSlots.Acquire()
-        btn:SetPoint("TOPLEFT", child, "TOPLEFT", m.x(i), -m.y(i))
-        btn.tooltipExtra = SlotTooltipExtra
-        TrackPendingIcon(ISB.SetItem(btn, entry))
+    local y = 0
+    for p, part in ipairs(parts) do
+        if p == 2 and #part > 0 then
+            if y > 0 then y = y + UI.GAP end
+            noMatchDivider:ClearAllPoints()
+            noMatchDivider:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -y)
+            noMatchDivider:SetWidth(width)
+            noMatchDivider:Show()
+            y = y + UI.DIVIDER_HEIGHT
+        end
+        local m = IL.GridMetrics(#part, UI.SLOT, UI.GAP, columns)
+        for i, entry in ipairs(part) do
+            local btn = gridSlots.Acquire()
+            btn:SetPoint("TOPLEFT", child, "TOPLEFT", m.x(i), -(y + m.y(i)))
+            btn.tooltipExtra = SlotTooltipExtra
+            TrackPendingIcon(ISB.SetItem(btn, entry))
+        end
+        y = y + m.height
     end
     local gold = 0
     for _, msg in ipairs(messages) do gold = gold + (msg.money or 0) end
-    local top = m.height + (#slots > 0 and UI.GOLD_ROW_GAP or 0)
+    local top = y + (#slots > 0 and UI.GOLD_ROW_GAP or 0)
     local coin = gridSlots.Acquire()
     coin:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -top)
     coin.tooltipExtra = nil
@@ -356,7 +428,7 @@ local function LayoutGrid(messages, width)
     goldText:SetPoint("LEFT", coin, "RIGHT", UI.GAP + 2, 0)
     goldText:SetText(SD.GetMoneyString(gold))
     goldText:Show()
-    return top + UI.SLOT, #slots
+    return top + UI.SLOT, attachments
 end
 
 --- Ring the attachments whose item matches the tab's search and dim the rest (the grid's gold slot aside).
@@ -370,7 +442,6 @@ local function ApplySearch(queryLower)
         if btn.entry and (btn.entry.itemID or btn.entry.link) then ISB.ApplySearch(btn, queryLower) end
     end
 end
-frame.ApplySearchMail = ApplySearch
 
 local function LastChecked(char)
     local at = DS.GetMailboxLastVisit and DS:GetMailboxLastVisit(char) or 0
@@ -383,6 +454,7 @@ Refresh = function()
     ReleaseRows()
     gridSlots.ReleaseAll()
     goldText:Hide()
+    noMatchDivider:Hide()
     empty:Hide()
     local char, pick = frame.GetSelectedCharacter()
     money:SetText(char and SD.GetMoneyString(DS:GetMoney(char) or 0) or "")
@@ -413,21 +485,28 @@ Refresh = function()
     end
     local width = viewport.scroll:GetWidth()
     if not width or width <= 0 then width = UI.FALLBACK_WIDTH end
+    local query = frame.GetSearchQuery and frame.GetSearchQuery() or ""
     local height, attachments
     if IO.GetLayout(IO.EnsureOptions(), "mail") == "grid" then
-        height, attachments = LayoutGrid(messages, width)
+        height, attachments = LayoutGrid(messages, width, query)
     else
-        height, attachments = LayoutRows(messages, width)
+        height, attachments = LayoutRows(messages, width, query)
     end
     child:SetHeight(math.max(height, 1))
     viewport.UpdateRange()
-    ApplySearch(frame.GetSearchQuery and frame.GetSearchQuery() or "")
+    ApplySearch(query)
     local summary = string.format("%d message%s, %d item%s", #messages, #messages == 1 and "" or "s",
         attachments, attachments == 1 and "" or "s")
     local seen = LastChecked(char)
     status:SetText(seen ~= "" and (summary .. "  |cff9d9d9d" .. seen .. "|r") or summary)
 end
 frame.RefreshMail = Refresh
+
+-- The search text changed: both layouts re-sort (matches first), so redraw from the top, where they are.
+frame.ApplySearchMail = function()
+    Refresh()
+    viewport.SetOffset(0)
+end
 
 -- Both layouts follow the window's width (the resize grip).
 viewport.scroll:HookScript("OnSizeChanged", function()

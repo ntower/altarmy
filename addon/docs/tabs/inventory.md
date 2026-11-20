@@ -10,6 +10,7 @@ See what a character is carrying, has banked or has waiting in the mailbox, slot
 
 - The **Inventory** side tab (after Gear). Both clients.
 - The toolbar row holds the **character picker** (a dropdown of the characters under the Summary tab's realm filter, class-coloured, with the realm when more than one is shown, grouped by realm and faction as the Summary's sections are each group under a divider row naming it ("Realm — Faction"); on the Mail view the characters with mail and those without are each grouped) and, left of it, the **layout dropdown** for the active view. Each time the window opens the picker starts on the character playing and the tab on Bags; both last while the window stays open (switching tabs keeps them). Each view's layout and the mail sort are remembered (`AltArmyTBC_Options.inventory`).
+- The toolbar's search box ("Search Name's bags", "bank" or "mailbox", for the character and view shown) rings the slots whose item name holds the text and dims the rest. In the Mail view's rows layout, the messages with a matching attachment move to the top (still in the column sort), then a "Does not match search" divider, then the rest; in Combined items the matching slots get their own grid, then the divider and a grid of the rest (each still A to Z). The list goes back to the top as you type.
 - The character's gold is at the bottom right of every view.
 - Sub-view tabs above the panel: **Bags**, **Bank**, **Mail**.
 
@@ -31,7 +32,7 @@ On WoW Forever the bank is its tabs (each a bag slot), there is no separate main
 Two layouts:
 
 - **Inbox view** (default): one row per message with its attachment icons (wrapping when there are many), subject, sender, money and time left (yellow under 7 days, red under 3). The Subject, From, Money and Expires headers sort the rows (click again to flip; the choice is kept), latest expiry first by default like the stock inbox. Items, Subject and From stretch with the window (Items by whole icons, so more attachments fit a line); Money and Expires are fixed. Mail predicted from a send is marked "(sent)" and mail the game returned "(returned)" (a return predicted from the hook too), until that character opens its mailbox and the inbox is read for real. Hovering a row repeats the message's details; hovering an icon shows the item.
-- **Combined items**: every attachment as an item slot, the message's sender and expiry in the tooltip; under the grid, a coin slot with the total gold waiting in the mail.
+- **Combined items**: every attachment as an item slot, A to Z by item name (the bigger stack first for the same item), the message's sender and expiry in the tooltip; under the grid, a coin slot with the total gold waiting in the mail. The **Combine stacks** checkbox right of the layout dropdown (on the Mail view, one setting for both layouts; off by default, remembered) merges every stack of one item name into one slot showing the total; a slot merged from several messages says "In N messages" in its tooltip instead of a sender and expiry. In Inbox view it merges each message's own stacks.
 
 "No mail recorded yet" until the character has opened its mailbox once. The footer counts messages and items and says when the mailbox was last checked.
 

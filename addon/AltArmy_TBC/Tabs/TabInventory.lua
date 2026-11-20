@@ -101,7 +101,7 @@ local function GroupedEntries(entries)
 end
 
 --- The picker's rows, grouped by realm and faction. On the Mail view the characters with mail come first,
---- each led by a letter icon (before the bank alt icon), then a "Characters with no mail:" header over the
+--- each led by a letter icon (before the bank alt icon), then a "Characters with no known mail:" header over the
 --- rest, each part grouped; elsewhere the characters as listed.
 local function PickerEntries()
     local entries = CharacterEntries()
@@ -119,7 +119,7 @@ local function PickerEntries()
         return GroupedEntries(#withMail > 0 and withMail or without)
     end
     local out = GroupedEntries(withMail)
-    out[#out + 1] = { header = true, label = "Characters with no mail:" }
+    out[#out + 1] = { header = true, label = "Characters with no known mail:" }
     for _, e in ipairs(GroupedEntries(without)) do out[#out + 1] = e end
     return out
 end
@@ -165,8 +165,11 @@ function frame.GetSelectedCharacter()
     return DS:GetCharacterFor(pick.name, pick.realm, pick.linkId), pick
 end
 
+local UpdateSearchPlaceholder -- below, once the search box exists
+
 local function RefreshActive()
     local which = state.activeView
+    UpdateSearchPlaceholder()
     if which == "bags" and frame.RefreshBags then
         frame.RefreshBags()
     elseif which == "bank" and frame.RefreshBank then
@@ -203,12 +206,22 @@ if AltArmy.PlaceInToolbarSearchSlot then
     AltArmy.PlaceInToolbarSearchSlot(searchEdit, frame)
 end
 
+-- The placeholder names what the search covers: "Search Name's bags" / "bank" / "mailbox".
+local SEARCH_WHAT = { bags = "bags", bank = "bank", mail = "mailbox" }
+UpdateSearchPlaceholder = function()
+    if not searchEdit then return end
+    local pick = ResolveSelection()
+    local what = SEARCH_WHAT[state.activeView]
+    local text = (pick and pick.name and what) and string.format("Search %s's %s", pick.name, what) or "Search items"
+    Theme.SetEditBoxPlaceholderText(searchEdit, text)
+end
+
 function frame.GetSearchQuery()
     local text = searchEdit and searchEdit:GetText() or ""
     return (text:match("^%s*(.-)%s*$") or ""):lower()
 end
 
---- Redraw the open view's slots for the search (no relayout).
+--- Redraw the open view for the search (the mail rows re-sort, the slot grids only redraw their slots).
 function frame.ApplySearch()
     local which = state.activeView
     local apply = (which == "bags" and frame.ApplySearchBags) or (which == "bank" and frame.ApplySearchBank)
@@ -251,6 +264,7 @@ if picker then
     picker.button:SetPoint("TOPLEFT", frame, "TOPLEFT", CONTENT_INSET, -CONTENT_INSET)
 end
 
+local UpdateCombineStacks -- below, once its checkbox exists
 local layoutDropdown = Theme.CreateSingleSelectDropdown({
     parent = frame,
     dropdownParent = frame,
@@ -259,6 +273,7 @@ local layoutDropdown = Theme.CreateSingleSelectDropdown({
     getSelectedId = function() return IO.GetLayout(IO.EnsureOptions(), state.activeView) end,
     onSelect = function(id)
         if IO.SetLayout(IO.EnsureOptions(), state.activeView, id) then
+            UpdateCombineStacks()
             RefreshActive()
         end
     end,
@@ -268,6 +283,34 @@ if layoutDropdown and picker then
     layoutDropdown.button:ClearAllPoints()
     layoutDropdown.button:SetPoint("LEFT", picker.button, "RIGHT", UI.CONTROLS_GAP, 0)
 end
+-- Right of the layout dropdown, on the Mail view (one setting for both layouts): one slot per item name, its
+-- total (in Inbox view, per message).
+local combineStacks = layoutDropdown and Theme.CreateLabeledCheckbox(frame, {
+    point = "LEFT",
+    relativeTo = layoutDropdown.button,
+    relativePoint = "RIGHT",
+    x = UI.CONTROLS_GAP * 2,
+    text = "Combine stacks",
+    onClick = function(checked)
+        IO.EnsureOptions().mailCombineStacks = checked and true or false
+        RefreshActive()
+    end,
+})
+if combineStacks then
+    combineStacks:SetFrameLevel(frame:GetFrameLevel() + 50)
+    combineStacks.check:SetFrameLevel(combineStacks:GetFrameLevel() + 4)
+    combineStacks.hoverRegion:SetFrameLevel(combineStacks:GetFrameLevel())
+    combineStacks:Hide()
+end
+
+--- Show the Combine stacks checkbox (with its saved state) only on the Mail view.
+UpdateCombineStacks = function()
+    if not combineStacks then return end
+    local o = IO.EnsureOptions()
+    combineStacks:SetShown(state.activeView == "mail")
+    combineStacks.check:SetChecked(o.mailCombineStacks)
+end
+
 -- How far the views start their content below the panel's top: the controls row and a gap.
 frame.CONTROLS_OFFSET = (picker and picker.button:GetHeight() or 20) + Theme.SECTION_GAP
 frame:HookScript("OnHide", function()
@@ -287,6 +330,7 @@ local function SetActiveInventoryView(which)
         VIEW.tabs:SetSelected(which)
     end
     if layoutDropdown then layoutDropdown:Update() end
+    UpdateCombineStacks()
     if picker then picker:Update() end -- the mail icons come and go with the Mail view
     RefreshActive()
 end

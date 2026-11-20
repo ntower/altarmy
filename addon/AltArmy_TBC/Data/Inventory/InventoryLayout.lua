@@ -360,6 +360,72 @@ function IL.SortMessages(messages, key, ascending)
     return messages
 end
 
+--- MailGrid's slots with every stack of one item name (`nameOf(entry)`; the item id when the name is unknown)
+--- merged into one slot: the first stack's item, link and icon, the total count, `messageCount` (how many
+--- messages hold it) and `message` only when that is one. A new list in first-seen order, renumbered.
+function IL.CombineMailStacks(slots, nameOf)
+    local out, byKey, seen = {}, {}, {}
+    for _, entry in ipairs(slots or {}) do
+        local name = nameOf(entry)
+        local key = type(name) == "string" and ("n:" .. name) or ("i:" .. tostring(entry.itemID or entry.link))
+        local merged = byKey[key]
+        if not merged then
+            merged = {
+                itemID = entry.itemID, link = entry.link, icon = entry.icon, count = 0,
+                message = entry.message, messageCount = 0,
+            }
+            byKey[key] = merged
+            seen[merged] = {}
+            out[#out + 1] = merged
+            merged.slot = #out
+        end
+        merged.count = merged.count + (entry.count or 1)
+        local msg = entry.message
+        if msg and not seen[merged][msg] then
+            seen[merged][msg] = true
+            merged.messageCount = merged.messageCount + 1
+            if merged.messageCount > 1 then merged.message = nil end
+        end
+    end
+    return out
+end
+
+--- Sort MailGrid's slots in place by item name (A-Z, case-insensitive, `nameOf(entry)`), the larger stack
+--- first on a tie, then mail order; items whose name is unknown go last. Renumbers `slot`.
+function IL.SortMailGrid(slots, nameOf)
+    local keys = {}
+    for i, entry in ipairs(slots) do
+        local name = nameOf(entry)
+        keys[entry] = { name = type(name) == "string" and name:lower() or nil, order = i }
+    end
+    table.sort(slots, function(a, b)
+        local ka, kb = keys[a], keys[b]
+        if ka.name ~= kb.name then
+            if ka.name == nil then return false end
+            if kb.name == nil then return true end
+            return ka.name < kb.name
+        end
+        if ka.name == nil then return ka.order < kb.order end
+        local ca, cb = a.count or 1, b.count or 1
+        if ca ~= cb then return ca > cb end
+        return ka.order < kb.order
+    end)
+    for i, entry in ipairs(slots) do entry.slot = i end
+    return slots
+end
+
+--- A new list: the messages `matches(msg)` holds for first, then the rest, each part keeping the list's order.
+--- Returns the list and how many matched.
+function IL.PartitionBySearch(messages, matches)
+    local hits, rest = {}, {}
+    for _, msg in ipairs(messages or {}) do
+        if matches(msg) then hits[#hits + 1] = msg else rest[#rest + 1] = msg end
+    end
+    local matched = #hits
+    for _, msg in ipairs(rest) do hits[#hits + 1] = msg end
+    return hits, matched
+end
+
 --- The attachments of a message list as slot entries { slot, itemID, count, link, icon, message }.
 function IL.MailGrid(messages)
     local slots = {}

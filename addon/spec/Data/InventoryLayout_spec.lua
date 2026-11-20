@@ -375,6 +375,100 @@ describe("InventoryLayout", function()
         end)
     end)
 
+    describe("CombineMailStacks", function()
+        local names = { [1] = "Linen Cloth", [2] = "Copper Ore", [3] = "Linen Cloth" }
+        local function nameOf(entry) return names[entry.itemID] end
+
+        it("merges the slots of one item name into one slot with the total count", function()
+            local m1, m2 = {}, {}
+            local slots = {
+                { slot = 1, itemID = 1, count = 5, icon = "linen", message = m1 },
+                { slot = 2, itemID = 2, count = 1, message = m1 },
+                { slot = 3, itemID = 1, count = 20, message = m2 },
+                { slot = 4, itemID = 3, count = 2, message = m2 },
+            }
+            local out = IL.CombineMailStacks(slots, nameOf)
+            assert.are.equal(2, #out)
+            assert.are.same({ 1, 27, "linen" }, { out[1].itemID, out[1].count, out[1].icon })
+            assert.are.equal(2, out[1].messageCount)
+            assert.is_nil(out[1].message) -- from more than one message
+            assert.are.same({ 2, 1, 1 }, { out[2].itemID, out[2].count, out[2].messageCount })
+            assert.are.equal(m1, out[2].message)
+            assert.are.same({ 1, 2 }, { out[1].slot, out[2].slot })
+        end)
+
+        it("keeps one message's stacks pointing at that message", function()
+            local m = {}
+            local out = IL.CombineMailStacks({
+                { itemID = 1, count = 1, message = m }, { itemID = 1, count = 2, message = m },
+            }, nameOf)
+            assert.are.same({ 3, 1 }, { out[1].count, out[1].messageCount })
+            assert.are.equal(m, out[1].message)
+        end)
+
+        it("merges items whose name is unknown by item id only", function()
+            local out = IL.CombineMailStacks({
+                { itemID = 8, count = 1 }, { itemID = 9, count = 1 }, { itemID = 8, count = 3 },
+            }, nameOf)
+            assert.are.same({ 8, 4 }, { out[1].itemID, out[1].count })
+            assert.are.same({ 9, 1 }, { out[2].itemID, out[2].count })
+        end)
+    end)
+
+    describe("SortMailGrid", function()
+        local names = { [1] = "Linen Cloth", [2] = "copper ore", [3] = "Wool Cloth" }
+        local function nameOf(entry) return names[entry.itemID] end
+
+        it("sorts by name case-insensitively, then the larger stack first, and renumbers the slots", function()
+            local slots = {
+                { slot = 1, itemID = 3, count = 5 },
+                { slot = 2, itemID = 1, count = 2 },
+                { slot = 3, itemID = 2, count = 1 },
+                { slot = 4, itemID = 1, count = 20 },
+            }
+            IL.SortMailGrid(slots, nameOf)
+            local out = {}
+            for i, s in ipairs(slots) do
+                out[i] = s.itemID .. "x" .. s.count
+                assert.are.equal(i, s.slot)
+            end
+            assert.are.same({ "2x1", "1x20", "1x2", "3x5" }, out)
+        end)
+
+        it("puts items without a known name last, in their mail order", function()
+            local slots = {
+                { slot = 1, itemID = 9, count = 1 },
+                { slot = 2, itemID = 3, count = 1 },
+                { slot = 3, itemID = 8, count = 4 },
+            }
+            IL.SortMailGrid(slots, nameOf)
+            assert.are.same({ 3, 9, 8 }, { slots[1].itemID, slots[2].itemID, slots[3].itemID })
+        end)
+    end)
+
+    describe("PartitionBySearch", function()
+        local function hasSword(msg) return msg.subject:find("sword") ~= nil end
+        local function subjects(list)
+            local out = {}
+            for i, m in ipairs(list) do out[i] = m.subject end
+            return out
+        end
+
+        it("moves matching messages to the front, each part in its existing order", function()
+            local list = { { subject = "a" }, { subject = "sword b" }, { subject = "c" }, { subject = "sword d" } }
+            local out, matched = IL.PartitionBySearch(list, hasSword)
+            assert.are.same({ "sword b", "sword d", "a", "c" }, subjects(out))
+            assert.are.equal(2, matched)
+        end)
+
+        it("counts zero when nothing matches and keeps the order", function()
+            local list = { { subject = "a" }, { subject = "b" } }
+            local out, matched = IL.PartitionBySearch(list, hasSword)
+            assert.are.same({ "a", "b" }, subjects(out))
+            assert.are.equal(0, matched)
+        end)
+    end)
+
     describe("SortMessages", function()
         local function msgs()
             return {
