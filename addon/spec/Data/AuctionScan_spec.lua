@@ -114,9 +114,53 @@ describe("AuctionScan", function()
             assert.equals(0, requested)
         end)
 
-        it("skips a house scanned under AUTO_GAP ago", function()
+        it("waits 5 minutes between automatic scans unless set otherwise", function()
+            assert.equals(5, S.GetAutoScanMinutes())
+            assert.equals(300, S.AutoScanGap())
+            S.SetAutoScanMinutes(12)
+            assert.equals(12, AltArmyTBC_Options.auctionAutoScanMinutes)
+            assert.equals(12, S.GetAutoScanMinutes())
+            assert.equals(720, S.AutoScanGap())
+        end)
+
+        it("keeps the wait whole minutes within its range", function()
+            S.SetAutoScanMinutes(7.6)
+            assert.equals(8, S.GetAutoScanMinutes())
+            S.SetAutoScanMinutes(-3)
+            assert.equals(S.AUTO_MINUTES_MIN, S.GetAutoScanMinutes())
+            S.SetAutoScanMinutes(999)
+            assert.equals(S.AUTO_MINUTES_MAX, S.GetAutoScanMinutes())
+            AltArmyTBC_Options.auctionAutoScanMinutes = "junk"
+            assert.equals(S.AUTO_MINUTES_DEFAULT, S.GetAutoScanMinutes())
+        end)
+
+        it("uses the wait the player set", function()
             S.SetAutoScanEnabled(true)
-            B.StoreSummary({ t = now - S.AUTO_GAP + 1, realm = "Classic Beta PvE", faction = "Horde",
+            S.SetAutoScanMinutes(30)
+            B.StoreSummary({ t = now - 20 * 60, realm = "Classic Beta PvE", faction = "Horde",
+                summary = true, listings = 1, items = "2770:64*1*1" }, now)
+            reopen()
+            runTimers(S.AUTO_DELAY)
+            assert.equals(0, requested)
+            S.SetAutoScanMinutes(15)
+            reopen()
+            runTimers(S.AUTO_DELAY)
+            assert.equals(1, requested)
+        end)
+
+        it("scans every time the auction house opens with a wait of 0", function()
+            S.SetAutoScanEnabled(true)
+            S.SetAutoScanMinutes(0)
+            B.StoreSummary({ t = now, realm = "Classic Beta PvE", faction = "Horde",
+                summary = true, listings = 1, items = "2770:64*1*1" }, now)
+            reopen()
+            runTimers(S.AUTO_DELAY)
+            assert.equals(1, requested)
+        end)
+
+        it("skips a house scanned under the wait ago", function()
+            S.SetAutoScanEnabled(true)
+            B.StoreSummary({ t = now - S.AutoScanGap() + 1, realm = "Classic Beta PvE", faction = "Horde",
                 summary = true, listings = 1, items = "2770:64*1*1" }, now)
             reopen()
             runTimers(S.AUTO_DELAY)
@@ -126,9 +170,9 @@ describe("AuctionScan", function()
             assert.equals(1, requested)
         end)
 
-        it("scans again once AUTO_GAP has passed, and only the house scanned counts", function()
+        it("scans again once the wait has passed, and only the house scanned counts", function()
             S.SetAutoScanEnabled(true)
-            B.Store({ t = now - S.AUTO_GAP, realm = "Classic Beta PvE", faction = "Horde", complete = true,
+            B.Store({ t = now - S.AutoScanGap(), realm = "Classic Beta PvE", faction = "Horde", complete = true,
                 listings = 1, items = "2770:64*1*1" }, now)
             B.StoreSummary({ t = now - 10, realm = "Classic Beta PvE", faction = "Alliance",
                 summary = true, listings = 1, items = "2770:64*1*1" }, now)

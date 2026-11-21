@@ -12,7 +12,9 @@
 -- Only a scan read to its end is stored; one the auction house closed on is dropped.
 -- With the automatic scan on (AltArmyTBC_Options.auctionAutoScan, the Economy options), a scan starts
 -- AUTO_DELAY seconds after the auction house opens, if the client allows one, none is under way and this
--- auction house's newest scan (full or summary) is at least AUTO_GAP old. A scan asked for runs regardless.
+-- auction house's newest scan (full or summary) is at least the player's wait old
+-- (AltArmyTBC_Options.auctionAutoScanMinutes, Options → General → Auction House; 5 minutes unless set, 0 scans
+-- at every opening). A scan asked for runs regardless.
 -- A scan Alt Army starts (the button, /altarmy scan or the automatic scan) says in chat which kind it is when
 -- it starts and how it ended; a full scan another addon asked for is read quietly.
 -- luacheck: globals GetServerTime AltArmyTBC_Options
@@ -26,7 +28,9 @@ S.BATCH = 2000 -- listings read a frame
 S.TIMEOUT = 60 -- seconds to wait for the listings (for a summary: for each page)
 S.REPEAT = 30 -- seconds after a scan in which the client repeating its event is not a new scan
 S.AUTO_DELAY = 1 -- seconds after the auction house opens before the automatic scan (the frame settles first)
-S.AUTO_GAP = 120 -- seconds after this auction house's newest scan before the automatic scan runs again
+S.AUTO_MINUTES_DEFAULT = 5 -- minutes after this auction house's newest scan before the automatic scan runs again
+S.AUTO_MINUTES_MIN = 0
+S.AUTO_MINUTES_MAX = 60
 S.REPLACED = 0.9 -- a summary ending with fewer rows than this share of the most it saw was someone else's search
 
 -- The browse query of a summary scan: every item, as Auctionator's summary scan asks.
@@ -349,12 +353,35 @@ function S.SetAutoScanEnabled(on)
     AltArmyTBC_Options.auctionAutoScan = on == true
 end
 
---- True when the auction house the player stands at was scanned (full or summary) under AUTO_GAP ago.
+--- Minutes after this auction house's newest scan before the automatic scan runs again: whole, within
+--- AUTO_MINUTES_MIN..AUTO_MINUTES_MAX, AUTO_MINUTES_DEFAULT unless set.
+function S.GetAutoScanMinutes()
+    local o = type(AltArmyTBC_Options) == "table" and AltArmyTBC_Options or {}
+    local m = tonumber(o.auctionAutoScanMinutes)
+    if not m then return S.AUTO_MINUTES_DEFAULT end
+    return math.max(S.AUTO_MINUTES_MIN, math.min(S.AUTO_MINUTES_MAX, math.floor(m + 0.5)))
+end
+
+function S.SetAutoScanMinutes(minutes)
+    if type(AltArmyTBC_Options) ~= "table" then
+        AltArmyTBC_Options = {}
+    end
+    local m = tonumber(minutes) or S.AUTO_MINUTES_DEFAULT
+    AltArmyTBC_Options.auctionAutoScanMinutes =
+        math.max(S.AUTO_MINUTES_MIN, math.min(S.AUTO_MINUTES_MAX, math.floor(m + 0.5)))
+end
+
+--- The automatic scan's wait, in seconds.
+function S.AutoScanGap()
+    return S.GetAutoScanMinutes() * 60
+end
+
+--- True when the auction house the player stands at was scanned (full or summary) under the wait ago.
 local function scannedRecently()
     local realm = AltArmy.CurrentRealm and AltArmy.CurrentRealm() or GetRealmName and GetRealmName() or nil
     local faction = UnitFactionGroup and UnitFactionGroup("player") or nil
     local newest = realm and faction and book().Newest(realm, faction)
-    return newest ~= nil and now() - (newest.t or 0) < S.AUTO_GAP
+    return newest ~= nil and now() - (newest.t or 0) < S.AutoScanGap()
 end
 
 local function scheduleAutoScan()

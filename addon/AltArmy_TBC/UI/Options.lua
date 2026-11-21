@@ -171,6 +171,7 @@ panel.default = function()
     if AltArmy.AuctionScan and AltArmy.AuctionScan.SetAutoScanEnabled then
         AltArmy.AuctionScan.SetAutoScanEnabled(false)
         AltArmy.AuctionScan.SetScanMode("prefer_full")
+        AltArmy.AuctionScan.SetAutoScanMinutes(AltArmy.AuctionScan.AUTO_MINUTES_DEFAULT)
     end
     if panel.RefreshAuctionOptions then
         panel.RefreshAuctionOptions()
@@ -1278,19 +1279,24 @@ end
 panel.RefreshGuildSharingControls = RefreshGuildSharingControls
 layoutGuildSharingTail()
 
--- Economy section, first row: the Alt Army scan (Data/Auctions/AuctionScan.lua). Only on clients with the full
--- scan (WoW Forever); TBC Anniversary's auction house has none.
--- The automatic scan checkbox and the scan mode dropdown sit side by side, half the width each: a checkbox
--- row stretches to its parent's right edge, so each gets a half-width holder (on panel, not main-chunk
--- locals: Lua 5.1's 200-local limit).
+-- Economy section: the Alt Army scan (Data/Auctions/AuctionScan.lua). Only on clients with the full scan
+-- (WoW Forever); TBC Anniversary's auction house has none.
+-- Its rows fill the left half, one under another: the automatic scan checkbox, the minutes between automatic
+-- scans (disabled while the automatic scan is off), then the scan mode dropdown. A checkbox row or dropdown
+-- stretches to its parent's right edge, so each gets a half-width holder (on panel, not main-chunk locals:
+-- Lua 5.1's 200-local limit).
+panel.ECONOMY_SCAN_ROW_HEIGHT = math.max(Theme.CHAR_LIST_ROW_HEIGHT, Theme.OPTIONS_DROPDOWN_ROW_HEIGHT or 24)
+panel.ECONOMY_ROW_GAP = 6
+panel.ECONOMY_MINUTES_Y = -(panel.ECONOMY_SCAN_ROW_HEIGHT + panel.ECONOMY_ROW_GAP)
+panel.ECONOMY_SCAN_MODE_Y = panel.ECONOMY_MINUTES_Y - (Theme.OPTIONS_SLIDER_ROW_HEIGHT + panel.ECONOMY_ROW_GAP)
 panel.auctionLeftHolder = CreateFrame("Frame", nil, auctionSection.content)
 panel.auctionLeftHolder:SetPoint("TOPLEFT", auctionSection.content, "TOPLEFT", 0, 0)
 panel.auctionLeftHolder:SetPoint("TOPRIGHT", auctionSection.content, "TOP", -4, 0)
 panel.auctionLeftHolder:SetHeight(Theme.CHAR_LIST_ROW_HEIGHT)
-panel.auctionRightHolder = CreateFrame("Frame", nil, auctionSection.content)
-panel.auctionRightHolder:SetPoint("TOPLEFT", auctionSection.content, "TOP", 4, 0)
-panel.auctionRightHolder:SetPoint("TOPRIGHT", auctionSection.content, "TOPRIGHT", 0, 0)
-panel.auctionRightHolder:SetHeight(Theme.OPTIONS_DROPDOWN_ROW_HEIGHT or 24)
+panel.auctionScanModeHolder = CreateFrame("Frame", nil, auctionSection.content)
+panel.auctionScanModeHolder:SetPoint("TOPLEFT", auctionSection.content, "TOPLEFT", 0, panel.ECONOMY_SCAN_MODE_Y)
+panel.auctionScanModeHolder:SetPoint("TOPRIGHT", auctionSection.content, "TOP", -4, panel.ECONOMY_SCAN_MODE_Y)
+panel.auctionScanModeHolder:SetHeight(Theme.OPTIONS_DROPDOWN_ROW_HEIGHT or 24)
 local autoScanRow = Theme.CreateLabeledCheckbox(panel.auctionLeftHolder, {
     point = "TOPLEFT",
     relativeTo = panel.auctionLeftHolder,
@@ -1303,6 +1309,9 @@ local autoScanRow = Theme.CreateLabeledCheckbox(panel.auctionLeftHolder, {
         local S = AltArmy.AuctionScan
         if S and S.SetAutoScanEnabled then
             S.SetAutoScanEnabled(checked)
+        end
+        if panel.auctionAutoScanMinutesRow then
+            panel.auctionAutoScanMinutesRow.SetEnabled(checked)
         end
     end,
 })
@@ -1317,9 +1326,9 @@ panel.AUCTION_SCAN_MODES = {
     { id = "only_summary", label = "Only summary scans" },
 }
 panel.auctionScanModeDropdown = Theme.CreateSingleSelectDropdown({
-    parent = panel.auctionRightHolder,
+    parent = panel.auctionScanModeHolder,
     point = "TOPLEFT",
-    relativeTo = panel.auctionRightHolder,
+    relativeTo = panel.auctionScanModeHolder,
     relativePoint = "TOPLEFT",
     x = 0,
     y = 0,
@@ -1337,7 +1346,7 @@ panel.auctionScanModeDropdown = Theme.CreateSingleSelectDropdown({
         end
     end,
 })
-panel.auctionScanModeHelp = Theme.AttachSettingsHelpIcon(panel.auctionRightHolder, {
+panel.auctionScanModeHelp = Theme.AttachSettingsHelpIcon(panel.auctionScanModeHolder, {
     title = "Auction house scans",
     lines = {
         "A full scan lets us determine how many items are available at each cost. However, it is slower, "
@@ -1349,16 +1358,44 @@ panel.auctionScanModeHelp = Theme.AttachSettingsHelpIcon(panel.auctionRightHolde
 do
     local dd = panel.auctionScanModeDropdown
     dd.button:ClearAllPoints()
-    dd.button:SetPoint("TOPLEFT", panel.auctionRightHolder, "TOPLEFT", 0, 0)
-    dd.button:SetPoint("BOTTOMRIGHT", panel.auctionRightHolder, "BOTTOMRIGHT", -20, 0)
+    dd.button:SetPoint("TOPLEFT", panel.auctionScanModeHolder, "TOPLEFT", 0, 0)
+    dd.button:SetPoint("BOTTOMRIGHT", panel.auctionScanModeHolder, "BOTTOMRIGHT", -20, 0)
     dd.popup:ClearAllPoints()
     dd.popup:SetPoint("TOPLEFT", dd.button, "BOTTOMLEFT", 0, -2)
     dd.popup:SetPoint("TOPRIGHT", dd.button, "BOTTOMRIGHT", 0, -2)
 end
 
+-- How long after this auction house's newest scan the automatic scan waits (AuctionScan.GetAutoScanMinutes;
+-- 0 scans at every opening).
+panel.auctionAutoScanMinutesRow = Theme.CreateOptionsSlider(auctionSection.content, {
+    point = "TOPLEFT",
+    relativeTo = auctionSection.content,
+    relativePoint = "TOPLEFT",
+    x = 0,
+    y = panel.ECONOMY_MINUTES_Y,
+    right = { relativeTo = auctionSection.content, relativePoint = "TOP", x = -4, y = panel.ECONOMY_MINUTES_Y },
+    text = "Minutes between automatic scans",
+    min = AltArmy.AuctionScan and AltArmy.AuctionScan.AUTO_MINUTES_MIN or 0,
+    max = AltArmy.AuctionScan and AltArmy.AuctionScan.AUTO_MINUTES_MAX or 60,
+    step = 1,
+    value = AltArmy.AuctionScan and AltArmy.AuctionScan.AUTO_MINUTES_DEFAULT or 5,
+    format = function(v) return tostring(v) end,
+    onChange = function(minutes)
+        local S = AltArmy.AuctionScan
+        if S and S.SetAutoScanMinutes then
+            S.SetAutoScanMinutes(minutes)
+        end
+    end,
+})
+
 local function RefreshAuctionOptions()
     local S = AltArmy.AuctionScan
-    panel.auctionAutoScanCheckbox:SetChecked(S and S.IsAutoScanEnabled and S.IsAutoScanEnabled() or false)
+    local autoScan = S and S.IsAutoScanEnabled and S.IsAutoScanEnabled() or false
+    panel.auctionAutoScanCheckbox:SetChecked(autoScan)
+    panel.auctionAutoScanMinutesRow.SetEnabled(autoScan)
+    if S and S.GetAutoScanMinutes then
+        panel.auctionAutoScanMinutesRow.SetValue(S.GetAutoScanMinutes())
+    end
     if panel.auctionScanModeDropdown.Update then
         panel.auctionScanModeDropdown:Update()
     end
@@ -1369,17 +1406,16 @@ do
     auctionSection.SetShown(S and S.HasApi and S.HasApi() or false)
 end
 
--- Economy section, second row: Waylaid Crate and Craftsman's Writ costs in every item tooltip
+-- Economy section, under the scans: Waylaid Crate and Craftsman's Writ costs in every item tooltip
 -- (UI/EconomyTooltip.lua; AltArmyTBC_Options.economy.itemTooltips, on by default). The Economy tab's rows
 -- always show theirs.
-panel.ECONOMY_SCAN_ROW_HEIGHT = math.max(Theme.CHAR_LIST_ROW_HEIGHT, Theme.OPTIONS_DROPDOWN_ROW_HEIGHT or 24)
-panel.ECONOMY_ROW_GAP = 6
+panel.ECONOMY_TOOLTIPS_Y = panel.ECONOMY_SCAN_MODE_Y - (panel.ECONOMY_SCAN_ROW_HEIGHT + panel.ECONOMY_ROW_GAP)
 panel.economyTooltipsRow = Theme.CreateLabeledCheckbox(auctionSection.content, {
     point = "TOPLEFT",
     relativeTo = auctionSection.content,
     relativePoint = "TOPLEFT",
     x = 0,
-    y = -(panel.ECONOMY_SCAN_ROW_HEIGHT + panel.ECONOMY_ROW_GAP),
+    y = panel.ECONOMY_TOOLTIPS_Y,
     text = "Detailed tooltips for Waylaid Crates and Craftsman's Writs",
     fullWidthHover = true,
     onClick = function(checked)
@@ -1487,7 +1523,7 @@ end
 
 generalSection.SetContentHeight(Theme.CHAR_LIST_ROW_HEIGHT) -- the minimap row
 guildSection.SetContentHeight(GUILD_CONTENT_HEIGHT)
-auctionSection.SetContentHeight(panel.ECONOMY_SCAN_ROW_HEIGHT + panel.ECONOMY_ROW_GAP + Theme.CHAR_LIST_ROW_HEIGHT)
+auctionSection.SetContentHeight(-panel.ECONOMY_TOOLTIPS_Y + Theme.CHAR_LIST_ROW_HEIGHT)
 panel.advancedSection.SetContentHeight(Theme.CHAR_LIST_ROW_HEIGHT)
 
 --- Where the General tab's section frames and the Guild rows actually are, for `/altarmy debug layout`
@@ -1569,7 +1605,7 @@ local FLASH_TARGETS = {
     guildShare = { page = "sharing", section = guildSection, region = guildShareEnableFocusRegion },
     autoDelete = { page = "sharing", section = guildSection, region = guildAutoDeleteRow },
     autoScan = { page = "general", section = auctionSection, region = autoScanRow },
-    scanMode = { page = "general", section = auctionSection, region = panel.auctionRightHolder },
+    scanMode = { page = "general", section = auctionSection, region = panel.auctionScanModeHolder },
 }
 
 --- The options page a flashed control is on (nil if none of the section pages').

@@ -2685,6 +2685,40 @@ function Theme.CreateOptionsSlider(parent, opts)
     function row.GetValue()
         return current
     end
+
+    -- Disabled: the texts grey (Theme.BUTTON_TEXT.disabled), the bar faded, no dragging. Each text's own
+    -- color is read before greying, so enabling puts it back.
+    local texts = { label, valueText, lowText, highText }
+    local saved = {}
+    local enabled = true
+    function row.SetEnabled(on)
+        on = on and true or false
+        if on == enabled then return end
+        enabled = on
+        local grey = Theme.BUTTON_TEXT.disabled
+        for i, fs in ipairs(texts) do
+            if on then
+                local c = saved[i] or { 1, 1, 1, 1 }
+                fs:SetTextColor(c[1], c[2], c[3], c[4])
+            else
+                if fs.GetTextColor then
+                    local r, g, b, a = fs:GetTextColor()
+                    saved[i] = { r, g, b, a }
+                end
+                fs:SetTextColor(grey[1], grey[2], grey[3])
+            end
+        end
+        if on then
+            if slider.Enable then slider:Enable() end
+        elseif slider.Disable then
+            slider:Disable()
+        end
+        slider:EnableMouse(on)
+        slider:SetAlpha(on and 1 or 0.5)
+    end
+    function row.IsEnabled()
+        return enabled
+    end
     row.SetValue(current)
 
     row.slider = slider
