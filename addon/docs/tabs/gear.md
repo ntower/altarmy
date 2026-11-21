@@ -68,6 +68,11 @@ still on the drop prompt returns to Grid; a focused item stays in Upgrade Check.
   1 for tanks), a single school at its own weight (0.04; 0.2 for tanks). Holy has no weight of
   its own. Below max level, Protection warriors and paladins use the non-tank weights. Resistance
   weights are small rather than zero, so they still break ties.
+- Percent chances ("Improves your chance to get a critical strike with spells by 1%", hit, crit,
+  dodge, parry, block: how Forever's Classic-style gear states them) are read from the tooltip
+  and compared as their own rows (e.g. "Spell Crit Chance"). Each 1% is worth the matching
+  rating's weight times the rating that buys 1% at level 70 (crit 22.08, hit 15.77, spell hit
+  12.62, dodge 18.92, parry 23.65, block 7.88).
 - Optional gear-score providers for scoring and missing-data hints.
 - Chat alerts (clickable) for loot, Need/Greed rolls, quest rewards, and level-up upgrades for the current character and/or alts.
 - Loot / roll alerts announce a given item at most once per 60 seconds (e.g. crafting a stack of the same item alerts once). The window is in-memory only and resets on reload/logout.

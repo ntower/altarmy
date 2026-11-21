@@ -1527,4 +1527,58 @@ describe("ItemStats", function()
         assert.are.equal(
             2, stats.conditional["in Silverpine Forest and Hillsbrad Foothills"].move_speed)
     end)
+
+    -- Classic-itemized (Forever) gear states hit/crit/avoidance as a percentage, and
+    -- GetItemStats returns nothing for it (Eye of the Beast: empty apiRaw).
+    local function parseTooltipOnly(lines)
+        _G.GetItemStats = function() return {} end
+        _G.CreateFrame = function(frameType)
+            if frameType == "GameTooltip" then
+                return makeTooltipMock(lines)
+            end
+            if frameType == "Frame" then
+                return { RegisterEvent = function() end, SetScript = function() end }
+            end
+            return {}
+        end
+        package.loaded["ItemStats"] = nil
+        require("ItemStats")
+        IS = AltArmy.ItemStats
+        IS.ClearCache()
+        return IS.GetNormalized("|Hitem:99:0|h[Monkey Greaves]|h")
+    end
+
+    it("GetNormalized parses Forever's spell crit percent line (Eye of the Beast)", function()
+        local stats = parseTooltipOnly({
+            "Eye of the Beast",
+            "Trinket",
+            "Equip: Improves your chance to get a Critical Strike with Spells by 1.0%.",
+            "Use: Increases your Spell Hit chance by 7% for 20 sec. (5 Min Cooldown)",
+        })
+        assert.are.equal(1, stats.spell_crit_pct)
+        assert.is_nil(stats.crit_pct)
+        assert.is_nil(stats.spell_hit_pct)
+    end)
+
+    it("GetNormalized parses Classic hit, crit and avoidance percent lines", function()
+        local stats = parseTooltipOnly({
+            "Equip: Improves your chance to hit by 1%.",
+            "Equip: Improves your chance to get a critical strike by 2%.",
+            "Equip: Improves your chance to hit with spells by 1%.",
+            "Equip: Increases your chance to dodge an attack by 1%.",
+            "Equip: Increases your chance to parry an attack by 1%.",
+            "Equip: Increases your chance to block attacks with a shield by 2%.",
+        })
+        assert.are.equal(1, stats.hit_pct)
+        assert.are.equal(2, stats.crit_pct)
+        assert.are.equal(1, stats.spell_hit_pct)
+        assert.are.equal(1, stats.dodge_pct)
+        assert.are.equal(1, stats.parry_pct)
+        assert.are.equal(2, stats.block_pct)
+        assert.is_nil(stats.spell_crit_pct)
+    end)
+
+    it("GetDisplayLabel names percent stats as chances", function()
+        assert.are.equal("Spell Crit Chance", AltArmy.ItemStats.GetDisplayLabel("spell_crit_pct"))
+    end)
 end)

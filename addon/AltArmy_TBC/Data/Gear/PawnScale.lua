@@ -86,6 +86,29 @@ local function addWeight(out, key, value)
     out[key] = (out[key] or 0) + value
 end
 
+-- Classic-itemized gear (all of Forever's) states hit/crit/avoidance as a percent chance
+-- (ItemStats' *_pct keys). The scales weigh ratings, so a percent is worth its rating's weight
+-- times the rating that buys 1% at level 70, the level the TBC-derived weights were tuned at.
+local PERCENT_WEIGHTS = {
+    { pct = "hit_pct", rating = "hit", perPercent = 15.77 },
+    { pct = "spell_hit_pct", rating = "spell_hit", perPercent = 12.62 },
+    { pct = "crit_pct", rating = "crit", perPercent = 22.08 },
+    { pct = "spell_crit_pct", rating = "spell_crit", perPercent = 22.08 },
+    { pct = "dodge_pct", rating = "dodge", perPercent = 18.92 },
+    { pct = "parry_pct", rating = "parry", perPercent = 23.65 },
+    { pct = "block_pct", rating = "block", perPercent = 7.88 },
+}
+
+local function addPercentWeights(out)
+    for i = 1, #PERCENT_WEIGHTS do
+        local row = PERCENT_WEIGHTS[i]
+        local w = out[row.rating]
+        if w then
+            out[row.pct] = w * row.perPercent
+        end
+    end
+end
+
 --- Convert a Pawn-style { StatName = weight } table to internal short keys.
 function GU.PawnScaleToWeights(pawnValues)
     local out = {}
@@ -105,5 +128,6 @@ function GU.PawnScaleToWeights(pawnValues)
             end
         end
     end
+    addPercentWeights(out)
     return out
 end

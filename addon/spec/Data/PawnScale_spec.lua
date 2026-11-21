@@ -73,4 +73,33 @@ describe("PawnScale", function()
         assert.is_nil(w.agi)
         assert.are.equal(0.5, w.sta)
     end)
+
+    it("PawnScaleToWeights derives a 1% weight from each rating weight", function()
+        local w = GU.PawnScaleToWeights({
+            HitRating = 1,
+            SpellHitRating = 1,
+            CritRating = 0.5,
+            SpellCritRating = 0.58,
+            DodgeRating = 1,
+            ParryRating = 1,
+            BlockRating = 1,
+        })
+        local function near(expected, actual)
+            assert.is_true(math.abs(expected - actual) < 1e-9,
+                string.format("expected %s, got %s", expected, actual))
+        end
+        near(15.77, w.hit_pct)
+        near(12.62, w.spell_hit_pct)
+        near(0.5 * 22.08, w.crit_pct)
+        near(0.58 * 22.08, w.spell_crit_pct)
+        near(18.92, w.dodge_pct)
+        near(23.65, w.parry_pct)
+        near(7.88, w.block_pct)
+    end)
+
+    it("PawnScaleToWeights leaves a percent weight out when its rating has none", function()
+        local w = GU.PawnScaleToWeights({ Stamina = 0.5 })
+        assert.is_nil(w.spell_crit_pct)
+        assert.is_nil(w.hit_pct)
+    end)
 end)

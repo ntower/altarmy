@@ -151,6 +151,15 @@ IS.STAT_ALIASES = {
     ["ALTARMY_HOLY_SPELL"] = "holy_sp",
     -- Movement speed (tooltip-only; currently only seen on conditional/situational effects).
     ["ALTARMY_MOVE_SPEED"] = "move_speed",
+    -- Percent chances (tooltip-only; Classic itemization, so all of Forever's gear). Scored by
+    -- PawnScale.lua's PERCENT_WEIGHTS from the matching rating's weight.
+    ["ALTARMY_HIT_PCT"] = "hit_pct",
+    ["ALTARMY_SPELL_HIT_PCT"] = "spell_hit_pct",
+    ["ALTARMY_CRIT_PCT"] = "crit_pct",
+    ["ALTARMY_SPELL_CRIT_PCT"] = "spell_crit_pct",
+    ["ALTARMY_DODGE_PCT"] = "dodge_pct",
+    ["ALTARMY_PARRY_PCT"] = "parry_pct",
+    ["ALTARMY_BLOCK_PCT"] = "block_pct",
 }
 
 -- Resistance API keys fanned out together by "all Resistances"-style equip lines.
@@ -208,6 +217,13 @@ IS.STAT_LABELS = {
     spell_pen = "Spell Penetration",
     haste = "Haste",
     move_speed = "Movement Speed",
+    hit_pct = "Hit Chance",
+    spell_hit_pct = "Spell Hit Chance",
+    crit_pct = "Crit Chance",
+    spell_crit_pct = "Spell Crit Chance",
+    dodge_pct = "Dodge Chance",
+    parry_pct = "Parry Chance",
+    block_pct = "Block Chance",
 }
 
 local PRIMARY_STAT_DEFS = {
@@ -286,6 +302,21 @@ local EQUIP_STAT_PATTERNS = {
     { "^%(?(%d+%.?%d*) damage per second%)?$", "ITEM_MOD_DAMAGE_PER_SECOND_SHORT" },
     { "^(%d+) Armor$", "RESISTANCE0_NAME" },
     { "^Equip: Increases all Resistances by (%d+)%.?$", ALL_RESISTANCE_KEYS },
+}
+
+-- Percent-chance equip lines (Classic itemization; GetItemStats reports nothing for them).
+-- Matched against the lowercased line: Forever capitalizes some ("a Critical Strike with
+-- Spells by 1.0%"). Spell rows come first only for readability; each is anchored on "by".
+local PERCENT_STAT_PATTERNS = {
+    { "^equip: improves your chance to get a critical strike with spells by (%d+%.?%d*)%%%.?$",
+        "ALTARMY_SPELL_CRIT_PCT" },
+    { "^equip: improves your chance to hit with spells by (%d+%.?%d*)%%%.?$", "ALTARMY_SPELL_HIT_PCT" },
+    { "^equip: improves your chance to get a critical strike by (%d+%.?%d*)%%%.?$", "ALTARMY_CRIT_PCT" },
+    { "^equip: improves your chance to hit by (%d+%.?%d*)%%%.?$", "ALTARMY_HIT_PCT" },
+    { "^equip: increases your chance to dodge an attack by (%d+%.?%d*)%%%.?$", "ALTARMY_DODGE_PCT" },
+    { "^equip: increases your chance to parry an attack by (%d+%.?%d*)%%%.?$", "ALTARMY_PARRY_PCT" },
+    { "^equip: increases your chance to block attacks with a shield by (%d+%.?%d*)%%%.?$",
+        "ALTARMY_BLOCK_PCT" },
 }
 
 -- Conditional/situational equip clauses (e.g. "...in Forest and Grassland areas."). Each row has
@@ -881,6 +912,15 @@ local function parseLineToRaw(text, rawOut)
                 applyRawStatKeys(rawOut, row.apiKey, n)
                 return true
             end
+        end
+    end
+    local lower = text:lower()
+    for i = 1, #PERCENT_STAT_PATTERNS do
+        local row = PERCENT_STAT_PATTERNS[i]
+        local n = tonumber(lower:match(row[1]))
+        if n then
+            applyRawStat(rawOut, row[2], n)
+            return true
         end
     end
     return false
