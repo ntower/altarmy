@@ -77,11 +77,11 @@ def conn(database: db.Database) -> Iterator[Connection]:
 def set_prices(
     conn: Connection,
     item_prices: Mapping[int, int],
-    realm: str = "Classic Beta PvE",
+    realm: str = "Classic PvE",
     faction: str = "Horde",
     game_version: str = FOREVER,
 ) -> int:
-    """Manual prices on an auction house (default: Classic Beta PvE's Horde one, the tailor's). Returns
+    """Manual prices on an auction house (default: Classic PvE's Horde one, the tailor's). Returns
     its id."""
     ah = prices.auction_house(conn, game_version, realm, faction)
     for item_id, price in item_prices.items():
@@ -95,7 +95,7 @@ Levels = Sequence[tuple[int, int]]  # an item's (unit price, units listed), chea
 def book_scan(
     items: Mapping[int, Levels],
     at: datetime,
-    realm: str = "Classic Beta PvE",
+    realm: str = "Classic PvE",
     faction: str = "Horde",
 ) -> book.Scan:
     """An Alt Army scan of an auction house (default: the tailor's), one listing per price level."""
@@ -108,7 +108,7 @@ def scanned(
     conn: Connection,
     items: Mapping[int, Levels],
     at: datetime | None = None,
-    realm: str = "Classic Beta PvE",
+    realm: str = "Classic PvE",
     faction: str = "Horde",
     game_version: str = FOREVER,
     *,
@@ -485,15 +485,15 @@ def game_versions(tmp_path: Path) -> dict[str, GameVersion]:
 def wow_root(tmp_path: Path) -> Path:
     """A fake WoW install (tmp_path / "World of Warcraft") holding both addons' SavedVariables.
 
-    Alt Army: Classic Beta PvE (Horde tailor, Alliance enchanter) and Dreamscythe Horde (two characters).
-    Auctionator: prices for Classic Beta PvE (one auction house for both factions) and Dreamscythe Horde.
+    Alt Army: Classic PvE (Horde tailor, Alliance enchanter) and Dreamscythe Horde (two characters).
+    Auctionator: prices for Classic PvE (one auction house for both factions) and Dreamscythe Horde.
     """
     root = tmp_path / "World of Warcraft"
     sv = root / SV_DIR
     sv.mkdir(parents=True)
     (sv / "AltArmy_TBC.lua").write_bytes(ALTARMY_SV)
     auctions: dict[str, dict[str, object]] = {
-        "ClassicBetaPvE": {"1": _entry(20), "2": _entry(100)},
+        "ClassicPvE": {"1": _entry(20), "2": _entry(100)},
         "Dreamscythe Horde": {"1": _entry(5)},
     }
     (sv / "Auctionator.lua").write_bytes(_saved_variables(auctions))

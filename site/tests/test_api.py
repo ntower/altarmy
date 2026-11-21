@@ -90,12 +90,12 @@ def client(
 def with_tailor(conn: Connection) -> None:
     """Store the Alt Army test characters and select the realm/faction of the one who knows the robe."""
     store.save_characters(conn, ME, FOREVER, altarmy.parse_characters(ALTARMY_SV))
-    service.select(conn, ME, FOREVER, "Classic Beta PvE", "Horde")
+    service.select(conn, ME, FOREVER, "Classic PvE", "Horde")
 
 
 @pytest.fixture
 def priced(db2_paths: dict[str, Path], conn: Connection) -> Connection:
-    """The client's database with game data, prices linen=20, thread=100 on Classic Beta PvE's auction
+    """The client's database with game data, prices linen=20, thread=100 on Classic PvE's auction
     house and a selected tailor there who knows the Green Robe."""
     ingest.build_db(db2_paths, conn, FOREVER)
     set_prices(conn, {1: 20, 2: 100})
@@ -185,7 +185,7 @@ def test_rank_buys_reagents_from_vendors(
 def with_enchanter(conn: Connection) -> None:
     """Add an enchanter (who can't tailor) to the tailor's realm/faction."""
     enchanter = Character(
-        "Classic Beta PvE", "Enchy", "Horde", "PRIEST", 20, (Profession("Enchanting", 60, 75, frozenset()),)
+        "Classic PvE", "Enchy", "Horde", "PRIEST", 20, (Profession("Enchanting", 60, 75, frozenset()),)
     )
     store.save_characters(conn, ME, FOREVER, [*altarmy.parse_characters(ALTARMY_SV), enchanter])
 
@@ -250,7 +250,7 @@ def test_rank_and_evaluate_disenchant_with_the_chosen_enchanter(
 ) -> None:
     add_disenchant(priced, 1.0, 100, 100)  # robe -> 100 linen: disenchanting pays
     weak = Character(
-        "Classic Beta PvE", "Weak", "Horde", "MAGE", 10, (Profession("Enchanting", 5, 75, frozenset()),)
+        "Classic PvE", "Weak", "Horde", "MAGE", 10, (Profession("Enchanting", 5, 75, frozenset()),)
     )
     with_enchanter(priced)
     store.save_characters(priced, ME, FOREVER, [*store.load_characters(priced, ME, FOREVER), weak])
@@ -424,7 +424,7 @@ def test_vendor_check_lists_what_the_selected_house_has_beside_the_vendor_price(
     at = db.utcnow()  # after the fixture's hand-set prices: the newest sighting wins
     scanned(priced, {1: [(5, 10), (30, 4)], 2: [(100, 50)]}, at=at)  # linen vendors at 13, thread at 10
     body = client.get("/api/vendorcheck").json()
-    assert (body["realm"], body["faction"]) == ("Classic Beta PvE", "Horde")
+    assert (body["realm"], body["faction"]) == ("Classic PvE", "Horde")
     rows = {i["id"]: i for i in body["items"]}
     assert [i["name"] for i in body["items"]] == ["Linen Cloth", "Coarse Thread"]  # the biggest gain first
     assert (body["total"], body["listed"], body["page"], body["page_size"]) == (2, 2, 1, 50)
@@ -1288,8 +1288,8 @@ def test_characters_and_selection(client: TestClient, db2_paths: dict[str, Path]
 
     body = client.get("/api/characters").json()
     assert [(g["realm"], g["faction"], len(g["characters"])) for g in body["groups"]] == [
-        ("Classic Beta PvE", "Alliance", 1),
-        ("Classic Beta PvE", "Horde", 1),
+        ("Classic PvE", "Alliance", 1),
+        ("Classic PvE", "Horde", 1),
         ("Dreamscythe", "Horde", 2),
     ]
     assert body["groups"][1]["characters"] == [
@@ -1315,9 +1315,9 @@ def test_characters_and_selection(client: TestClient, db2_paths: dict[str, Path]
     assert body["selection"] == {"realm": "Dreamscythe", "faction": "Horde"}
     assert client.get("/api/rank").json()["results"] == []  # Dreamscythe only cooks
 
-    res = client.put("/api/selection", json={"realm": "Classic Beta PvE", "faction": "Horde"})
+    res = client.put("/api/selection", json={"realm": "Classic PvE", "faction": "Horde"})
     assert res.status_code == 200
-    assert res.json()["selection"] == {"realm": "Classic Beta PvE", "faction": "Horde"}
+    assert res.json()["selection"] == {"realm": "Classic PvE", "faction": "Horde"}
     (r,) = client.get("/api/rank").json()["results"]
     assert (r["crafters"], r["profit"]) == (["Tailor Guy"], 200)  # priced by that realm's auction house
 
@@ -1419,10 +1419,10 @@ def test_guests_rank_evaluate_and_block_like_everyone(client: TestClient, priced
     (browsed,) = client.get("/api/rank", headers=FREE).json()["results"]
     assert (browsed["crafter"], browsed["crafters"]) == ("", [])
     store.save_characters(priced, "guest", FOREVER, altarmy.parse_characters(ALTARMY_SV))
-    selection = {"realm": "Classic Beta PvE", "faction": "Horde"}
+    selection = {"realm": "Classic PvE", "faction": "Horde"}
     assert client.put("/api/selection", headers=FREE, json=selection).json()["selection"] == selection
     assert [g["realm"] for g in client.get("/api/characters", headers=FREE).json()["groups"]][0] == (
-        "Classic Beta PvE"
+        "Classic PvE"
     )
     (r,) = client.get("/api/rank", headers=FREE).json()["results"]
     assert (r["recipe"], r["tree"]["via"]) == ("Green Robe", "Green Robe")  # with its flow chart
@@ -1452,7 +1452,7 @@ def test_linked_users_rank_their_own_characters(client: TestClient, priced: Conn
     # the tailor is ME's: this user only browses
     assert client.get("/api/rank", headers=LINKED).json()["results"][0]["crafter"] == ""
     store.save_characters(priced, "g1", FOREVER, altarmy.parse_characters(ALTARMY_SV))
-    selection = {"realm": "Classic Beta PvE", "faction": "Horde"}
+    selection = {"realm": "Classic PvE", "faction": "Horde"}
     assert client.put("/api/selection", headers=LINKED, json=selection).json()["selection"] == selection
     assert client.get("/api/rank", headers=LINKED).json()["total"] == 1
     client.put("/api/ah-blocked/3", headers=LINKED)
@@ -1695,21 +1695,21 @@ def test_guests_upload_characters_and_scans(client: TestClient, conn: Connection
     assert res.status_code == 200, res.text
     body = res.json()
     assert (body["kind"], body["characters"]) == ("altarmy", 4)
-    assert body["groups"][0] == {"realm": "Classic Beta PvE", "faction": "Alliance", "characters": 1}
+    assert body["groups"][0] == {"realm": "Classic PvE", "faction": "Alliance", "characters": 1}
     assert store.count_characters(conn, "guest", FOREVER) == 4
     assert len(client.get("/api/characters", headers=FREE).json()["groups"]) == 3
     (realm,) = body["realms"]
     assert realm == {
-        "key": "Classic Beta PvE Horde",
+        "key": "Classic PvE Horde",
         "auction_house_id": realm["auction_house_id"],
-        "realm": "Classic Beta PvE",
+        "realm": "Classic PvE",
         "faction": "Horde",
         "items": 2,
         "moved": 2,
         "quarantined": False,
     }
     (covered,) = [r for r in client.get("/api/coverage", headers=FREE).json() if r["prices"]]
-    assert (covered["realm"], covered["faction"], covered["prices"]) == ("Classic Beta PvE", "Horde", 2)
+    assert (covered["realm"], covered["faction"], covered["prices"]) == ("Classic PvE", "Horde", 2)
     history = client.get("/api/uploads", headers=FREE).json()
     assert [(u["kind"], u["outcome"], u["via"]) for u in history] == [("altarmy", "accepted", "browser")]
     assert client.get("/api/status", headers=FREE).json()["data_version"] == 1
@@ -1919,7 +1919,7 @@ def test_browsing_without_characters(
     ingest.build_db(db2_paths, conn, FOREVER)
     set_prices(conn, {1: 20, 2: 100})
     status = client.get("/api/status").json()
-    selection = {"realm": "Classic Beta PvE", "faction": "Horde"}
+    selection = {"realm": "Classic PvE", "faction": "Horde"}
     assert (status["characters"], status["selection"]) == (0, selection)
     body = client.get("/api/rank").json()
     (r,) = body["results"]
@@ -2076,7 +2076,7 @@ def test_admins_see_an_items_history_at_any_house(client: TestClient, priced: Co
     assert [h["low"] for h in month["hours"]] == [25]
     assert [d["low"] for d in history(auction_house_id=alliance, days=90).json()["days"]] == [30, 25]
     assert history(auction_house_id=alliance, days=401).status_code == 422
-    tbc = prices.auction_house(priced, "tbc", "Classic Beta PvE", "Alliance")
+    tbc = prices.auction_house(priced, "tbc", "Classic PvE", "Alliance")
     assert history(auction_house_id=tbc).status_code == 404  # another version's house
     assert history(auction_house_id=99999).status_code == 404
     for headers in (FREE, LINKED, SIGNED_IN):
@@ -2272,7 +2272,7 @@ def honored(db2_paths: dict[str, Path], conn: Connection, vendor_csv: Path) -> C
         for c in altarmy.parse_characters(ALTARMY_SV)
     ]
     store.save_characters(conn, ME, FOREVER, chars)
-    service.select(conn, ME, FOREVER, "Classic Beta PvE", "Horde")
+    service.select(conn, ME, FOREVER, "Classic PvE", "Horde")
     return conn
 
 
@@ -2336,7 +2336,7 @@ def add_enchant(conn: Connection) -> None:
         )
     )
     enchanter = Character(
-        "Classic Beta PvE",
+        "Classic PvE",
         "Enchy",
         "Horde",
         "PRIEST",
@@ -2560,7 +2560,7 @@ def test_copying_a_crafts_steps_is_counted_at_the_house(client: TestClient, pric
     event = {"name": "copy_steps", "props": {"recipe_id": r["recipe_id"], "aim": "gold"}}
     assert client.post("/api/events", json=event).status_code == 204
     assert client.post("/api/events", json=event).status_code == 204
-    ah = prices.find_auction_house(priced, FOREVER, "Classic Beta PvE", "Horde")
+    ah = prices.find_auction_house(priced, FOREVER, "Classic PvE", "Horde")
     assert prices.copies(priced, ah) == {r["recipe_id"]: 2}
     # pruned after COPY_DAYS
     prices.prune(priced, now=db.utcnow() + timedelta(days=prices.COPY_DAYS + 1))

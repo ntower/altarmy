@@ -117,7 +117,7 @@ def test_a_forever_realm_of_an_unknown_region_or_ruleset_is_its_coalesced_group(
     assert forever.realm_name("CAMWOW ZZ1 Realm 2 PvE") == forever.realm_name("CAMWOW ZZ2 Realm 1 PvE")
     assert forever.realm_name("CAMWOW ZZ1 Realm 2 PvE") == "CAMWOW ZZ PvE"
     assert forever.realm_name("CAMWOW US2 Realm 2 Arena") == "CAMWOW US Arena"
-    assert forever.realm_name("Classic Beta PvE") == "Classic Beta PvE"  # another shape: as it is
+    assert forever.realm_name("Classic PvE") == "Classic PvE"  # another shape: as it is
 
 
 def test_a_forever_region_and_ruleset_is_its_fixed_realm() -> None:
@@ -160,3 +160,10 @@ def test_each_mapped_blizzard_house_is_one_open_realms_and_factions() -> None:
         for faction, house_id in houses:
             assert (spec.api_region, house_id) not in seen, f"house {house_id} mapped twice"
             seen[spec.api_region, house_id] = f"{spec.name} {faction}"
+
+
+def test_only_forevers_beta_realms_are_left_out() -> None:
+    forever, tbc = versions.get("forever"), versions.get("tbc")
+    assert all(forever.is_beta_realm(n) for n in ("Classic Beta PvE", "Classic Beta PvP 2", "ClassicBetaPvE"))
+    assert not any(forever.is_beta_realm(n) for n in ("US PvE", "Americas Normal", "CAMWOW US2 Realm 3 PvE"))
+    assert not tbc.is_beta_realm("Classic Beta PvE")

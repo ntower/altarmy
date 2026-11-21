@@ -20,10 +20,10 @@ AltArmyTBC_Data = {
 },
 },
 ["Characters"] = {
-["Classic Beta PvE"] = {
+["Classic PvE"] = {
 ["Tailor Guy"] = {
 ["name"] = "Tailor Guy",
-["realm"] = "Classic Beta PvE",
+["realm"] = "Classic PvE",
 ["legacyTalents"] = {
 ["nodes"] = {
 [105955] = 2,
@@ -167,14 +167,14 @@ AltArmyTBC_GuildData = {
 def test_parse_characters() -> None:
     chars = altarmy.parse_characters(ALTARMY_SV)
     assert [(c.realm, c.name) for c in chars] == [
-        ("Classic Beta PvE", "Ally Alt"),
-        ("Classic Beta PvE", "Tailor Guy"),
+        ("Classic PvE", "Ally Alt"),
+        ("Classic PvE", "Tailor Guy"),
         ("Dreamscythe", "Frell"),
         ("Dreamscythe", "Newbie"),
     ]
     ally, tailor, frell, newbie = chars
     assert tailor == Character(
-        realm="Classic Beta PvE",
+        realm="Classic PvE",
         name="Tailor Guy",
         faction="Horde",
         class_file="MAGE",
@@ -209,8 +209,8 @@ def test_known_recipes_unions_professions() -> None:
 def test_groups_by_realm_and_faction() -> None:
     got = [(g.realm, g.faction, [c.name for c in g.characters]) for g in altarmy.groups(chars())]
     assert got == [
-        ("Classic Beta PvE", "Alliance", ["Ally Alt"]),
-        ("Classic Beta PvE", "Horde", ["Tailor Guy"]),
+        ("Classic PvE", "Alliance", ["Ally Alt"]),
+        ("Classic PvE", "Horde", ["Tailor Guy"]),
         ("Dreamscythe", "Horde", ["Frell", "Newbie"]),
     ]
 
@@ -244,10 +244,10 @@ def test_only_the_accounts_own_characters_are_read() -> None:
     # Guild data and linked accounts' characters are other globals of the same file: never the uploader's.
     others = (
         b'AltArmyTBC_LinkedData = {\n["accounts"] = {\n["ffff"] = {\n'
-        + b'["Characters"] = {\n["Classic Beta PvE"] = {\n'
+        + b'["Characters"] = {\n["Classic PvE"] = {\n'
         + _entry("Partner", level=60, updated=1).encode()
         + b"},\n},\n},\n},\n}\n"
-        + b'AltArmyTBC_GuildData = {\n["chars"] = {\n["Classic Beta PvE"] = {\n'
+        + b'AltArmyTBC_GuildData = {\n["chars"] = {\n["Classic PvE"] = {\n'
         + _entry("Guildmate", level=60, updated=1).encode()
         + b"},\n},\n}\n"
     )
@@ -255,7 +255,7 @@ def test_only_the_accounts_own_characters_are_read() -> None:
 
 
 def _sv(realm_body: str) -> bytes:
-    body = f'["Characters"] = {{\n["Classic Beta PvE"] = {{\n{realm_body}}},\n}},\n'
+    body = f'["Characters"] = {{\n["Classic PvE"] = {{\n{realm_body}}},\n}},\n'
     return f"AltArmyTBC_Data = {{\n{body}}}\n".encode()
 
 

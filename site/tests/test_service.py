@@ -132,8 +132,8 @@ def test_search_without_min_profit_keeps_losses(db2_paths: dict[str, Path], conn
 @pytest.mark.parametrize(
     ("realms", "realm", "faction", "key"),
     [
-        (["ClassicBetaPvE", "ClassicBetaPvP2"], "Classic Beta PvE", "Horde", "ClassicBetaPvE"),
-        (["ClassicBetaPvE", "ClassicBetaPvP2"], "Classic Beta PvP 2", "Alliance", "ClassicBetaPvP2"),
+        (["ClassicPvE", "ClassicPvP2"], "Classic PvE", "Horde", "ClassicPvE"),
+        (["ClassicPvE", "ClassicPvP2"], "Classic PvP 2", "Alliance", "ClassicPvP2"),
         (["Dreamscythe Alliance", "Dreamscythe Horde"], "Dreamscythe", "Horde", "Dreamscythe Horde"),
         (["Defias Pillager Alliance"], "Defias Pillager", "Alliance", "Defias Pillager Alliance"),
         (["Atiesh"], "Dreamscythe", "Horde", None),
@@ -149,9 +149,9 @@ def test_selection_defaults_to_biggest_group_then_remembers(conn: Connection) ->
     store.save_characters(conn, ME, FOREVER, chars())
     assert service.selection(conn, ME, FOREVER, chars()) == Selection("Dreamscythe", "Horde")
 
-    service.select(conn, ME, FOREVER, "Classic Beta PvE", "Horde")
+    service.select(conn, ME, FOREVER, "Classic PvE", "Horde")
     sel, selected = service.selected_characters(conn, ME, FOREVER)
-    assert sel == Selection("Classic Beta PvE", "Horde")
+    assert sel == Selection("Classic PvE", "Horde")
     assert [c.name for c in selected] == ["Tailor Guy"]
     with pytest.raises(ValueError, match="Nowhere"):
         service.select(conn, ME, FOREVER, "Nowhere", "Horde")
@@ -435,9 +435,9 @@ def test_a_sale_is_slow_when_what_is_listed_ahead_outlasts_two_days() -> None:
 def test_selection_falls_back_to_the_freshest_scanned_realm(conn: Connection) -> None:
     assert service.selection(conn, ME, FOREVER, []) is None
     set_prices(conn, {1: 20}, realm="Dreamscythe", faction="Horde")
-    set_prices(conn, {1: 30})  # Classic Beta PvE Horde, later
+    set_prices(conn, {1: 30})  # Classic PvE Horde, later
     set_prices(conn, {1: 40}, realm="", faction="")  # the unnamed auction house never counts
-    assert service.selection(conn, ME, FOREVER, []) == Selection("Classic Beta PvE", "Horde")
+    assert service.selection(conn, ME, FOREVER, []) == Selection("Classic PvE", "Horde")
 
     service.select(conn, ME, FOREVER, "Dreamscythe", "Horde")  # a realm with prices but no characters
     assert service.selected_characters(conn, ME, FOREVER) == (Selection("Dreamscythe", "Horde"), [])
@@ -453,16 +453,16 @@ def test_an_import_forgets_a_selected_realm_it_has_no_characters_on(conn: Connec
     service.replace_characters(conn, ME, FOREVER, chars())
     assert service.selected_characters(conn, ME, FOREVER)[0] == Selection("Dreamscythe", "Horde")
 
-    service.select(conn, ME, FOREVER, "Classic Beta PvE", "Horde")
+    service.select(conn, ME, FOREVER, "Classic PvE", "Horde")
     service.replace_characters(conn, ME, FOREVER, chars())  # still there: kept
-    assert service.selected_characters(conn, ME, FOREVER)[0] == Selection("Classic Beta PvE", "Horde")
+    assert service.selected_characters(conn, ME, FOREVER)[0] == Selection("Classic PvE", "Horde")
 
 
 def test_another_accounts_upload_keeps_the_selected_realm(conn: Connection) -> None:
     service.replace_characters(conn, ME, FOREVER, chars("Tailor Guy"), source="acct-a")
-    service.select(conn, ME, FOREVER, "Classic Beta PvE", "Horde")
+    service.select(conn, ME, FOREVER, "Classic PvE", "Horde")
     service.replace_characters(conn, ME, FOREVER, chars("Frell"), source="acct-b")  # none on that realm
-    assert service.selected_characters(conn, ME, FOREVER)[0] == Selection("Classic Beta PvE", "Horde")
+    assert service.selected_characters(conn, ME, FOREVER)[0] == Selection("Classic PvE", "Horde")
 
 
 def test_characters_on_coalesced_realms_are_one_group_priced_by_its_fixed_realm(conn: Connection) -> None:
@@ -500,10 +500,10 @@ def test_a_selection_saved_under_a_coalesced_realms_own_name_finds_its_group(con
 
 def test_delete_characters(conn: Connection) -> None:
     service.replace_characters(conn, ME, FOREVER, chars())
-    service.delete_character(conn, ME, FOREVER, "Classic Beta PvE", "Tailor Guy")
+    service.delete_character(conn, ME, FOREVER, "Classic PvE", "Tailor Guy")
     assert "Tailor Guy" not in [c.name for c in store.load_characters(conn, ME, FOREVER)]
     with pytest.raises(FileNotFoundError):
-        service.delete_character(conn, ME, FOREVER, "Classic Beta PvE", "Tailor Guy")
+        service.delete_character(conn, ME, FOREVER, "Classic PvE", "Tailor Guy")
 
 
 # --- profit per hour ----------------------------------------------------------------------------------

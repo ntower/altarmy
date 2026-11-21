@@ -218,7 +218,7 @@ def test_0009_allows_ahledger_and_drops_forevers_shared_houses(database: db.Data
         command.downgrade(db.alembic_config(conn), "0008")
         houses: dict[tuple[str, str], int] = {}
         for version, realm, faction in (
-            ("forever", "Classic Beta PvE", ""),  # shared: dropped
+            ("forever", "Classic PvE", ""),  # shared: dropped
             ("forever", "", ""),  # the unnamed one: kept
             ("tbc", "Dreamscythe", "Horde"),  # kept
         ):
@@ -246,14 +246,14 @@ def test_0009_allows_ahledger_and_drops_forevers_shared_houses(database: db.Data
             )
         conn.execute(
             schema.realm_aliases.insert().values(
-                auction_house_id=houses[("forever", "Classic Beta PvE")],
+                auction_house_id=houses[("forever", "Classic PvE")],
                 kind="auctionator",
-                value="ClassicBetaPvE",
+                value="ClassicPvE",
             )
         )
         conn.execute(
             schema.user_settings.insert().values(
-                user_uid=ME, game_version="forever", selected_realm="Classic Beta PvE", selected_faction=""
+                user_uid=ME, game_version="forever", selected_realm="Classic PvE", selected_faction=""
             )
         )
         command.upgrade(db.alembic_config(conn), "0009")  # 0014 deletes Forever's Auctionator prices
@@ -329,7 +329,7 @@ def test_0013_feed_price_columns_start_empty_and_feed_tables_restart(database: d
         ah: int = conn.execute(
             t["auction_houses"]
             .insert()
-            .values(game_version="forever", realm="Classic Beta PvE", faction="Horde")
+            .values(game_version="forever", realm="Classic PvE", faction="Horde")
             .returning(t["auction_houses"].c.id)
         ).scalar_one()
         snapshot: int = conn.execute(
@@ -383,7 +383,7 @@ def test_0014_adds_the_order_book_and_drops_forevers_third_party_prices(database
         old.reflect(conn)
         t = old.tables
         houses: dict[str, int] = {}
-        for version, realm in (("forever", "Classic Beta PvE"), ("tbc", "Dreamscythe")):
+        for version, realm in (("forever", "Classic PvE"), ("tbc", "Dreamscythe")):
             houses[version] = conn.execute(
                 t["auction_houses"]
                 .insert()
@@ -502,7 +502,7 @@ def test_0023_counts_the_scan_pairs_sales_were_seen_in(database: db.Database) ->
         ah: int = conn.execute(
             t["auction_houses"]
             .insert()
-            .values(game_version="forever", realm="Classic Beta PvE", faction="Horde")
+            .values(game_version="forever", realm="Classic PvE", faction="Horde")
             .returning(t["auction_houses"].c.id)
         ).scalar_one()
         day = datetime(2026, 10, 1, tzinfo=UTC).date()
@@ -527,3 +527,104 @@ def test_0025_recipes_give_a_point_and_have_no_cooldown_until_reloaded(database:
         conn.execute(old.tables["recipes"].insert().values(**values))
         db.upgrade(conn)
         assert tuple(conn.execute(select(t.c.num_skill_ups, t.c.cooldown_ms)).one()) == (1, 0)
+
+
+def test_0034_deletes_the_betas_realms_houses_prices_and_characters(database: db.Database) -> None:
+    """Forever's beta realms go with every price and character on them; other realms and TBC stay."""
+    ah, snap, pc, chars = (
+        schema.auction_houses,
+        schema.price_snapshots,
+        schema.price_current,
+        schema.characters,
+    )
+    when = datetime(2026, 11, 20, tzinfo=UTC)
+    with database.engine.begin() as conn:
+        command.downgrade(db.alembic_config(conn), "0033")
+        houses: dict[tuple[str, str], int] = {
+            key: conn.execute(
+                ah.insert().values(game_version=key[0], realm=key[1], faction="Horde").returning(ah.c.id)
+            ).scalar_one()
+            for key in (
+                ("forever", "Classic Beta PvE"),
+                ("forever", "Classic PvE"),
+                ("tbc", "Classic Beta PvE"),
+            )
+        }
+        for house in houses.values():
+            snapshot: int = conn.execute(
+                snap.insert()
+                .values(
+                    auction_house_id=house,
+                    source="altarmy" if house != houses[("tbc", "Classic Beta PvE")] else "auctionator",
+                    scanned_at=when,
+                    received_at=when,
+                    item_count=1,
+                    status="accepted",
+                )
+                .returning(snap.c.id)
+            ).scalar_one()
+            conn.execute(
+                schema.price_observations.insert().values(snapshot_id=snapshot, item_id=1, min_buyout=5)
+            )
+            conn.execute(
+                schema.snapshot_bodies.insert().values(
+                    snapshot_id=snapshot, format=schema.SNAPSHOT_BODY_FORMATS[0], body=b"x"
+                )
+            )
+            conn.execute(
+                pc.insert().values(
+                    auction_house_id=house, item_id=1, price=5, seen_at=when, snapshot_id=snapshot
+                )
+            )
+            conn.execute(
+                schema.price_daily.insert().values(
+                    auction_house_id=house, item_id=1, day=when.date(), low=5, high=5
+                )
+            )
+        for version, realm, name in (
+            ("forever", "Classic Beta PvP 2", "Betty"),
+            ("forever", "US PvE", "Livy"),
+            ("tbc", "Classic Beta PvE", "Tibby"),
+        ):
+            char: int = conn.execute(
+                chars.insert()
+                .values(
+                    user_uid=ME,
+                    game_version=version,
+                    realm=realm,
+                    name=name,
+                    faction="Horde",
+                    class_file="MAGE",
+                    level=1,
+                )
+                .returning(chars.c.id)
+            ).scalar_one()
+            conn.execute(
+                schema.character_professions.insert().values(
+                    character_id=char, skill_name="Tailoring", rank=1, max_rank=75
+                )
+            )
+        for version in ("forever", "tbc"):
+            conn.execute(
+                schema.user_settings.insert().values(
+                    user_uid=ME,
+                    game_version=version,
+                    selected_realm="Classic Beta PvE",
+                    selected_faction="Horde",
+                )
+            )
+        db.upgrade(conn)
+        kept = {houses[("forever", "Classic PvE")], houses[("tbc", "Classic Beta PvE")]}
+        assert kept <= set(conn.execute(select(ah.c.id)).scalars())
+        assert houses[("forever", "Classic Beta PvE")] not in set(conn.execute(select(ah.c.id)).scalars())
+        for table in (snap, pc, schema.price_daily):
+            assert set(conn.execute(select(table.c.auction_house_id)).scalars()) == kept
+        assert conn.execute(select(func.count()).select_from(schema.price_observations)).scalar_one() == 2
+        assert conn.execute(select(func.count()).select_from(schema.snapshot_bodies)).scalar_one() == 2
+        assert sorted(conn.execute(select(chars.c.name)).scalars()) == ["Livy", "Tibby"]
+        assert conn.execute(select(func.count()).select_from(schema.character_professions)).scalar_one() == 2
+        us = schema.user_settings
+        selected = conn.execute(
+            select(us.c.game_version, us.c.selected_realm).order_by(us.c.game_version)
+        ).all()
+        assert [tuple(r) for r in selected] == [("forever", None), ("tbc", "Classic Beta PvE")]

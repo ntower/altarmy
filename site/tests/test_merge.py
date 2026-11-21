@@ -128,7 +128,7 @@ def test_quarantined_snapshots_do_not_count(conn: Connection) -> None:
 # --- Alt Army's order book -----------------------------------------------------------------------
 def book_scan(items: dict[int, list[tuple[int, int]]], at: datetime) -> book.Scan:
     ladders = {i: tuple(book.Level(p, q, 1) for p, q in levels) for i, levels in items.items()}
-    return book.Scan(int(at.timestamp()), "Classic Beta PvE", "Horde", 1, 0, "own", ladders)
+    return book.Scan(int(at.timestamp()), "Classic PvE", "Horde", 1, 0, "own", ladders)
 
 
 def sales(conn: Connection, ah: int, item_id: int) -> tuple[int | None, float | None]:
@@ -148,7 +148,7 @@ def sold_pairs(conn: Connection, ah: int, item_id: int) -> int | None:
 
 
 def test_a_scans_market_price_makes_the_median_not_its_cheapest_listing(conn: Connection) -> None:
-    ah = prices.auction_house(conn, FOREVER, "Classic Beta PvE", "Horde")
+    ah = prices.auction_house(conn, FOREVER, "Classic PvE", "Horde")
     prices.record_book(conn, ah, book_scan({1: [(64, 3), (167, 5000)]}, NOON))
     merge.merge_auction_house(conn, ah, TODAY)
     assert daily_medians(conn, ah, 1) == {TODAY: 167}
@@ -156,7 +156,7 @@ def test_a_scans_market_price_makes_the_median_not_its_cheapest_listing(conn: Co
 
 
 def test_sales_of_the_last_week_make_the_sale_price_and_rate(conn: Connection) -> None:
-    ah = prices.auction_house(conn, FOREVER, "Classic Beta PvE", "Horde")
+    ah = prices.auction_house(conn, FOREVER, "Classic PvE", "Horde")
     prices.record_book(conn, ah, book_scan({1: [(100, 50)], 2: [(100, 50)]}, NOON))
     t = schema.price_sales_daily
     rows = [
@@ -189,7 +189,7 @@ def test_sales_of_the_last_week_make_the_sale_price_and_rate(conn: Connection) -
 
 
 def test_sales_that_age_out_are_forgotten(conn: Connection) -> None:
-    ah = prices.auction_house(conn, FOREVER, "Classic Beta PvE", "Horde")
+    ah = prices.auction_house(conn, FOREVER, "Classic PvE", "Horde")
     prices.record_book(conn, ah, book_scan({1: [(100, 50)]}, NOON))
     conn.execute(
         schema.price_sales_daily.insert().values(

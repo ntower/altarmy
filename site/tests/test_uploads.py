@@ -34,8 +34,8 @@ def test_altarmy_upload_replaces_only_the_uploaders_characters(conn: Connection,
     got = uploads.ingest(conn, ME, FOREVER, "altarmy", ALTARMY_SV, None, now=NOW)
     assert got.characters == 4
     assert got.groups == (
-        ("Classic Beta PvE", "Alliance", 1),
-        ("Classic Beta PvE", "Horde", 1),
+        ("Classic PvE", "Alliance", 1),
+        ("Classic PvE", "Horde", 1),
         ("Dreamscythe", "Horde", 2),
     )
     assert "4 characters" in got.detail
@@ -76,16 +76,16 @@ def test_an_alt_army_upload_records_the_scans_it_carries(conn: Connection) -> No
     got = uploads.ingest(conn, ME, FOREVER, "altarmy", with_scans(first, other, second), None, now=NOW)
     assert got.characters == 4
     assert [(r.key, r.realm, r.faction, r.items, r.moved) for r in got.realms] == [
-        ("Classic Beta PvE Horde", "Classic Beta PvE", "Horde", 2, 2),
+        ("Classic PvE Horde", "Classic PvE", "Horde", 2, 2),
         ("Dreamscythe Alliance", "Dreamscythe", "Alliance", 1, 1),
-        ("Classic Beta PvE Horde", "Classic Beta PvE", "Horde", 1, 2),  # linen cheaper, thread gone
+        ("Classic PvE Horde", "Classic PvE", "Horde", 1, 2),  # linen cheaper, thread gone
     ]
     assert got.detail.startswith("4 characters on ")
     assert got.detail.endswith(
-        "Auction house scans: Classic Beta PvE Horde: 2 prices, 2 changed; "
-        "Dreamscythe Alliance: 1 prices, 1 changed; Classic Beta PvE Horde: 1 prices, 2 changed"
+        "Auction house scans: Classic PvE Horde: 2 prices, 2 changed; "
+        "Dreamscythe Alliance: 1 prices, 1 changed; Classic PvE Horde: 1 prices, 2 changed"
     )
-    horde = prices.find_auction_house(conn, FOREVER, "Classic Beta PvE", "Horde")
+    horde = prices.find_auction_house(conn, FOREVER, "Classic PvE", "Horde")
     assert horde is not None and got.moved_auction_house_ids == {horde, got.realms[1].auction_house_id}
     assert prices.load_buy_and_sell(conn, horde, first_party=True)[0] == {1: 15}
     snap = schema.price_snapshots
@@ -97,7 +97,7 @@ def test_an_alt_army_upload_records_the_scans_it_carries(conn: Connection) -> No
 def test_scans_already_recorded_are_passed_over(conn: Connection, other: str) -> None:
     first = book_scan({1: [(20, 5)]}, NOW - timedelta(minutes=40))
     uploads.ingest(conn, ME, FOREVER, "altarmy", with_scans(first), None, now=NOW)
-    ah = prices.find_auction_house(conn, FOREVER, "Classic Beta PvE", "Horde")
+    ah = prices.find_auction_house(conn, FOREVER, "Classic PvE", "Horde")
     version = prices.price_version(conn, ah)
     again = uploads.ingest(conn, ME, FOREVER, "altarmy", with_scans(first), None, now=NOW)
     assert again.realms == () and again.detail.endswith("(Horde): 2")  # only the characters
@@ -136,16 +136,14 @@ def test_tbc_ignores_the_scans_and_forever_refuses_auctionator(conn: Connection)
 def test_a_scan_far_off_recent_prices_is_quarantined_and_costs_trust(conn: Connection, other: str) -> None:
     usual = book_scan({i: [(100, 10)] for i in range(1, 31)}, NOW - timedelta(hours=5))
     uploads.ingest(conn, ME, FOREVER, "altarmy", with_scans(usual), None, now=NOW)
-    ah = prices.find_auction_house(conn, FOREVER, "Classic Beta PvE", "Horde")
+    ah = prices.find_auction_house(conn, FOREVER, "Classic PvE", "Horde")
     pc = schema.price_current
     conn.execute(pc.update().values(median_7d=100, scans_7d=5))  # as the merge job would
     wild = book_scan({i: [(10_000, 10)] for i in range(1, 31)}, NOW - timedelta(hours=1))
     got = uploads.ingest(conn, other, FOREVER, "altarmy", with_scans(wild), None, now=NOW)
     (realm,) = got.realms
     assert realm.quarantined and realm.moved == 0
-    assert got.detail.endswith(
-        "Classic Beta PvE Horde: 30 prices not used: they differ widely from recent scans"
-    )
+    assert got.detail.endswith("Classic PvE Horde: 30 prices not used: they differ widely from recent scans")
     assert set(prices.load_current(conn, ah).values()) == {100}
     assert users.trust(conn, other) == 0.5
     assert got.moved_auction_house_ids == frozenset()
@@ -282,3 +280,18 @@ def test_every_users_uploads_and_their_counts(conn: Connection, other: str) -> N
     assert uploads.recent_all(conn, FOREVER, limit=1)[0].detail == "mine"
     assert uploads.stats(conn, FOREVER, NOW) == uploads.UploadStats(1, 0, 1, 1, 2)
     assert uploads.stats(conn, "tbc", NOW + timedelta(days=30)) == uploads.UploadStats(0, 0, 0, 0, 0)
+
+
+def test_the_betas_characters_and_scans_are_left_out(conn: Connection) -> None:
+    """Forever's beta realms are gone: an upload's characters and scans on one are passed over."""
+    on_beta = ALTARMY_SV.replace(b"Classic PvE", b"Classic Beta PvE")
+    beta = book_scan({1: [(20, 5)]}, NOW - timedelta(minutes=20), "Classic Beta PvE")
+    live = book_scan({1: [(30, 5)]}, NOW - timedelta(minutes=10), "US PvE")
+    got = uploads.ingest(conn, ME, FOREVER, "altarmy", on_beta + saved_book(beta, live), None, now=NOW)
+    assert got.characters == 2
+    assert got.groups == (("Dreamscythe", "Horde", 2),)
+    assert [(r.realm, r.faction) for r in got.realms] == [("US PvE", "Horde")]
+    assert prices.find_auction_house(conn, FOREVER, "Classic Beta PvE", "Horde") is None
+    assert {c.realm for c in store.load_characters(conn, ME, FOREVER)} == {"Dreamscythe"}
+    # TBC has no beta: a realm of that name is kept there
+    assert uploads.ingest(conn, ME, "tbc", "altarmy", on_beta, None, now=NOW).characters == 4

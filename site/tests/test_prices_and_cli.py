@@ -37,7 +37,7 @@ def count(conn: Connection, table: str) -> int:
 
 
 def test_snapshot_stats_per_source(conn: Connection) -> None:
-    ah = prices.auction_house(conn, FOREVER, "Classic Beta PvE", "Horde")
+    ah = prices.auction_house(conn, FOREVER, "Classic PvE", "Horde")
     tbc = prices.auction_house(conn, "tbc", "Dreamscythe", "Horde")
     obs = [Observation(1, 10, T0), Observation(2, 20, T0)]
     two_days = T0 - timedelta(days=2)
@@ -273,7 +273,7 @@ def test_listings_say_how_many_are_up(conn: Connection) -> None:
 
 
 def test_watched_hours_add_up_back_to_back_scans(conn: Connection) -> None:
-    ah = prices.auction_house(conn, FOREVER, "Classic Beta PvE", "Horde")
+    ah = prices.auction_house(conn, FOREVER, "Classic PvE", "Horde")
     gap = prices.SALES_GAP
     at = [T0, T0 + gap, T0 + 3 * gap, T0 + 3 * gap + timedelta(minutes=6)]  # 30 min + 6 min watched
     for t in at:
@@ -345,14 +345,14 @@ def test_prune_keeps_what_price_current_points_at(conn: Connection) -> None:
 
 
 def test_auction_houses_split_or_shared(conn: Connection) -> None:
-    shared = prices.auctionator_auction_house(conn, FOREVER, "ClassicBetaPvE", "Classic Beta PvE", "Horde")
-    assert prices.find_auction_house(conn, FOREVER, "Classic Beta PvE", "Alliance") == shared
+    shared = prices.auctionator_auction_house(conn, FOREVER, "ClassicPvE", "Classic PvE", "Horde")
+    assert prices.find_auction_house(conn, FOREVER, "Classic PvE", "Alliance") == shared
     split = prices.auctionator_auction_house(conn, "tbc", "Dreamscythe Horde", "Dreamscythe", "Horde")
     assert prices.find_auction_house(conn, "tbc", "Dreamscythe", "Horde") == split
     assert prices.find_auction_house(conn, "tbc", "Dreamscythe", "Alliance") is None
     assert prices.find_auction_house(conn, FOREVER, "Dreamscythe", "Horde") is None  # per version
     assert prices.auction_house_for_auctionator_key(conn, "tbc", "Dreamscythe Horde") == split  # an alias
-    assert prices.auctionator_auction_house(conn, FOREVER, "ClassicBetaPvE", "Classic Beta PvE", "") == shared
+    assert prices.auctionator_auction_house(conn, FOREVER, "ClassicPvE", "Classic PvE", "") == shared
     assert count(conn, "realm_aliases") == 2
 
 

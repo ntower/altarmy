@@ -333,14 +333,14 @@ def test_a_realm_name_is_a_fixed_realm_by_name_or_alias() -> None:
     version = replace(FOREVER, realms=(pvp,))
     assert version.realm_name("night slayer") == "PvP"
     assert version.realm_name("PVP") == "PvP"
-    assert version.realm_name("Classic Beta PvE") == "Classic Beta PvE"  # not a fixed realm: as it is
+    assert version.realm_name("Classic PvE") == "Classic PvE"  # not a fixed realm: as it is
     assert version.realm_name("CAMWOW US2 Realm 3 PvP") == "PvP"  # a coalesced realm: its region's ruleset
     assert version.realm_name("CAMWOW EU4 Realm 3 PvP") == "CAMWOW EU PvP"  # no fixed realm of its region
     assert version.canonical_realm("Elsewhere") is None
 
 
 def test_coverage_lists_the_fixed_houses_first(conn: Connection) -> None:
-    scanned_house = prices.auction_house(conn, FOREVER_KEY, "Classic Beta PvE", "Horde")
+    scanned_house = prices.auction_house(conn, FOREVER_KEY, "Classic PvE", "Horde")
     record(conn, scanned_house, snap(T0, auction(1, ORE, unit=64)))
     got = prices.coverage(conn, FOREVER_KEY, at(T0 + HOUR))
     assert [(c.realm, c.faction, c.realm_key) for c in got][:3] == [
@@ -351,7 +351,7 @@ def test_coverage_lists_the_fixed_houses_first(conn: Connection) -> None:
     hardcore = next(c for c in got if c.realm == "Americas Hardcore")
     assert not hardcore.open
     beta = got[-1]
-    assert (beta.realm, beta.realm_key, beta.feed, beta.launch) == ("Classic Beta PvE", None, True, True)
+    assert (beta.realm, beta.realm_key, beta.feed, beta.launch) == ("Classic PvE", None, True, True)
 
 
 def test_an_addon_scan_under_a_fixed_realms_other_name_lands_on_its_house(

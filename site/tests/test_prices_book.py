@@ -20,11 +20,11 @@ def ladder(*levels: tuple[int, int]) -> book.Ladder:
 
 
 def scan(items: dict[int, book.Ladder], at: datetime = T0) -> book.Scan:
-    return book.Scan(int(at.timestamp()), "Classic Beta PvE", "Horde", 10, 0, "own", items)
+    return book.Scan(int(at.timestamp()), "Classic PvE", "Horde", 10, 0, "own", items)
 
 
 def house(conn: Connection) -> int:
-    return prices.auction_house(conn, FOREVER, "Classic Beta PvE", "Horde")
+    return prices.auction_house(conn, FOREVER, "Classic PvE", "Horde")
 
 
 def current(conn: Connection, ah: int) -> dict[int, tuple[object, ...]]:

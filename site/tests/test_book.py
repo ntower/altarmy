@@ -21,7 +21,7 @@ def saved(scans: str) -> bytes:
 def scan(items: str = "2770:64*1*1", **changes: str) -> str:
     fields = {
         "t": "1790726574",
-        "realm": '"Classic Beta PvE"',
+        "realm": '"Classic PvE"',
         "faction": '"Horde"',
         "complete": "true",
         "listings": "1",

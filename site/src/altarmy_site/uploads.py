@@ -11,6 +11,8 @@ Auctionator file is refused there.
 Elsewhere (TBC) an Auctionator file records a snapshot for every realm it has prices for (the newest
 `seen_at` wins, see `prices.record_snapshot`).
 
+Characters and scans on the WoW: Forever beta's realms are left out (`GameVersion.is_beta_realm`).
+
 Every scan is screened first: a quarantined one changes nothing and lowers the uploader's trust
 (`prices.screen`, `users.adjust_trust`). The file itself is never stored.
 """
@@ -176,6 +178,8 @@ def _record_books(
     recorded = []
     version = versions.get(game_version)
     for scan in scans:
+        if version.is_beta_realm(scan.realm):
+            continue
         # a fixed realm's other names land on its auction house
         ah = prices.auction_house(conn, game_version, version.realm_name(scan.realm), scan.faction)
         at = scan_time(datetime.fromtimestamp(scan.t, now.tzinfo), now)
@@ -218,6 +222,8 @@ def _save_characters(
     keep_holdings: bool = False,
     source: str | None = None,
 ) -> Imported:
+    is_beta = versions.get(game_version).is_beta_realm
+    chars = [c for c in chars if not is_beta(c.realm)]
     service.replace_characters(conn, user_uid, game_version, chars, keep_holdings, source)
     service.bump_data_version(conn, user_uid, game_version)
     groups = tuple((g.realm, g.faction, len(g.characters)) for g in service.realm_groups(game_version, chars))

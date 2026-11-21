@@ -70,6 +70,9 @@ COALESCED_REALM = re.compile(r"^(?P<group>.*?(?P<region>[A-Za-z]+))\d*\s+Realm\s
 # Since Forever 1.60.1 (2026-11-20) the client names no realm, and the addon files characters and scans under
 # their region and ruleset ("US PvE"), read from the game rules
 REGION_RULESET = re.compile(r"^(?P<region>[A-Za-z]+)\s+(?P<ruleset>\S+)$")
+# The WoW: Forever beta's realms ("Classic Beta PvE", "Classic Beta PvP 2", Auctionator's "ClassicBetaPvE"):
+# the site keeps none of their characters or scans (`GameVersion.is_beta_realm`)
+BETA_REALM = re.compile(r"beta", re.IGNORECASE)
 # (key, label, the region codes realm names use): US and EU seen; Asia's codes are a guess
 REGIONS = (
     ("americas", "Americas", ("US",)),
@@ -165,6 +168,7 @@ class GameVersion:
     # the fixed realms, whose auction houses always exist (empty: realms come from uploads, as on TBC)
     realms: tuple[RealmSpec, ...] = ()
     coalesced_realms: bool = False  # realm names are `COALESCED_REALM`'s, one realm per region and ruleset
+    drops_beta_realms: bool = False  # uploads' characters and scans on a `BETA_REALM` are left out
 
     def ah_deposit(self, vendor_price: int, units: int, stack: int = 1, hours: int = 24) -> int:
         """What posting `units` in auctions of `stack` for `hours` costs: per auction `ah_deposit_rate`
@@ -193,6 +197,10 @@ class GameVersion:
                 if (spec.region, spec.ruleset) == (region, ruleset) and region and ruleset:
                     return spec
         return None
+
+    def is_beta_realm(self, name: str) -> bool:
+        """Whether a realm name is one of the beta's, whose characters and scans the site leaves out."""
+        return self.drops_beta_realms and BETA_REALM.search(name) is not None
 
     def realm_name(self, name: str) -> str:
         """The realm a realm name is one with, which characters are grouped by and whose auction houses
@@ -286,6 +294,7 @@ VERSIONS: dict[str, GameVersion] = {
         reputation_discounts=((6, 10), (7, 10), (8, 10)),  # vanilla's: 10% from Honored, no more after
         realms=regional_realms(),
         coalesced_realms=True,
+        drops_beta_realms=True,
     ),
     "tbc": GameVersion(
         key="tbc",
