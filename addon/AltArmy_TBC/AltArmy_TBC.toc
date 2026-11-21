@@ -31,6 +31,7 @@ Data\Auctions\AuctionProbe.lua
 Data\Auctions\AuctionBook.lua
 Data\Auctions\AuctionScan.lua
 Data\Economy\WaylaidCrates.lua
+Data\Economy\SnipeOrder.lua
 Data\Economy\WaylaidCosts.lua
 Data\Economy\Writs.lua
 Data\Economy\CraftPlan.lua

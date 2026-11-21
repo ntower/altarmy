@@ -503,7 +503,7 @@ local function OnRowClick(row)
     local rd = row.rowData
     local AZ = AltArmy.AuctionatorSearch
     if rd and AZ and AZ.IsAvailable() then
-        AZ.Search(W.SearchTerms(rd, Crates.ITEMS))
+        AZ.Search(W.SearchTerms(rd, Crates.ITEMS, UI.cache and UI.cache.book))
     end
 end
 

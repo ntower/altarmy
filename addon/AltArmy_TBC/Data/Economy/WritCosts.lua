@@ -158,8 +158,9 @@ end
 --- count), then, when a character can craft it, every reagent the craft plan buys (from a vendor or the
 --- auction house, each at its quantity), each item once. `items` names them (Writs.ITEMS). Every search is
 --- exact but an item's that comes with random suffixes (`suffix`: "Green Lens of Holy Wrath" is listed under
---- that name, which an exact "Green Lens" misses).
-function WC.SearchTerms(row, items)
+--- that name, which an exact "Green Lens" misses). With `book` (the order book the row was priced from), the
+--- best snipe goes first (SnipeOrder.Order); quantities stay.
+function WC.SearchTerms(row, items, book)
     local function name(item)
         return items[item] and items[item].name or tostring(item)
     end
@@ -168,14 +169,14 @@ function WC.SearchTerms(row, items)
         if seen[searchString] then return end
         seen[searchString] = true
         local exact = not (item and items[item] and items[item].suffix)
-        terms[#terms + 1] = { searchString = searchString, quantity = quantity, isExact = exact }
+        terms[#terms + 1] = { searchString = searchString, quantity = quantity, isExact = exact, item = item }
     end
-    add(row.name, 1)
+    add(row.name, 1, row.id)
     add(name(row.item), row.count, row.item)
     for _, step in ipairs(row.canCraft and row.steps or {}) do
         if step.kind == "ah" or step.kind == "vendor" then
             add(name(step.item), step.qty, step.item)
         end
     end
-    return terms
+    return AltArmy.SnipeOrder.Order(terms, book)
 end

@@ -287,27 +287,28 @@ end
 --- Auctionator shopping-list terms for a row: the crate, then both ways to fill it, the cheaper first: the
 --- bundle bought at its count (the cheapest listed in full, else the bundle the craft makes, so what is
 --- listed of it shows), and every reagent the cheapest craft plan buys (from a vendor or the auction house,
---- each at its quantity). `items` names a craft's reagents (WaylaidCrates.ITEMS). Each item once.
-function W.SearchTerms(row, items)
+--- each at its quantity). `items` names a craft's reagents (WaylaidCrates.ITEMS). Each item once. With `book`
+--- (the order book the row was priced from), the best snipe goes first (SnipeOrder.Order); quantities stay.
+function W.SearchTerms(row, items, book)
     local terms, seen = {}, {}
-    local function add(searchString, quantity)
+    local function add(searchString, quantity, item)
         if seen[searchString] then return end
         seen[searchString] = true
-        terms[#terms + 1] = { searchString = searchString, quantity = quantity, isExact = true }
+        terms[#terms + 1] = { searchString = searchString, quantity = quantity, isExact = true, item = item }
     end
     local function addBuy()
         local bundle = row.buyBundle or row.craftBundle
-        if bundle then add(bundle.name, bundle.count) end
+        if bundle then add(bundle.name, bundle.count, bundle.item) end
     end
     local function addCraft()
         for _, step in ipairs(row.steps or {}) do
             if step.kind == "ah" or step.kind == "vendor" then
                 local entry = items and items[step.item]
-                add(entry and entry.name or tostring(step.item), step.qty)
+                add(entry and entry.name or tostring(step.item), step.qty, step.item)
             end
         end
     end
-    add(row.name, 1)
+    add(row.name, 1, row.id)
     if row.best == "craft" then
         addCraft()
         addBuy()
@@ -315,7 +316,7 @@ function W.SearchTerms(row, items)
         addBuy()
         addCraft()
     end
-    return terms
+    return AltArmy.SnipeOrder.Order(terms, book)
 end
 
 local function tierRank(row)

@@ -6,6 +6,8 @@ describe("WaylaidCosts", function()
     setup(function()
         _G.AltArmy = _G.AltArmy or {}
         package.loaded["CraftPlan"] = nil
+        package.loaded["SnipeOrder"] = nil
+        require("SnipeOrder")
         package.loaded["WaylaidCosts"] = nil
         require("CraftPlan")
         require("WaylaidCosts")
@@ -567,6 +569,35 @@ describe("WaylaidCosts", function()
         it("searches only the crate when it has no bundles", function()
             assert.same({ { searchString = "Waylaid Crate", quantity = 1, isExact = true } },
                 W.SearchTerms({ name = "Waylaid Crate", random = true, options = {} }))
+        end)
+
+        it("searches the best snipe first with the book, at the same quantities", function()
+            local bars = { item = 3, name = "Gold Bar", count = 10 }
+            local row = { id = 1, name = "Waylaid Crate: Expert Ingots", best = "craft", bundle = bars,
+                craftBundle = bars, buyBundle = bars, steps = { { kind = "ah", item = 5, qty = 10, cost = 500 } } }
+            local book = {
+                [1] = { lv(1000, 40), lv(1010, 40) }, -- the crate: plenty near its price
+                [3] = { lv(100, 3), lv(200, 50) },    -- bars: 3 cheap, then twice the price
+                [5] = { lv(10, 500) },                -- ore: one deep level
+            }
+            assert.same({
+                { searchString = "Gold Bar", quantity = 10, isExact = true },
+                { searchString = "Waylaid Crate: Expert Ingots", quantity = 1, isExact = true },
+                { searchString = "Gold Ore", quantity = 10, isExact = true },
+            }, W.SearchTerms(row, { [5] = { name = "Gold Ore" } }, book))
+        end)
+
+        it("searches a thin cheap crate first ahead of a deep cluster of its reagent", function()
+            local row = { id = 1, name = "Waylaid Crate: Expert Ingots", best = "craft",
+                steps = { { kind = "ah", item = 5, qty = 10, cost = 500 } } }
+            local book = {
+                [1] = { lv(100000, 3), lv(160000, 5) },              -- 3 crates at 10g, then 16g
+                [5] = { lv(5000, 200), lv(5100, 200), lv(5200, 200) }, -- ore: hundreds near 50s
+            }
+            local terms = W.SearchTerms(row, { [5] = { name = "Gold Ore" } }, book)
+            assert.equals("Waylaid Crate: Expert Ingots", terms[1].searchString)
+            assert.equals(1, terms[1].quantity)
+            assert.equals(10, terms[2].quantity)
         end)
     end)
 end)

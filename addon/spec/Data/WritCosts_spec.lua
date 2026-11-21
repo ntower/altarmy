@@ -6,6 +6,8 @@ describe("WritCosts", function()
     setup(function()
         _G.AltArmy = _G.AltArmy or {}
         package.loaded["CraftPlan"] = nil
+        package.loaded["SnipeOrder"] = nil
+        require("SnipeOrder")
         package.loaded["WritCosts"] = nil
         require("CraftPlan")
         require("WritCosts")
@@ -272,6 +274,21 @@ describe("WritCosts", function()
             local rows = byId(WC.BuildRows(context().book, WRITS, nil, context()))
             assert.same({ term("Craftsman's Writ: Suit", 1), term("Suit", 1) }, WC.SearchTerms(rows[264144], ITEMS))
             assert.same({ term("Craftsman's Writ: Shot", 1), term("Shot", 200) }, WC.SearchTerms(rows[264037], ITEMS))
+        end)
+
+        it("searches the best snipe first with the book, at the same quantities", function()
+            local row = { id = 264047, name = "Craftsman's Writ: Robe", item = 1, count = 1, canCraft = true,
+                steps = { { kind = "ah", item = 3, qty = 4 } } }
+            local book = {
+                [264047] = { lv(5000, 1), lv(9000, 4) }, -- the writ: one cheap, then far dearer
+                [1] = { lv(3000, 10) },
+                [3] = { lv(10, 2), lv(30, 100) },        -- cloth: 2 cheap, 4 wanted -> 40
+            }
+            assert.same({ term("Craftsman's Writ: Robe", 1), term("Cloth", 4), term("Robe", 1) },
+                WC.SearchTerms(row, ITEMS, book))
+            book[264047] = { lv(5000, 10) }
+            assert.same({ term("Cloth", 4), term("Craftsman's Writ: Robe", 1), term("Robe", 1) },
+                WC.SearchTerms(row, ITEMS, book))
         end)
     end)
 end)
