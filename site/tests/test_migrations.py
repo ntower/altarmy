@@ -628,3 +628,80 @@ def test_0034_deletes_the_betas_realms_houses_prices_and_characters(database: db
             select(us.c.game_version, us.c.selected_realm).order_by(us.c.game_version)
         ).all()
         assert [tuple(r) for r in selected] == [("forever", None), ("tbc", "Classic Beta PvE")]
+
+
+def test_0035_folds_region_ruleset_houses_into_their_fixed_realms(database: db.Database) -> None:
+    """A Forever house named "US PvE" moves its scans to Americas Normal's and goes; other houses stay."""
+    ah, snap, pc = schema.auction_houses, schema.price_snapshots, schema.price_current
+    when = datetime(2026, 11, 20, tzinfo=UTC)
+    with database.engine.begin() as conn:
+        command.downgrade(db.alembic_config(conn), "0034")
+
+        def house(version: str, realm: str) -> int:
+            found = conn.execute(
+                select(ah.c.id).where(
+                    ah.c.game_version == version, ah.c.realm == realm, ah.c.faction == "Horde"
+                )
+            ).scalar_one_or_none()
+            if found is not None:
+                return int(found)
+            return int(
+                conn.execute(
+                    ah.insert().values(game_version=version, realm=realm, faction="Horde").returning(ah.c.id)
+                ).scalar_one()
+            )
+
+        normal, stray, pvp, tbc = (
+            house("forever", "Americas Normal"),
+            house("forever", "US PvE"),
+            house("forever", "EU PvP"),  # no fixed house of its own here: renamed
+            house("tbc", "US PvE"),
+        )
+        conn.execute(ah.delete().where(ah.c.realm == "Europe PvP", ah.c.faction == "Horde"))
+        for h in (normal, stray, pvp, tbc):
+            snapshot: int = conn.execute(
+                snap.insert()
+                .values(
+                    auction_house_id=h,
+                    source="altarmy",
+                    scanned_at=when,
+                    received_at=when,
+                    item_count=1,
+                    status="accepted",
+                )
+                .returning(snap.c.id)
+            ).scalar_one()
+            conn.execute(
+                schema.price_observations.insert().values(snapshot_id=snapshot, item_id=1, min_buyout=5)
+            )
+            conn.execute(
+                pc.insert().values(auction_house_id=h, item_id=1, price=5, seen_at=when, snapshot_id=snapshot)
+            )
+            conn.execute(
+                schema.price_daily.insert().values(
+                    auction_house_id=h, item_id=1, day=when.date(), low=5, high=5
+                )
+            )
+        for version in ("forever", "tbc"):
+            conn.execute(
+                schema.user_settings.insert().values(
+                    user_uid=ME, game_version=version, selected_realm="US PvE", selected_faction="Horde"
+                )
+            )
+        db.upgrade(conn)
+        ids: set[int] = set(conn.execute(select(ah.c.id)).scalars())
+        assert stray not in ids and {normal, pvp, tbc} <= ids
+        assert conn.execute(select(ah.c.realm).where(ah.c.id == pvp)).scalar_one() == "Europe PvP"
+        moved: list[int] = list(conn.execute(select(snap.c.auction_house_id).order_by(snap.c.id)).scalars())
+        assert moved == [normal, normal, pvp, tbc]
+        assert conn.execute(select(func.count()).select_from(schema.price_observations)).scalar_one() == 4
+        for table in (pc, schema.price_daily):
+            assert sorted(conn.execute(select(table.c.auction_house_id)).scalars()) == sorted(
+                [normal, pvp, tbc]
+            )
+        assert conn.execute(select(ah.c.price_version).where(ah.c.id == normal)).scalar_one() == 1
+        us = schema.user_settings
+        selected = conn.execute(
+            select(us.c.game_version, us.c.selected_realm).order_by(us.c.game_version)
+        ).all()
+        assert [tuple(r) for r in selected] == [("forever", "Americas Normal"), ("tbc", "US PvE")]
