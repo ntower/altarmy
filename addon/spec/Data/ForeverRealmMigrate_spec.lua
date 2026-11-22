@@ -82,6 +82,28 @@ describe("ForeverRealm.Migrate", function()
       assert.is_nil(sv.data.Characters[US2])
     end)
 
+    it("joins a character's AU copy (Oceania, saved before AU was folded into US) to its US PvE copy", function()
+      local sv = { data = { Characters = {
+        ["AU PvE"] = { G = { realm = "AU PvE", lastUpdate = 10, money = 100, bankScannedAt = 3 } },
+        ["US PvE"] = { G = { realm = "US PvE", lastUpdate = 20, money = 500 } },
+      } } }
+      migrate(sv, "US PvE")
+      local g = sv.data.Characters["US PvE"].G
+      assert.are.equal(500, g.money)
+      assert.are.equal(3, g.bankScannedAt)
+      assert.are.equal("US PvE", g.realm)
+      assert.is_nil(sv.data.Characters["AU PvE"])
+    end)
+
+    it("moves an Oceanic realm's characters to US PvE", function()
+      local sv = { data = { Characters = {
+        ["CAMWOW AU1 Realm 1 PvE"] = { A = { realm = "CAMWOW AU1 Realm 1 PvE", lastUpdate = 1 } },
+      } } }
+      migrate(sv)
+      assert.are.equal("US PvE", sv.data.Characters["US PvE"].A.realm)
+      assert.is_nil(sv.data.Characters["CAMWOW AU1 Realm 1 PvE"])
+    end)
+
     it("changes nothing a second time", function()
       idempotent({ data = { Characters = { [US2] = { A = { realm = US2, lastUpdate = 1 } },
         [US1] = { A = { realm = US1, lastUpdate = 2 } } } } })

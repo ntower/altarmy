@@ -4,8 +4,8 @@
 -- of one region and ruleset share auction houses, mail and guilds anyway, so on Forever a character's realm is
 -- "<region> <ruleset>" ("US PvE"): GetCurrentRegionName and the game rules (C_GameRules: PvP, RP and Hardcore
 -- rulesets, as Auctionator reads them). Saved data keyed by the old names ("CAMWOW US2 Realm 5 PvE") or by ""
--- (what an Alt Army before this saved under 1.60.1) moves to that key (Migrate). TBC is untouched: its realms
--- are servers, which GetRealmName still names.
+-- (what an Alt Army before this saved under 1.60.1) moves to that key (Migrate), Oceania's "AU" folded into "US"
+-- (REGION_ALIASES). TBC is untouched: its realms are servers, which GetRealmName still names.
 -- luacheck: globals GetRealmName GetCurrentRegionName C_GameRules Enum
 
 if not AltArmy then return end
@@ -21,6 +21,14 @@ FR.RULESET_WORDS = {
     RPPvP = "RPPvP", ["RP-PvP"] = "RPPvP",
     Hardcore = "Hardcore", HC = "Hardcore",
 }
+
+--- Region codes of realm names that play in another region: Oceania's realms ("CAMWOW AU1 Realm 1 PvE") are in
+--- Blizzard's US region (GetCurrentRegionName says "US" there) and share its guilds, mail and auction houses.
+FR.REGION_ALIASES = { AU = "US" }
+
+local function regionCode(r)
+    return FR.REGION_ALIASES[r] or r
+end
 
 local function isForever()
     local DS = AltArmy.DataStore
@@ -51,7 +59,7 @@ end
 
 local function region()
     local r = GetCurrentRegionName and GetCurrentRegionName()
-    if type(r) == "string" and r:match("^%a+$") then return r end
+    if type(r) == "string" and r:match("^%a+$") then return regionCode(r) end
     return nil
 end
 
@@ -88,7 +96,7 @@ normalize = function(realm, keepEmpty)
     for _, pattern in ipairs({ REALM_NAME, CLUSTER_GROUP, GROUP }) do
         local r, word = realm:match(pattern)
         local ruleset = r and FR.RULESET_WORDS[word]
-        if ruleset then return r .. " " .. ruleset end
+        if ruleset then return regionCode(r) .. " " .. ruleset end
     end
     return realm
 end

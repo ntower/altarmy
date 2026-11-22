@@ -73,9 +73,10 @@ REGION_RULESET = re.compile(r"^(?P<region>[A-Za-z]+)\s+(?P<ruleset>\S+)$")
 # The WoW: Forever beta's realms ("Classic Beta PvE", "Classic Beta PvP 2", Auctionator's "ClassicBetaPvE"):
 # the site keeps none of their characters or scans (`GameVersion.is_beta_realm`)
 BETA_REALM = re.compile(r"beta", re.IGNORECASE)
-# (key, label, the region codes realm names use): US and EU seen; Asia's codes are a guess
+# (key, label, the region codes realm names use): US, AU and EU seen (Oceania's AU realms play in Blizzard's
+# US region, sharing its guilds and houses, and the addon names them "US"); Asia's codes are a guess
 REGIONS = (
-    ("americas", "Americas", ("US",)),
+    ("americas", "Americas", ("US", "AU")),
     ("europe", "Europe", ("EU",)),
     ("asia", "Asia", ("KR", "TW", "CN", "AS")),
 )

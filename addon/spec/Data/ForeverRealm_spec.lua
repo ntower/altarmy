@@ -84,6 +84,11 @@ describe("ForeverRealm", function()
       assert.are.equal("EU RPPvP", FR.Current())
     end)
 
+    it("names Oceania's region US", function()
+      _G.GetCurrentRegionName = function() return "AU" end
+      assert.are.equal("US PvE", FR.Current())
+    end)
+
     it("falls back to the realm name the game gives, as its group", function()
       _G.C_GameRules = nil
       _G.GetRealmName = function() return "CAMWOW US2 Realm 5 PvE" end
@@ -120,6 +125,12 @@ describe("ForeverRealm", function()
     it("makes an older group name (with its cluster) the group", function()
       assert.are.equal("US PvE", FR.Normalize("CAMWOW US PvE"))
       assert.are.equal("US PvE", FR.Normalize("CAMWOW US Realm 0 PvE"))
+    end)
+
+    it("folds Oceania's realms (AU) into the US region, which they play in", function()
+      assert.are.equal("US PvE", FR.Normalize("CAMWOW AU1 Realm 1 PvE"))
+      assert.are.equal("US PvP", FR.Normalize("CAMWOW AU PvP"))
+      assert.are.equal("US PvE", FR.Normalize("AU PvE"))
     end)
 
     it("keeps a group name as it is", function()

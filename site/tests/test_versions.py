@@ -129,6 +129,9 @@ def test_a_forever_region_and_ruleset_is_its_fixed_realm() -> None:
     assert forever.realm_name("EU RPPvP") == "Europe RP-PvP"
     assert forever.realm_name("US Hardcore") == "Americas Hardcore"
     assert forever.realm_name("ZZ PvE") == "ZZ PvE"  # an unknown region: as it is
+    # Oceania's realms play in the US region
+    assert forever.realm_name("AU PvE") == "Americas Normal"
+    assert forever.realm_name("CAMWOW AU1 Realm 1 PvE") == "Americas Normal"
     assert forever.realm_name("Living Flame") == "Living Flame"  # no ruleset word
     assert VERSIONS["tbc"].realm_name("US PvE") == "US PvE"
 
