@@ -354,6 +354,7 @@ local function buildRecipeList(prof)
     local ids = (P and P.GetPrimaryRecipeIDs and P.GetPrimaryRecipeIDs(prof)) or {}
     local out = {}
     local recipes = prof and prof.Recipes or {}
+    local RI = AltArmy.RecipeInfo
     for _, id in ipairs(ids) do
         local data = recipes[id]
         local resultItemID, name
@@ -362,6 +363,12 @@ local function buildRecipeList(prof)
             if type(data.name) == "string" and data.name ~= "" then
                 name = data.name
             end
+        end
+        -- Guildmates' recipes arrive as spell ids alone: take the crafted item from the bundled recipe
+        -- data, so the row shows the item's icon and link (most craft spells' own icon is a placeholder).
+        if not resultItemID and RI and RI.GetRecipe then
+            local record = RI.GetRecipe(id)
+            resultItemID = record and record.resultItemID or nil
         end
         out[#out + 1] = { recipeID = id, resultItemID = resultItemID, name = name }
     end
@@ -564,6 +571,26 @@ function GTD.GetProfessionRecipes(entry, profKey)
     end
     if not prof then return {} end
     return buildRecipeList(prof)
+end
+
+--- Tab the recipe view opens on, among `profs` (GetCraftingProfessions order, by skill): the first crafting
+--- profession with recipes stored, else the first gathering one with recipes (WoW Forever's gathering skills
+--- have a few camp recipes, so they show as tabs and can outrank the real profession), else the first
+--- crafting profession, else 1.
+function GTD.GetDefaultProfessionIndex(entry, profs)
+    profs = profs or {}
+    local gatheringWithRecipes, firstCrafting
+    for i, prof in ipairs(profs) do
+        local gathering = GTD.GATHERING_PROFESSION_KEYS[prof.key] == true
+        local hasRecipes = #GTD.GetProfessionRecipes(entry, prof.key) > 0
+        if not gathering then
+            if hasRecipes then return i end
+            firstCrafting = firstCrafting or i
+        elseif hasRecipes then
+            gatheringWithRecipes = gatheringWithRecipes or i
+        end
+    end
+    return gatheringWithRecipes or firstCrafting or 1
 end
 
 local function formatNamePart(entry, formatName)

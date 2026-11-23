@@ -1555,6 +1555,16 @@ describe("CooldownData", function()
                 assert.is_true(CD.SettingsMap(AltArmyTBC_Options.cooldowns, "show").transmute)
             end)
 
+            it("draws Study's note in the mage's class color when the client has class colors", function()
+                AltArmy.DataStore.IsWowForever = true
+                local saved = _G.RAID_CLASS_COLORS
+                _G.RAID_CLASS_COLORS = { MAGE = { r = 0.41, g = 0.8, b = 0.94 } }
+                local _, labels = CD.SettingsEntries(true)
+                _G.RAID_CLASS_COLORS = saved
+                assert.are.equal("Study (|cff69ccf0mage|r)", labels.research)
+                assert.are.equal("Dedicated Study (legacy talent)", labels.dedicated_study)
+            end)
+
             it("SettingsMap says which entry is ticked, every key explicit", function()
                 local cd = AltArmyTBC_Options.cooldowns
                 local map = CD.SettingsMap(cd, "show")

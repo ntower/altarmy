@@ -21,12 +21,25 @@ local CF = AltArmy.CharacterFilter
 CF.VERSION = 1
 
 CF.SCOPE_KEYS = { "own", "otherFaction", "otherRealms", "linked" }
-CF.SCOPE_LABELS = {
-    own = "This realm, this faction",
-    otherFaction = "This realm, opposite faction",
-    otherRealms = "Other realms",
-    linked = "Include linked accounts",
-}
+--- "realm"/"realms" as the UI says them: "ruleset"/"rulesets" on Forever (RealmFilter.realmWord).
+local function realmWord(plural, capitalized)
+    local RF = AltArmy.RealmFilter
+    if RF and RF.realmWord then return RF.realmWord(plural, capitalized) end
+    local word = plural and "realms" or "realm"
+    return capitalized and (word:sub(1, 1):upper() .. word:sub(2)) or word
+end
+CF.RealmWord = realmWord
+
+--- The realm filter's option labels ("This realm, this faction"; "This ruleset, ..." on Forever).
+function CF.ScopeLabels()
+    local this = "This " .. realmWord(false)
+    return {
+        own = this .. ", this faction",
+        otherFaction = this .. ", opposite faction",
+        otherRealms = "Other " .. realmWord(true),
+        linked = "Include linked accounts",
+    }
+end
 CF.LOCKED_SCOPE_KEYS = { own = true }
 
 -- The classes both clients have, in the game's order.
@@ -310,18 +323,18 @@ end
 
 --- The realm filter's dropdown summary: "All" when every option it offers is on, "All realms" when all
 --- but linked accounts are, else "This faction", or "This realm" with the opposite faction, then
---- ", Other realms" and ", Linked accounts" (the latter only when there are links).
+--- ", Other realms" and ", Linked accounts" (the latter only when there are links). "ruleset(s)" on Forever.
 function CF.FormatScopeSummary(filter, hasLinks)
     local s = filter.scope
     if s.otherFaction and s.otherRealms then
         if not hasLinks or s.linked then
             return "All"
         end
-        return "All realms"
+        return "All " .. realmWord(true)
     end
-    local parts = { s.otherFaction and "This realm" or "This faction" }
+    local parts = { s.otherFaction and ("This " .. realmWord(false)) or "This faction" }
     if s.otherRealms then
-        parts[#parts + 1] = "Other realms"
+        parts[#parts + 1] = "Other " .. realmWord(true)
     end
     if hasLinks and s.linked then
         parts[#parts + 1] = "Linked accounts"

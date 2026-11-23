@@ -2225,6 +2225,91 @@ describe("GuildTabData", function()
     end)
   end)
 
+  describe("GetDefaultProfessionIndex", function()
+    before_each(function()
+      package.loaded["GuildShareProtocol"] = nil
+      require("GuildShareProtocol")
+    end)
+
+    local function forever()
+      _G.AltArmy.DataStore = {
+        ProfessionHasNoRecipeWindow = function() return false end,
+      }
+    end
+
+    after_each(function()
+      _G.AltArmy.DataStore = nil
+    end)
+
+    it("opens the first profession with recipes, past a higher one without (Forever's Mining)", function()
+      forever()
+      local entry = member({ name = "A", profs = {
+        { key = "mining", name = "Mining", rank = 170 },
+        { key = "blacksmithing", name = "Blacksmithing", rank = 128 },
+      } })
+      entry.Professions.mining.Recipes = {}
+      entry.Professions.blacksmithing.Recipes = { [2660] = { primaryRecipeID = 2660 } }
+      local profs = GTD.GetCraftingProfessions(entry)
+      assert.are.equal("mining", profs[1].key)
+      assert.are.equal(2, GTD.GetDefaultProfessionIndex(entry, profs))
+    end)
+
+    it("prefers a crafting profession with recipes over a higher gathering one with camp recipes", function()
+      forever()
+      local entry = member({ name = "A", profs = {
+        { key = "mining", name = "Mining", rank = 170 },
+        { key = "skinning", name = "Skinning", rank = 150 },
+        { key = "blacksmithing", name = "Blacksmithing", rank = 128 },
+      } })
+      entry.Professions.mining.Recipes = { [1263000] = { primaryRecipeID = 1263000 } }
+      entry.Professions.skinning.Recipes = { [1263001] = { primaryRecipeID = 1263001 } }
+      entry.Professions.blacksmithing.Recipes = { [2660] = { primaryRecipeID = 2660 } }
+      assert.are.equal(3, GTD.GetDefaultProfessionIndex(entry, GTD.GetCraftingProfessions(entry)))
+    end)
+
+    it("falls back to the first gathering profession with recipes when no crafting one has any", function()
+      forever()
+      local entry = member({ name = "A", profs = {
+        { key = "mining", name = "Mining", rank = 170 },
+        { key = "skinning", name = "Skinning", rank = 150 },
+        { key = "blacksmithing", name = "Blacksmithing", rank = 128 },
+      } })
+      entry.Professions.skinning.Recipes = { [1263001] = { primaryRecipeID = 1263001 } }
+      assert.are.equal(2, GTD.GetDefaultProfessionIndex(entry, GTD.GetCraftingProfessions(entry)))
+    end)
+
+    it("opens the first crafting profession when nothing has recipes", function()
+      forever()
+      local entry = member({ name = "A", profs = {
+        { key = "mining", name = "Mining", rank = 170 },
+        { key = "blacksmithing", name = "Blacksmithing", rank = 128 },
+      } })
+      assert.are.equal(2, GTD.GetDefaultProfessionIndex(entry, GTD.GetCraftingProfessions(entry)))
+    end)
+
+    it("keeps the first profession when it has recipes", function()
+      local entry = member({ name = "A", profs = {
+        { key = "tailoring", name = "Tailoring", rank = 300 },
+        { key = "alchemy", name = "Alchemy", rank = 200 },
+      } })
+      entry.Professions.tailoring.Recipes = { [2387] = { primaryRecipeID = 2387 } }
+      entry.Professions.alchemy.Recipes = { [2329] = { primaryRecipeID = 2329 } }
+      assert.are.equal(1, GTD.GetDefaultProfessionIndex(entry, GTD.GetCraftingProfessions(entry)))
+    end)
+
+    it("falls back to the first profession when none has recipes", function()
+      local entry = member({ name = "A", profs = {
+        { key = "tailoring", name = "Tailoring", rank = 300 },
+        { key = "alchemy", name = "Alchemy", rank = 200 },
+      } })
+      assert.are.equal(1, GTD.GetDefaultProfessionIndex(entry, GTD.GetCraftingProfessions(entry)))
+    end)
+
+    it("is 1 without professions", function()
+      assert.are.equal(1, GTD.GetDefaultProfessionIndex(member({ name = "A" }), {}))
+    end)
+  end)
+
   describe("GetProfessionRecipes", function()
     before_each(function()
       package.loaded["GuildShareProtocol"] = nil
@@ -2260,6 +2345,38 @@ describe("GuildTabData", function()
       assert.are.same({
         { recipeID = 11449, resultItemID = 9187, name = "Elixir of Giants" },
       }, GTD.GetProfessionRecipes(entry, "alchemy"))
+    end)
+
+    it("fills a missing crafted item from the recipe data", function()
+      local savedRI = AltArmy.RecipeInfo
+      AltArmy.RecipeInfo = {
+        GetRecipe = function(spellID)
+          if spellID == 2663 then return { recipeID = 2663, resultItemID = 2853 } end
+          if spellID == 7421 then return { recipeID = 7421 } end -- an enchant: no item
+          return nil
+        end,
+      }
+      local entry = member({
+        name = "A",
+        profs = {
+          { key = "blacksmithing", name = "Blacksmithing", rank = 100 },
+        },
+      })
+      entry.Professions.blacksmithing.Recipes = {
+        [2663] = { primaryRecipeID = 2663 },
+        [3115] = { primaryRecipeID = 3115, resultItemID = 3239 },
+        [7421] = { primaryRecipeID = 7421 },
+        [9999] = { primaryRecipeID = 9999 },
+      }
+      local ok, result = pcall(GTD.GetProfessionRecipes, entry, "blacksmithing")
+      AltArmy.RecipeInfo = savedRI
+      assert.is_true(ok, tostring(result))
+      assert.are.same({
+        { recipeID = 2663, resultItemID = 2853 },
+        { recipeID = 3115, resultItemID = 3239 },
+        { recipeID = 7421 },
+        { recipeID = 9999 },
+      }, result)
     end)
 
     it("returns empty when profession is missing", function()

@@ -11,6 +11,16 @@ local RF = AltArmy.RealmFilter
 -- once it logs in (DataStore then moves it), so none is filed with the group the player is on now. Elsewhere a
 -- realm is its name.
 
+--- The word the UI uses for a realm: "ruleset" on Forever (where a realm is a region's ruleset), else "realm";
+--- "rulesets"/"realms" when `plural`, capitalized when `capitalized`.
+function RF.realmWord(plural, capitalized)
+    local DS = AltArmy.DataStore
+    local word = (DS and DS.IsWowForever == true) and "ruleset" or "realm"
+    if plural then word = word .. "s" end
+    if capitalized then word = word:sub(1, 1):upper() .. word:sub(2) end
+    return word
+end
+
 --- The realm `realm` is one with: on Forever its region and ruleset ("US PvE"), else itself. Compare realms with
 --- this (or sameRealm).
 function RF.realmGroup(realm)

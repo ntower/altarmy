@@ -197,6 +197,31 @@ describe("CharacterFilter", function()
             assert.are.equal("This faction, Other realms", CF.FormatScopeSummary(f, false))
         end)
 
+        it("says ruleset instead of realm on WoW Forever", function()
+            _G.AltArmy.DataStore = { IsWowForever = true }
+            local f = CF.Ensure({}, { maxLevel = 60 })
+            f.scope.linked = false
+            f.scope.otherFaction = true
+            f.scope.otherRealms = false
+            assert.are.equal("This ruleset", CF.FormatScopeSummary(f, true))
+            f.scope.otherFaction = false
+            f.scope.otherRealms = true
+            assert.are.equal("This faction, Other rulesets", CF.FormatScopeSummary(f, true))
+            f.scope.otherFaction = true
+            assert.are.equal("All rulesets", CF.FormatScopeSummary(f, true))
+            assert.are.same({
+                own = "This ruleset, this faction",
+                otherFaction = "This ruleset, opposite faction",
+                otherRealms = "Other rulesets",
+                linked = "Include linked accounts",
+            }, CF.ScopeLabels())
+            assert.are.equal("Ruleset", CF.RealmWord(false, true))
+            _G.AltArmy.DataStore = { IsWowForever = false }
+            assert.are.equal("Other realms", CF.ScopeLabels().otherRealms)
+            assert.are.equal("Realm", CF.RealmWord(false, true))
+            _G.AltArmy.DataStore = nil
+        end)
+
         it("says All when everything is on, All realms when only linked accounts are off", function()
             local f = CF.Ensure({}, { maxLevel = 60 })
             f.scope.otherFaction = true

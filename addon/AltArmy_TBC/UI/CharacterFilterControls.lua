@@ -47,9 +47,9 @@ function AltArmy.CreateCharacterFilterControls(parent, opts)
     end
     local realm = dropdown({
         relativeTo = opts.anchorTo,
-        title = "Realm filter",
+        title = CF.RealmWord(false, true) .. " filter",
         getKeys = function() return CF.ScopeKeys(hasLinks()) end, -- linked accounts once there are any
-        labels = CF.SCOPE_LABELS,
+        labels = CF.ScopeLabels(),
         lockedKeys = CF.LOCKED_SCOPE_KEYS,
         getFilter = function() return CF.ScopeFilterMap(filter()) end,
         setEnabled = function(key, on) CF.SetScope(filter(), key, on) end,
@@ -81,7 +81,8 @@ function AltArmy.CreateCharacterFilterControls(parent, opts)
         Theme.AttachSettingsHelpIcon(groupRow, opts.groupCheckbox.help or {
             title = "Group characters",
             lines = {
-                "Lists each realm and faction's characters under its own heading, this realm's first.",
+                "Lists each " .. CF.RealmWord() .. " and faction's characters under its own heading, this "
+                    .. CF.RealmWord() .. "'s first.",
                 "Click a heading to fold its characters away.",
             },
         })

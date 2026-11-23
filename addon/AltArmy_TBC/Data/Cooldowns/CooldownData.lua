@@ -481,6 +481,10 @@ CD.SETTINGS_NOTES = {
     dedicated_study = "legacy talent",
     essence_of_innovation = "legacy talent",
 }
+--- A note naming a class is drawn in that class's color (the parentheses stay plain).
+CD.SETTINGS_NOTE_CLASSES = {
+    research = "MAGE",
+}
 
 local SETTINGS_FIELDS = {
     show = { on = "showInUI", spec = "showOnlyIfSpecialization" },
@@ -503,6 +507,10 @@ function CD.SettingsEntries(isForever)
         else
             keys[#keys + 1] = key
             local note = CD.SETTINGS_NOTES[key]
+            local noteClass = CD.SETTINGS_NOTE_CLASSES[key]
+            if note and noteClass and AltArmy.ClassColor then
+                note = AltArmy.ClassColor.wrapName(note, noteClass)
+            end
             labels[key] = note and (title .. " (" .. note .. ")") or title
         end
     end

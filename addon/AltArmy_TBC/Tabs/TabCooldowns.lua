@@ -2473,7 +2473,7 @@ RunSendStockpile = function(ctx)
     end
     local _, curRealm = GetCurrentIdentity()
     if not sameRealm(ctx.targetRealm, curRealm) then
-        ChatInfo("Can't send stockpile across realms")
+        ChatInfo("Can't send stockpile across " .. AltArmy.RealmFilter.realmWord(true))
         return false
     end
 
@@ -3521,7 +3521,9 @@ do
             help = {
                 title = "Group characters",
                 lines = {
-                    "Lists each realm and faction's crafting cooldowns under its own heading, this realm's first.",
+                    "Lists each " .. AltArmy.RealmFilter.realmWord()
+                        .. " and faction's crafting cooldowns under its own heading, this "
+                        .. AltArmy.RealmFilter.realmWord() .. "'s first.",
                     "Click a heading to fold them away.",
                 },
             },

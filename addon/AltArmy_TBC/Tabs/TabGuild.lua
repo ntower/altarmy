@@ -4223,12 +4223,13 @@ showRecipeView = function(entry, preferredProfKey, preferredProfName, preferredR
     end
     selectedCharacter = entry
     selectedCharacterKey = memberKey(entry)
-    selectedProfIndex = 1
     recipeViewport._lastRecipes = nil
     local Nav = AltArmy.SearchGuildNav
     if (preferredProfKey or preferredProfName) and Nav and Nav.FindProfessionIndex then
         selectedProfIndex = Nav.FindProfessionIndex(
             GTD.GetCraftingProfessions(entry), preferredProfKey, preferredProfName)
+    else
+        selectedProfIndex = GTD.GetDefaultProfessionIndex(entry, GTD.GetCraftingProfessions(entry))
     end
     recipeSortKey, recipeSortAscending = GTD.GetDefaultRecipeSort(isRecipeDataAvailable())
     -- Quiet clear so OnTextChanged does not layout/wipe focus mid-open.

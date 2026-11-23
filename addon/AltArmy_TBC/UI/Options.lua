@@ -385,7 +385,8 @@ local DEBUG_SECTIONS = {
                     if AltArmy.RefreshGuildTab then AltArmy.RefreshGuildTab() end
                 end },
             { button = "Clear auction data",
-                desc = "Every stored auction house scan, all realms. The 15-minute scan cooldown is kept.",
+                desc = "Every stored auction house scan, all " .. AltArmy.RealmFilter.realmWord(true)
+                    .. ". The 15-minute scan cooldown is kept.",
                 run = function()
                     local B = AltArmy.AuctionBook
                     local count = B and B.Clear and B.Clear() or 0
