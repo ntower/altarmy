@@ -159,7 +159,7 @@ def test_each_mapped_blizzard_house_is_one_open_realms_and_factions() -> None:
         spec = by_key[key]  # a fixed realm of a region the API serves
         assert spec.api_region and spec.blizzard_houses == houses
         assert len({f for f, _ in houses}) == len(houses)  # one house a faction
-        assert {f for f, _ in houses} <= set(versions.FACTIONS)
+        assert {f for f, _ in houses} <= {*versions.FACTIONS, versions.NEUTRAL}
         for faction, house_id in houses:
             assert (spec.api_region, house_id) not in seen, f"house {house_id} mapped twice"
             seen[spec.api_region, house_id] = f"{spec.name} {faction}"

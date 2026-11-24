@@ -38,5 +38,6 @@ What the site assumes until someone checks it in game, and where the answer goes
   VERY_LONG (`GameVersion.time_left_buckets`, Classic's until then).
 - [ ] **Realm names.** Add the launch realms' names to `RealmSpec.aliases` in `versions.py` and deploy, so
   uploads land on the fixed houses.
-- [ ] **The neutral house.** That it is left out (it is not polled).
+- [ ] **The neutral house.** Polled and recorded under faction `Neutral` for history (117 Normal, 116 PvP),
+  never offered; check 116 really is PvP's Blackwater house.
 - [ ] Then build the fetcher (the plan's "Later" step), with an OK for its cloud resources.

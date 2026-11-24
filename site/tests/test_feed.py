@@ -10,7 +10,20 @@ from typing import Any, cast
 import pytest
 from sqlalchemy import Connection, select
 
-from altarmy_site import blizzard, book, cli, db, feed, merge, prices, schema, snapshots, uploads, versions
+from altarmy_site import (
+    blizzard,
+    book,
+    cli,
+    db,
+    feed,
+    merge,
+    prices,
+    schema,
+    service,
+    snapshots,
+    uploads,
+    versions,
+)
 
 from .conftest import FOREVER as FOREVER_KEY
 from .conftest import ME
@@ -473,6 +486,23 @@ def test_a_poll_records_each_mapped_house_and_asks_only_for_whats_new(database: 
     with database.begin() as conn:
         ah = prices.find_auction_house(conn, FOREVER_KEY, "Americas Normal", "Alliance")
         assert ah is not None and current(conn, ah)[BAR][0] == 200
+
+
+def test_a_neutral_house_is_recorded_for_history_but_never_offered(database: db.Database) -> None:
+    with_neutral = replace(NORMAL, blizzard_houses=(("Alliance", 111), (versions.NEUTRAL, 117)))
+    client = FakeClient(
+        {111: [served(T0, auction(1, ORE, unit=64))], 117: [served(T0 + HOUR, auction(2, ORE, unit=80))]}
+    )
+    alliance, neutral = poll(database, client, with_neutral)
+    assert (neutral.faction, neutral.house_id) == (versions.NEUTRAL, 117)
+    assert neutral.recorded is not None and neutral.recorded.items == 1
+    with database.begin() as conn:
+        assert current(conn, neutral.auction_house_id)[ORE][0] == 80
+        assert versions.NEUTRAL not in {c.faction for c in prices.coverage(conn, FOREVER_KEY)}
+        # its snapshot is the newest, but nobody is defaulted to it nor can select it
+        assert prices.freshest_auction_house(conn, FOREVER_KEY) == ("Americas Normal", "Alliance")
+        with pytest.raises(ValueError):
+            service.select(conn, ME, FOREVER_KEY, "Americas Normal", versions.NEUTRAL)
 
 
 def test_a_house_that_fails_leaves_the_others_recorded(database: db.Database) -> None:

@@ -1969,7 +1969,12 @@ def realm_label(realm: str, faction: str) -> str:
 
 
 def _known_auction_house(conn: Connection, game_version: str, realm: str, faction: str) -> bool:
-    return bool(realm) and prices.find_auction_house(conn, game_version, realm, faction) is not None
+    """Whether a selectable auction house is keyed so: a neutral one (`versions.NEUTRAL`) never is."""
+    return (
+        bool(realm)
+        and faction != versions.NEUTRAL
+        and prices.find_auction_house(conn, game_version, realm, faction) is not None
+    )
 
 
 def selection(

@@ -212,8 +212,9 @@ def in_launch(conn: Connection, auction_house_id: int, today: date) -> bool:
 
 
 def coverage(conn: Connection, game_version: str, now: datetime | None = None) -> list[Coverage]:
-    """Every named auction house of the version: the fixed realms' first, in their order (`GameVersion.
-    realms`; they always exist), then the rest by realm and faction."""
+    """Every named auction house of the version but the neutral ones the feed keeps for history
+    (`versions.NEUTRAL`): the fixed realms' first, in their order (`GameVersion.realms`; they always
+    exist), then the rest by realm and faction."""
     now = db.utc(now or db.utcnow())
     since = now - timedelta(days=7)
     t, pc, snap = schema.auction_houses, schema.price_current, schema.price_snapshots
@@ -253,7 +254,7 @@ def coverage(conn: Connection, game_version: str, now: datetime | None = None) -
     out = []
     for r in conn.execute(
         select(t.c.id, t.c.realm, t.c.faction)
-        .where(t.c.game_version == game_version, t.c.realm != "")
+        .where(t.c.game_version == game_version, t.c.realm != "", t.c.faction != versions.NEUTRAL)
         .order_by(t.c.realm, t.c.faction)
     ):
         scan, items = last.get(r.id, (None, 0))
@@ -281,12 +282,17 @@ def coverage(conn: Connection, game_version: str, now: datetime | None = None) -
 
 def freshest_auction_house(conn: Connection, game_version: str) -> tuple[str, str] | None:
     """The (realm, faction) of the named auction house with the newest accepted snapshot; None if no named
-    auction house of the version has one."""
+    auction house of the version has one. Never a neutral house (`versions.NEUTRAL`)."""
     t, snap = schema.auction_houses, schema.price_snapshots
     found = conn.execute(
         select(t.c.realm, t.c.faction)
         .join(snap, snap.c.auction_house_id == t.c.id)
-        .where(t.c.game_version == game_version, t.c.realm != "", snap.c.status == "accepted")
+        .where(
+            t.c.game_version == game_version,
+            t.c.realm != "",
+            t.c.faction != versions.NEUTRAL,
+            snap.c.status == "accepted",
+        )
         .order_by(snap.c.scanned_at.desc(), snap.c.id.desc())
         .limit(1)
     ).first()

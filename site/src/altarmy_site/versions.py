@@ -96,10 +96,11 @@ API_REGIONS = {"americas": "us", "europe": "eu"}
 # The API numbers a region's houses 110-125 in Alliance/Horde/Blackwater triples and lists all of them
 # under every ruleset, never saying whose they are. Americas Normal is 111/114 (outof.games lists them),
 # PvP the other large pair, 110/113 (inferred); RP and RP-PvP (119/120, 123/124, which is which unknown)
-# and Europe wait for `altarmy-site feed-match` against a fresh scan. Blackwater houses are left out.
+# and Europe wait for `altarmy-site feed-match` against a fresh scan. The Blackwater (neutral) house of a
+# triple, 117 for Normal (outof.games) and 116 for PvP, is recorded under `NEUTRAL` for history alone.
 BLIZZARD_HOUSES: dict[tuple[str, str], tuple[tuple[str, int], ...]] = {
-    ("americas", "normal"): (("Alliance", 111), ("Horde", 114)),
-    ("americas", "pvp"): (("Alliance", 110), ("Horde", 113)),
+    ("americas", "normal"): (("Alliance", 111), ("Horde", 114), ("Neutral", 117)),
+    ("americas", "pvp"): (("Alliance", 110), ("Horde", 113), ("Neutral", 116)),
 }
 
 
@@ -121,6 +122,9 @@ def regional_realms() -> tuple[RealmSpec, ...]:
 
 
 FACTIONS = ("Alliance", "Horde")  # each fixed realm's auction houses; the neutral one is left out
+# The faction the feed records a fixed realm's neutral (Blackwater) house under: collected for history, never
+# offered (`prices.coverage` and `freshest_auction_house` leave it out, and nobody can select it)
+NEUTRAL = "Neutral"
 
 
 @dataclass(frozen=True)
