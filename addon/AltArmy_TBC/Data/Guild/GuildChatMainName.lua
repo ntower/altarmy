@@ -83,6 +83,61 @@ function GCM.Transform(sender, message, getMain, getMainClass, getLabel, colorBy
     return GCM.FormatMainPrefix(label, classFile, useColor) .. (message or "")
 end
 
+--- Name tags other addons put at the start of the message they send: Name2Chat and Incognito
+--- "(Name): ", WhoDis "[Main]: ". `|` is left out of the bracketed one so an item link never matches;
+--- Alt Army's own "[Label] " has no colon.
+--- Each pattern captures the opening bracket, the name, the closing bracket with ": ", and the rest.
+--- `|` is never in the name, so neither an item link nor a name already colored matches.
+GCM.NAME_TAG_PATTERNS = {
+    "^(%()([^%)|]+)(%):%s)(.*)$",
+    "^(%[)([^%]|]+)(%]:%s)(.*)$",
+}
+GCM.MAX_NAME_TAG_LENGTH = 32
+
+--- open, name, close, rest of another addon's name tag at the message's start, or nil.
+local function matchNameTag(message)
+    if type(message) ~= "string" then return nil end
+    for _, pattern in ipairs(GCM.NAME_TAG_PATTERNS) do
+        local open, tag, close, rest = message:match(pattern)
+        if tag and #tag <= GCM.MAX_NAME_TAG_LENGTH then
+            return open, tag, close, rest
+        end
+    end
+    return nil
+end
+
+--- The message without another addon's name tag at its start, or nil when it has none.
+function GCM.StripOtherAddonNameTag(message)
+    local open, _, _, rest = matchNameTag(message)
+    if not open then return nil end
+    return rest
+end
+
+--- The message with the name in its tag in the class's color (brackets and text as sent), or nil
+--- when it has no tag or there is no class.
+function GCM.ColorOtherAddonNameTag(message, classFile)
+    if not classFile or classFile == "" then return nil end
+    local open, tag, close, rest = matchNameTag(message)
+    if not open then return nil end
+    local CC = AltArmy.ClassColor
+    if not (CC and CC.formatName) then return nil end
+    return open .. CC.formatName(tag, classFile) .. close .. rest
+end
+
+--- True when the message starts with another addon's name tag.
+function GCM.HasOtherAddonNameTag(message)
+    return GCM.StripOtherAddonNameTag(message) ~= nil
+end
+
+--- "theirs", "ours" or "both" (GuildShareSettings.CHAT_OTHER_NAMES_MODES).
+local function otherNamesMode()
+    local GSS = AltArmy.GuildShareSettings
+    if GSS and GSS.GetChatOtherNamesMode then
+        return GSS.GetChatOtherNamesMode()
+    end
+    return "theirs"
+end
+
 --- Turn a printf-style global string into a Lua pattern with (.+) captures for each %s.
 local function formatToPattern(fmt)
     local escaped = fmt:gsub("([%^%$%(%)%.%[%]%*%+%-%?])", "%%%1")
@@ -211,9 +266,29 @@ local function chatInsertionClassColorEnabled()
     return true
 end
 
+--- The class to color another addon's name tag by: the sender's main's, else the sender's own (from the
+--- chat event's GUID), else nil.
+local function tagClass(author, guid, getMain, getMainClass)
+    if getMain then
+        local main = getMain(author)
+        if main and main ~= "" and getMainClass then
+            local classFile = getMainClass(author, main)
+            if classFile and classFile ~= "" then return classFile end
+        end
+    end
+    if type(guid) == "string" and guid ~= "" and canAccessSecretValue(guid) and _G.GetPlayerInfoByGUID then
+        local ok, _, classFile = pcall(_G.GetPlayerInfoByGUID, guid)
+        if ok and type(classFile) == "string" and canAccessSecretValue(classFile) and classFile ~= "" then
+            return classFile
+        end
+    end
+    return nil
+end
+
 --- Returns a modified message when annotation applies, or nil to leave it untouched.
 --- Gated here (rather than by install/uninstall) so toggling takes effect immediately.
-function GCM.FilterMessage(message, author, channelKey)
+--- `guid` (optional) is the sender's, from the chat event.
+function GCM.FilterMessage(message, author, channelKey, guid)
     if not chatInsertionAllowed() then return nil end
     if not canAccessSecretValue(message) or not canAccessSecretValue(author) then return nil end
     local GSS = AltArmy.GuildShareSettings
@@ -221,11 +296,24 @@ function GCM.FilterMessage(message, author, channelKey)
         and not GSS.IsChatInsertionChannelEnabled(channelKey) then
         return nil
     end
+    -- A name the sender's own addon put in: theirs alone (in their class's color when names are colored),
+    -- ours in its place, or both.
     local getMain, getMainClass, getLabel = buildResolvers(author)
+    local body = message
+    local stripped = GCM.StripOtherAddonNameTag(message)
+    if stripped then
+        local mode = otherNamesMode()
+        if mode == "theirs" then
+            if not chatInsertionClassColorEnabled() then return nil end
+            return GCM.ColorOtherAddonNameTag(message, tagClass(author, guid, getMain, getMainClass))
+        end
+        if mode == "ours" then body = stripped end
+    end
     if not getMain then return nil end
     local result = GCM.Transform(
-        author, message, getMain, getMainClass, getLabel, chatInsertionClassColorEnabled())
-    if result ~= message then
+        author, body, getMain, getMainClass, getLabel, chatInsertionClassColorEnabled())
+    -- Nothing of ours to add: leave the message as sent (their name stays in "ours" too).
+    if result ~= body then
         return result
     end
     return nil
@@ -276,8 +364,8 @@ end
 
 --- Annotate Communities message body using the same gates as guild chat insertion.
 --- Returns modified content, or nil to leave it untouched.
-function GCM.AnnotateClubMessageContent(authorName, content)
-    return GCM.FilterMessage(content, authorName, "guild")
+function GCM.AnnotateClubMessageContent(authorName, content, guid)
+    return GCM.FilterMessage(content, authorName, "guild", guid)
 end
 
 -- Chat filters. On 12.0-based clients (Forever) Blizzard calls each filter through
@@ -292,7 +380,9 @@ local filters = {} -- { event, fn } pairs, built once
 for channelKey, events in pairs(GCM.CHANNEL_EVENTS) do
     for _, eventName in ipairs(events) do
         filters[#filters + 1] = { eventName, function(_, _, msg, author, ...)
-            local newMsg = GCM.FilterMessage(msg, author, channelKey)
+            -- The sender's GUID is the event's 12th value, the 10th after msg and author.
+            local guid = select(10, ...)
+            local newMsg = GCM.FilterMessage(msg, author, channelKey, guid)
             if newMsg then
                 return false, newMsg, author, ...
             end
@@ -439,7 +529,8 @@ function GCM.WrapCommunitiesFormatMessage(owner)
         local clubInfo = clubApi and clubApi.GetClubInfo and clubApi.GetClubInfo(clubId)
         if GCM.ShouldAnnotateClubMessage(clubInfo, message) then
             local author = message.author and message.author.name
-            local newContent = GCM.AnnotateClubMessageContent(author, message.content)
+            local guid = message.author and message.author.guid
+            local newContent = GCM.AnnotateClubMessageContent(author, message.content, guid)
             if newContent then
                 local copy = {}
                 for k, v in pairs(message) do

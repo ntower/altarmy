@@ -833,13 +833,16 @@ local GUILD_CHAT_CHANNELS_ROW_HEIGHT = GUILD_CHAT_CHANNELS_LABEL_HEIGHT
     + GUILD_IDENTITY_CONTROL_GAP + GUILD_CHAT_CHANNELS_CONTROL_HEIGHT
 local GUILD_SUBHEADING_HEIGHT = 16 -- "Data retention", "Chat"
 local GUILD_TWO_CHECK_ROW_HEIGHT = GUILD_CHAT_CHECK_ROW_HEIGHT + 4
+-- Chat's checks, one above the other: "Show guildmate mains in chat", then class color.
+local GUILD_CHAT_CHECKS_ROW_HEIGHT = GUILD_TWO_CHECK_ROW_HEIGHT + GUILD_CHAT_CHECK_ROW_HEIGHT
 --- The Guild section's content, top to bottom: the share row, the identity row, Data retention, Chat
 --- and its channels (each row's height and the gaps between them, as laid out below).
 local GUILD_CONTENT_HEIGHT = GUILD_TOP_ROW_HEIGHT
     + GUILD_SHARING_ROW_GAP + GUILD_IDENTITY_ROW_HEIGHT
     + GUILD_SHARING_ROW_GAP + GUILD_SUBHEADING_HEIGHT + 8 + GUILD_TWO_CHECK_ROW_HEIGHT
-    + GUILD_SHARING_ROW_GAP + GUILD_SUBHEADING_HEIGHT + 8 + GUILD_TWO_CHECK_ROW_HEIGHT
-    + GUILD_SHARING_ROW_GAP + GUILD_CHAT_CHANNELS_ROW_HEIGHT
+    + GUILD_SHARING_ROW_GAP + GUILD_SUBHEADING_HEIGHT + 8 + GUILD_CHAT_CHECKS_ROW_HEIGHT
+    + GUILD_SHARING_ROW_GAP + GUILD_CHAT_CHANNELS_ROW_HEIGHT -- Which channels?
+    + GUILD_SHARING_ROW_GAP + GUILD_CHAT_CHANNELS_ROW_HEIGHT -- What if they add their own name?
 -- Real heights: WoW doesn't re-resolve a frame without one when what it hangs from moves, so rows
 -- anchored to a zero-height tail kept a stale position and overlapped the section header.
 guildSharingBlock:SetHeight(GUILD_CONTENT_HEIGHT)
@@ -1054,13 +1057,10 @@ guildChatHeader:SetHeight(GUILD_SUBHEADING_HEIGHT)
 local guildChatChecksRow = CreateFrame("Frame", nil, guildSharingTail)
 guildChatChecksRow:SetPoint("TOPLEFT", guildChatHeader, "BOTTOMLEFT", 0, -8)
 guildChatChecksRow:SetPoint("RIGHT", guildSharingTail, "RIGHT", 0, 0)
-guildChatChecksRow:SetHeight(GUILD_TWO_CHECK_ROW_HEIGHT)
+guildChatChecksRow:SetHeight(GUILD_CHAT_CHECKS_ROW_HEIGHT)
 
 local guildChatLeftColumn = CreateFrame("Frame", nil, guildChatChecksRow)
 anchorGuildSharingLeftHalf(guildChatLeftColumn, guildChatChecksRow)
-
-local guildChatRightColumn = CreateFrame("Frame", nil, guildChatChecksRow)
-anchorGuildSharingRightHalf(guildChatRightColumn, guildChatChecksRow)
 
 local guildChatInsertRow = Theme.CreateLabeledCheckbox(guildChatLeftColumn, {
     point = "TOPLEFT",
@@ -1084,12 +1084,12 @@ attachSharingRequiredTooltip(guildChatInsertRow.check, function()
     return guildChatInsertRow._sharingRequiredTooltip == true
 end)
 
-local guildChatClassColorRow = Theme.CreateLabeledCheckbox(guildChatRightColumn, {
+local guildChatClassColorRow = Theme.CreateLabeledCheckbox(guildChatLeftColumn, {
     point = "TOPLEFT",
-    relativeTo = guildChatRightColumn,
-    relativePoint = "TOPLEFT",
+    relativeTo = guildChatInsertRow,
+    relativePoint = "BOTTOMLEFT",
     x = 0,
-    y = 0,
+    y = -4,
     text = "Color character names by class color",
     fullWidthHover = true,
     onClick = function(checked)
@@ -1125,7 +1125,7 @@ guildChatChannelsControlRow:SetPoint("RIGHT", guildChatChannelsRow, "RIGHT", 0, 
 guildChatChannelsControlRow:SetHeight(GUILD_CHAT_CHANNELS_CONTROL_HEIGHT)
 
 local guildChatChannelsColumn = CreateFrame("Frame", nil, guildChatChannelsControlRow)
-anchorGuildSharingLeftHalf(guildChatChannelsColumn, guildChatChannelsControlRow)
+guildChatChannelsColumn:SetAllPoints(guildChatChannelsControlRow) -- full width
 
 guildChatChannelsDropdown = Theme.CreateMultiSelectCheckboxDropdown({
     parent = guildChatChannelsColumn,
@@ -1189,6 +1189,80 @@ local guildChatChannelsSharingOverlay = guildChatChannelsDropdown
     and guildChatChannelsDropdown.button
     and createSharingRequiredHoverOverlay(guildChatChannelsDropdown.button)
 
+-- What to show when the sender's own addon (Name2Chat, ...) already put a name in the message
+-- (GuildShareSettings.GetChatOtherNamesMode). Kept on panel, not as main-chunk locals (Lua 5.1's
+-- 200-local limit).
+panel.guildChatOtherNamesRow = CreateFrame("Frame", nil, guildSharingTail)
+do
+    local row = panel.guildChatOtherNamesRow
+    row:SetPoint("TOPLEFT", guildChatChannelsRow, "BOTTOMLEFT", 0, -GUILD_SHARING_ROW_GAP)
+    row:SetPoint("RIGHT", guildSharingTail, "RIGHT", 0, 0)
+    row:SetHeight(GUILD_CHAT_CHANNELS_ROW_HEIGHT)
+
+    local labelRow = CreateFrame("Frame", nil, row)
+    labelRow:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+    labelRow:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+    labelRow:SetHeight(GUILD_CHAT_CHANNELS_LABEL_HEIGHT)
+
+    -- Its own width, so the help icon sits right after the text.
+    local label = labelRow:CreateFontString(nil, "ARTWORK", Theme.FONTS.body)
+    label:SetPoint("TOPLEFT", labelRow, "TOPLEFT", 0, 0)
+    label:SetJustifyH("LEFT")
+    label:SetText("What if they add their own name?")
+    local GSS = AltArmy.GuildShareSettings
+    Theme.AttachLabelHelpIcon(label, {
+        title = "What if they add their own name?",
+        lines = {
+            (GSS and GSS.CHAT_OTHER_NAMES_TOOLTIP)
+                or "Some addons put the sender's name in front of every message they send. "
+                    .. "Alt Army does this on the receiving end. If this happens, which one do you want to see?",
+        },
+    })
+
+    local controlRow = CreateFrame("Frame", nil, row)
+    controlRow:SetPoint("TOPLEFT", labelRow, "BOTTOMLEFT", 0, -GUILD_IDENTITY_CONTROL_GAP)
+    controlRow:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+    controlRow:SetHeight(GUILD_CHAT_CHANNELS_CONTROL_HEIGHT)
+
+    local column = CreateFrame("Frame", nil, controlRow)
+    column:SetAllPoints(controlRow) -- full width
+
+    local dd = Theme.CreateSingleSelectDropdown({
+        parent = column,
+        point = "TOPLEFT",
+        relativeTo = column,
+        relativePoint = "TOPLEFT",
+        x = 0,
+        y = 0,
+        rowHeight = GUILD_CHAT_CHANNELS_CONTROL_HEIGHT,
+        dropdownParent = panel.tabSharing,
+        getEntries = function()
+            local S = AltArmy.GuildShareSettings
+            return S and S.CHAT_OTHER_NAMES_MODES or {}
+        end,
+        getSelectedId = function()
+            local S = AltArmy.GuildShareSettings
+            return S and S.GetChatOtherNamesMode and S.GetChatOtherNamesMode() or "theirs"
+        end,
+        onSelect = function(id)
+            local S = AltArmy.GuildShareSettings
+            if S and S.SetChatOtherNamesMode then
+                S.SetChatOtherNamesMode(id)
+            end
+        end,
+    })
+    if dd and dd.button then
+        dd.button:ClearAllPoints()
+        dd.button:SetPoint("TOPLEFT", column, "TOPLEFT", 0, 0)
+        dd.button:SetPoint("BOTTOMRIGHT", column, "BOTTOMRIGHT", 0, 0)
+        dd.popup:ClearAllPoints()
+        dd.popup:SetPoint("TOPLEFT", dd.button, "BOTTOMLEFT", 0, -2)
+        dd.popup:SetPoint("TOPRIGHT", dd.button, "BOTTOMRIGHT", 0, -2)
+        panel.guildChatOtherNamesSharingOverlay = createSharingRequiredHoverOverlay(dd.button)
+    end
+    panel.guildChatOtherNamesDropdown = dd
+end
+
 function refreshGuildSharingDependentControls()
     local GSS = AltArmy.GuildShareSettings
     local sharingOn = GSS and GSS.IsSharingEnabled and GSS.IsSharingEnabled() == true
@@ -1200,6 +1274,13 @@ function refreshGuildSharingDependentControls()
     setGuildSharingCheckboxEnabled(guildChatClassColorRow, sharingOn and chatOn)
     if guildChatChannelsDropdown and guildChatChannelsDropdown.SetEnabled then
         guildChatChannelsDropdown:SetEnabled(sharingOn and chatOn)
+    end
+    local otherNames = panel.guildChatOtherNamesDropdown
+    if otherNames and otherNames.SetEnabled then
+        otherNames:SetEnabled(sharingOn and chatOn)
+    end
+    if panel.guildChatOtherNamesSharingOverlay then
+        panel.guildChatOtherNamesSharingOverlay:SetShown(not sharingOn)
     end
     if guildManageExceptionsBtn then
         if sharingOn then
@@ -1253,6 +1334,9 @@ local function RefreshGuildSharingControls()
             if guildChatClassColorRow and guildChatClassColorRow.check
                 and GSS.IsChatInsertionClassColorEnabled then
                 guildChatClassColorRow.check:SetChecked(GSS.IsChatInsertionClassColorEnabled())
+            end
+            if panel.guildChatOtherNamesDropdown and panel.guildChatOtherNamesDropdown.Update then
+                panel.guildChatOtherNamesDropdown:Update()
             end
             local mainName = GSS.GetMain and GSS.GetMain() or nil
             if guildMainDropdown and guildMainDropdown.Update then

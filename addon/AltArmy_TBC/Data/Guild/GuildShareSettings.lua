@@ -130,6 +130,36 @@ function GSS.SetChatInsertionEnabled(on)
     refreshChatFilters()
 end
 
+--- What to show when the sender's own addon (Name2Chat, ...) already put a name in the message:
+--- theirs alone, Alt Army's in its place, or both.
+GSS.CHAT_OTHER_NAMES_MODES = {
+    { id = "theirs", label = "Show the name they send only" },
+    { id = "ours", label = "Show Alt Army's name only" },
+    { id = "both", label = "Show both names" },
+}
+GSS.CHAT_OTHER_NAMES_DEFAULT = "theirs"
+GSS.CHAT_OTHER_NAMES_TOOLTIP =
+    "Some addons, such as Name2Chat, put the sender's name in front of every message they send. "
+    .. "Alt Army does this on the receiving end. If this happens, which one do you want to see?"
+
+local function isOtherNamesMode(id)
+    for _, entry in ipairs(GSS.CHAT_OTHER_NAMES_MODES) do
+        if entry.id == id then return true end
+    end
+    return false
+end
+
+function GSS.GetChatOtherNamesMode()
+    local mode = ensure().chatOtherNames
+    if isOtherNamesMode(mode) then return mode end
+    return GSS.CHAT_OTHER_NAMES_DEFAULT
+end
+
+--- Read on every message, so no filter refresh is needed. An unknown id falls back to the default.
+function GSS.SetChatOtherNamesMode(id)
+    ensure().chatOtherNames = isOtherNamesMode(id) and id or GSS.CHAT_OTHER_NAMES_DEFAULT
+end
+
 GSS.CHAT_INSERTION_CHANNEL_ORDER = {
     "say", "yell", "emote", "guild", "party", "raid", "battleground", "whisper",
 }

@@ -133,6 +133,204 @@ describe("GuildChatMainName", function()
     end)
   end)
 
+  describe("HasOtherAddonNameTag", function()
+    it("detects Name2Chat's (Name): prefix", function()
+      assert.is_true(GCM.HasOtherAddonNameTag("(Nexi/Icky): Hello"))
+      assert.is_true(GCM.HasOtherAddonNameTag("(Nexi the Great): hi"))
+    end)
+
+    it("detects a [Name]: prefix", function()
+      assert.is_true(GCM.HasOtherAddonNameTag("[Nexi]: hi"))
+    end)
+
+    it("ignores a tag that is not at the start", function()
+      assert.is_false(GCM.HasOtherAddonNameTag("Hello (Nexi): x"))
+    end)
+
+    it("needs the colon and space after the tag", function()
+      assert.is_false(GCM.HasOtherAddonNameTag("(x)Hello"))
+      assert.is_false(GCM.HasOtherAddonNameTag("(x) Hello"))
+    end)
+
+    it("ignores an item link at the start", function()
+      local link = "|cff1eff00|Hitem:2589::::::::60:::::|h[Linen Cloth]|h|r: anyone?"
+      assert.is_false(GCM.HasOtherAddonNameTag(link))
+    end)
+
+    it("does not take Alt Army's own [Label] prefix for one", function()
+      assert.is_false(GCM.HasOtherAddonNameTag("[Nexi] hi"))
+    end)
+
+    it("ignores a tag longer than the cap", function()
+      local long = string.rep("a", GCM.MAX_NAME_TAG_LENGTH + 1)
+      assert.is_false(GCM.HasOtherAddonNameTag("(" .. long .. "): hi"))
+      local max = string.rep("a", GCM.MAX_NAME_TAG_LENGTH)
+      assert.is_true(GCM.HasOtherAddonNameTag("(" .. max .. "): hi"))
+    end)
+
+    it("is false for what is not a string", function()
+      assert.is_false(GCM.HasOtherAddonNameTag(nil))
+      assert.is_false(GCM.HasOtherAddonNameTag(42))
+    end)
+  end)
+
+  describe("StripOtherAddonNameTag", function()
+    it("returns the message without the tag", function()
+      assert.are.equal("Hello", GCM.StripOtherAddonNameTag("(Nexi/Icky): Hello"))
+      assert.are.equal("hi there", GCM.StripOtherAddonNameTag("[Nexi]: hi there"))
+    end)
+
+    it("returns nil when there is no tag", function()
+      assert.is_nil(GCM.StripOtherAddonNameTag("Hello"))
+      assert.is_nil(GCM.StripOtherAddonNameTag(nil))
+    end)
+  end)
+
+  describe("ColorOtherAddonNameTag", function()
+    it("colors only the name inside the brackets", function()
+      local out = GCM.ColorOtherAddonNameTag("(Nexi/Icky): Hello", "MAGE")
+      assert.are.equal("(" .. AltArmy.ClassColor.formatName("Nexi/Icky", "MAGE") .. "): Hello", out)
+    end)
+
+    it("colors a [Name]: tag the same way", function()
+      local out = GCM.ColorOtherAddonNameTag("[Nexi]: hi", "WARRIOR")
+      assert.are.equal("[" .. AltArmy.ClassColor.formatName("Nexi", "WARRIOR") .. "]: hi", out)
+    end)
+
+    it("returns nil without a tag or a class", function()
+      assert.is_nil(GCM.ColorOtherAddonNameTag("Hello", "MAGE"))
+      assert.is_nil(GCM.ColorOtherAddonNameTag("(Nexi): Hello", nil))
+    end)
+
+    it("does not take a tag already holding escape codes for one", function()
+      assert.is_nil(GCM.ColorOtherAddonNameTag("(|cffff0000Nexi|r): Hello", "MAGE"))
+    end)
+  end)
+
+  describe("FilterMessage with other addons' name tags", function()
+    local savedDebug
+    local savedGSS
+    local mode
+    local main
+    local color
+    local mainClass
+
+    setup(function()
+      savedDebug = AltArmy.Debug
+      savedGSS = AltArmy.GuildShareSettings
+      AltArmy.Debug = { IsGuildShareEnabled = function() return true end }
+      AltArmy.GuildShareSettings = {
+        IsSharingEnabled = function() return true end,
+        IsChatInsertionEnabled = function() return true end,
+        IsChatInsertionChannelEnabled = function() return true end,
+        IsChatInsertionClassColorEnabled = function() return color end,
+        GetChatOtherNamesMode = function() return mode end,
+      }
+      AltArmy.GuildShareData = {
+        GetMainOf = function() return main end,
+        FindCharacter = function() return { realm = "R", classFile = mainClass } end,
+      }
+    end)
+
+    before_each(function()
+      main = "Mainman"
+      color = false
+      mainClass = "MAGE"
+      _G.GetPlayerInfoByGUID = nil
+    end)
+
+    teardown(function()
+      AltArmy.Debug = savedDebug
+      AltArmy.GuildShareSettings = savedGSS
+      AltArmy.GuildShareData = nil
+      _G.GetPlayerInfoByGUID = nil
+    end)
+
+    local function tinted(name, classFile)
+      return AltArmy.ClassColor.formatName(name, classFile)
+    end
+
+    it("theirs: colors their name by the main's class when class color is on", function()
+      mode = "theirs"
+      color = true
+      assert.are.equal("(" .. tinted("Nexi/Icky", "MAGE") .. "): Hello",
+        GCM.FilterMessage("(Nexi/Icky): Hello", "Alt", "guild", "Player-1-0001"))
+    end)
+
+    it("theirs: falls back to the sender's own class when the main is unknown", function()
+      mode = "theirs"
+      color = true
+      main = nil
+      _G.GetPlayerInfoByGUID = function(guid)
+        assert.are.equal("Player-1-0001", guid)
+        return "Warrior", "WARRIOR"
+      end
+      assert.are.equal("(" .. tinted("Nexi/Icky", "WARRIOR") .. "): Hello",
+        GCM.FilterMessage("(Nexi/Icky): Hello", "Stranger", "guild", "Player-1-0001"))
+    end)
+
+    it("theirs: falls back to the sender's class when the main's class is unknown", function()
+      mode = "theirs"
+      color = true
+      mainClass = nil
+      _G.GetPlayerInfoByGUID = function() return "Warrior", "WARRIOR" end
+      assert.are.equal("(" .. tinted("Nexi/Icky", "WARRIOR") .. "): Hello",
+        GCM.FilterMessage("(Nexi/Icky): Hello", "Alt", "guild", "Player-1-0001"))
+    end)
+
+    it("theirs: leaves their tag alone when no class is known", function()
+      mode = "theirs"
+      color = true
+      main = nil
+      assert.is_nil(GCM.FilterMessage("(Nexi/Icky): Hello", "Stranger", "guild", nil))
+    end)
+
+    it("theirs: ignores an inaccessible (secret) GUID", function()
+      mode = "theirs"
+      color = true
+      main = nil
+      _G.GetPlayerInfoByGUID = function() return "Warrior", "WARRIOR" end
+      _G.canaccessvalue = function(v) return v ~= "secret" end
+      local out = GCM.FilterMessage("(Nexi/Icky): Hello", "Stranger", "guild", "secret")
+      _G.canaccessvalue = nil
+      assert.is_nil(out)
+    end)
+
+    it("both: leaves their tag uncolored", function()
+      mode = "both"
+      color = true
+      local out = GCM.FilterMessage("(Nexi/Icky): Hello", "Alt", "guild", "Player-1-0001")
+      assert.is_true(out:sub(-#"(Nexi/Icky): Hello") == "(Nexi/Icky): Hello", out)
+    end)
+
+    it("theirs: leaves a tagged message alone", function()
+      mode = "theirs"
+      assert.is_nil(GCM.FilterMessage("(Nexi/Icky): Hello", "Alt", "guild"))
+    end)
+
+    it("theirs: still annotates an untagged message", function()
+      mode = "theirs"
+      assert.are.equal("[Mainman] Hello", GCM.FilterMessage("Hello", "Alt", "guild"))
+    end)
+
+    it("ours: replaces their tag with ours", function()
+      mode = "ours"
+      assert.are.equal("[Mainman] Hello", GCM.FilterMessage("(Nexi/Icky): Hello", "Alt", "guild"))
+    end)
+
+    it("ours: keeps their tag when Alt Army has no name to show", function()
+      mode = "ours"
+      main = nil
+      assert.is_nil(GCM.FilterMessage("(Nexi/Icky): Hello", "Alt", "guild"))
+    end)
+
+    it("both: shows ours before theirs", function()
+      mode = "both"
+      assert.are.equal("[Mainman] (Nexi/Icky): Hello",
+        GCM.FilterMessage("(Nexi/Icky): Hello", "Alt", "guild"))
+    end)
+  end)
+
   describe("FilterMessage manual-group class color", function()
     local savedDebug
     local savedGSS
