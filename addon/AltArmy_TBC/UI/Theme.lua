@@ -3638,9 +3638,15 @@ function Theme.CreateMultiSelectCheckboxDropdown(config)
         header = parent:CreateFontString(nil, "OVERLAY", Theme.FONTS.heading)
         header:SetPoint("TOP", config.relativeTo, config.relativePoint or "BOTTOMLEFT", config.x or 0, config.y or -8)
         header:SetPoint("LEFT", parent, "LEFT", config.leftInset or 0, 0)
-        header:SetPoint("RIGHT", parent, "RIGHT", 0, 0)
+        -- With a help icon the header hugs its text, so the icon sits right after it.
+        if not config.help then
+            header:SetPoint("RIGHT", parent, "RIGHT", 0, 0)
+        end
         header:SetJustifyH("LEFT")
         header:SetText(config.title)
+        if config.help then
+            Theme.AttachLabelHelpIcon(header, config.help)
+        end
     end
 
     local btn = CreateFrame("Button", nil, parent)

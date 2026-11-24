@@ -1,4 +1,4 @@
--- AltArmy TBC — Cooldown availability alerts (chat + sound).
+-- AltArmy TBC — Cooldown availability alerts (a chat line, no sound).
 -- Uses CooldownData.EvaluateAlerts (each category's Alert when ready, in the Cooldowns tab's settings panel) for the
 -- characters that panel's realm filter shows (AltArmyTBC_Options.cooldowns.filter). Chat lines are prefixed with
 -- gold "Alt Army".
@@ -65,11 +65,6 @@ local function announceBatch(alerts, showAllRealms)
         local body = formatAlertBody(r, showAllRealms == true)
         sendCooldownAlert(ALTARMY_GOLD .. "Alt Army|r " .. body)
     end
-    pcall(function()
-        if PlaySound then
-            PlaySound("TellMessage", "Master")
-        end
-    end)
 end
 
 function CA.RunEvaluateOnce()

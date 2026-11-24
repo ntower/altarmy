@@ -3522,8 +3522,7 @@ do
                 title = "Group characters",
                 lines = {
                     "Lists each " .. AltArmy.RealmFilter.realmWord()
-                        .. " and faction's crafting cooldowns under its own heading, this "
-                        .. AltArmy.RealmFilter.realmWord() .. "'s first.",
+                        .. " and faction's crafting cooldowns under its own heading.",
                     "Click a heading to fold them away.",
                 },
             },
@@ -3534,8 +3533,9 @@ do
     -- One entry per cooldown; on TBC a cooldown with a specialization has a second, "(<spec> only)" entry,
     -- and ticking one of the pair unticks the other (CD.SetSettingsEntry).
     local keys, labels = CD.SettingsEntries(DS.IsWowForever or false)
-    local function categoryDropdown(which, heading, relativeTo, onChange)
+    local function categoryDropdown(which, heading, relativeTo, onChange, help)
         return Theme.CreateMultiSelectCheckboxDropdown({
+            help = help,
             parent = controlsHost,
             dropdownParent = panel,
             relativeTo = relativeTo,
@@ -3557,7 +3557,14 @@ do
         end
     end)
     -- the alerts read the settings every check (Data/Cooldowns/CooldownAlerts.lua): nothing to redraw
-    local alertDropdown = categoryDropdown("alert", "Alert when ready", showDropdown.button, nil)
+    local alertDropdown = categoryDropdown("alert", "Alert when ready", showDropdown.button, nil, {
+        title = "Alert when ready",
+        lines = {
+            "When a character's cooldown finishes, Alt Army will notify you with a message in chat.",
+            "Only cooldowns that match both the \"" .. AltArmy.RealmFilter.realmWord(false, true)
+                .. " filter\" and the \"Alert when ready\" filter will be announced.",
+        },
+    })
 
     panel:SetScript("OnHide", function()
         controls.Close()

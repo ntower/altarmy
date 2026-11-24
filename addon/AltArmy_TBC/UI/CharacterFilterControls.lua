@@ -81,8 +81,7 @@ function AltArmy.CreateCharacterFilterControls(parent, opts)
         Theme.AttachSettingsHelpIcon(groupRow, opts.groupCheckbox.help or {
             title = "Group characters",
             lines = {
-                "Lists each " .. CF.RealmWord() .. " and faction's characters under its own heading, this "
-                    .. CF.RealmWord() .. "'s first.",
+                "Lists each " .. CF.RealmWord() .. " and faction's characters under its own heading.",
                 "Click a heading to fold its characters away.",
             },
         })
