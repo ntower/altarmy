@@ -15,6 +15,9 @@
 -- auction house's newest scan (full or summary) is at least the player's wait old
 -- (AltArmyTBC_Options.auctionAutoScanMinutes, Options → General → Auction House; 5 minutes unless set, 0 scans
 -- at every opening). A scan asked for runs regardless.
+-- Scans are filed under the faction whose auction house is open (S.HouseFaction): the player's, or S.NEUTRAL at a
+-- neutral (Blackwater) auction house, told by the zone it stands in. Prices elsewhere read the player's faction's
+-- scans, so a neutral house's never stand in for the home house's.
 -- A scan Alt Army starts (the button, /altarmy scan or the automatic scan) says in chat which kind it is when
 -- it starts and how it ended; a full scan another addon asked for is read quietly.
 -- luacheck: globals GetServerTime AltArmyTBC_Options
@@ -36,9 +39,16 @@ S.REPLACED = 0.9 -- a summary ending with fewer rows than this share of the most
 -- The browse query of a summary scan: every item, as Auctionator's summary scan asks.
 local BLANK_QUERY = { searchString = "", sorts = {}, filters = {}, itemClassFilters = {} }
 
+-- The zones of the neutral (Blackwater) auction houses, by uiMapID: Booty Bay's Stranglethorn Vale, Gadgetzan's
+-- Tanaris, Everlook's Winterspring. None has a faction auction house, so an auction house opened in one (or a map
+-- inside one) is the neutral house, and its scans are filed under S.NEUTRAL instead of the player's faction.
+S.NEUTRAL = "Neutral"
+S.NEUTRAL_MAPS = { [1434] = true, [1446] = true, [1452] = true }
+
 local state = "idle" -- idle | waiting (asked, no listings yet) | reading
 local kind -- "full" | "summary": the scan under way
 local open = false
+local atNeutral = false -- the auction house open is a neutral one (S.HouseFaction), told when it opened
 local visit = 0 -- which opening of the auction house the automatic scan's timer belongs to
 local run = 0 -- which scan the timers belong to
 local tally, index, total, source
@@ -107,6 +117,29 @@ end
 --- Call `fn(state)` whenever the state changes or a batch was read.
 function S.OnChange(fn)
     listeners[#listeners + 1] = fn
+end
+
+--- Whether the player stands in a neutral auction house's zone (S.NEUTRAL_MAPS), or a map inside one.
+local function inNeutralZone()
+    local map = rawget(_G, "C_Map")
+    if type(map) ~= "table" or type(map.GetBestMapForUnit) ~= "function" then return false end
+    local id = map.GetBestMapForUnit("player")
+    for _ = 1, 10 do
+        if type(id) ~= "number" or id <= 0 then return false end
+        if S.NEUTRAL_MAPS[id] then return true end
+        local info = type(map.GetMapInfo) == "function" and map.GetMapInfo(id) or nil
+        id = info and info.parentMapID
+    end
+    return false
+end
+
+--- Whose auction house is open (or would be, if none is): S.NEUTRAL in a neutral auction house's zone, else
+--- the player's faction. nil if the client cannot say.
+function S.HouseFaction()
+    if (open and atNeutral) or (not open and inNeutralZone()) then return S.NEUTRAL end
+    local faction = UnitFactionGroup and UnitFactionGroup("player") or nil
+    if faction == "" then return nil end
+    return faction
 end
 
 local function isForever()
@@ -186,7 +219,7 @@ local function stop()
 end
 
 local function store()
-    local faction = UnitFactionGroup and UnitFactionGroup("player") or nil
+    local faction = S.HouseFaction()
     local realm = AltArmy.CurrentRealm and AltArmy.CurrentRealm() or GetRealmName and GetRealmName() or nil
     if tally.listings > 0 and faction and faction ~= "" and realm and realm ~= "" then
         book().Store({
@@ -272,7 +305,7 @@ local function armTimeout()
 end
 
 local function storeSummary(rows)
-    local faction = UnitFactionGroup and UnitFactionGroup("player") or nil
+    local faction = S.HouseFaction()
     local realm = AltArmy.CurrentRealm and AltArmy.CurrentRealm() or GetRealmName and GetRealmName() or nil
     if rows < peak * S.REPLACED then
         stop() -- someone else's search replaced ours: its few rows are not the auction house
@@ -379,7 +412,7 @@ end
 --- True when the auction house the player stands at was scanned (full or summary) under the wait ago.
 local function scannedRecently()
     local realm = AltArmy.CurrentRealm and AltArmy.CurrentRealm() or GetRealmName and GetRealmName() or nil
-    local faction = UnitFactionGroup and UnitFactionGroup("player") or nil
+    local faction = S.HouseFaction()
     local newest = realm and faction and book().Newest(realm, faction)
     return newest ~= nil and now() - (newest.t or 0) < S.AutoScanGap()
 end
@@ -402,12 +435,13 @@ local SUMMARY_EVENTS = {
 
 function S.OnEvent(event)
     if event == "AUCTION_HOUSE_SHOW" then
+        atNeutral = inNeutralZone()
         open = true
         visit = visit + 1
         set(state)
         scheduleAutoScan()
     elseif event == "AUCTION_HOUSE_CLOSED" then
-        open = false
+        open, atNeutral = false, false
         visit = visit + 1
         stop()
     elseif event == "REPLICATE_ITEM_LIST_UPDATE" then
@@ -468,7 +502,7 @@ function S.Start()
 end
 
 function S._ResetForTests()
-    state, open, run, visit = "idle", false, 0, 0
+    state, open, run, visit, atNeutral = "idle", false, 0, 0, false
     tally, index, total, source, finishedAt, kind, pending = nil, nil, nil, nil, nil, nil, nil
     peak, deadline = 0, 0
     ours = false

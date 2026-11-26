@@ -20,6 +20,9 @@ from .luasv import LuaValue, parse_assignment
 
 GLOBAL = "AltArmyTBC_AuctionBook"
 FACTIONS = ("Horde", "Alliance")
+# A neutral (Blackwater) auction house's scans, which the addon files under this faction: read past, not
+# refused, since the site never offers that house (`versions.NEUTRAL`, the same word)
+NEUTRAL = "Neutral"
 MAX_SCANS = 64  # the addon keeps 3 per realm and faction
 MAX_ITEMS = 100_000
 MAX_LEVELS = 32  # the addon writes 12 and a tail
@@ -67,8 +70,8 @@ class Sold:
 
 # --- reading ---------------------------------------------------------------------------------------
 def read(data: bytes) -> list[Scan]:
-    """The complete scans in an `AltArmy_TBC.lua`, oldest first; [] if it has no book. ValueError if the
-    book is malformed."""
+    """The complete scans of the Horde and Alliance houses in an `AltArmy_TBC.lua`, oldest first (a neutral
+    house's, `NEUTRAL`, are left out); [] if it has no book. ValueError if the book is malformed."""
     try:
         log = parse_assignment(data, GLOBAL)
     except (IndexError, RecursionError) as e:
@@ -90,6 +93,8 @@ def _scan(entry: LuaValue) -> Scan | None:
     if entry.get("complete") is not True:
         return None
     realm, faction, source = entry.get("realm"), entry.get("faction"), entry.get("source")
+    if faction == NEUTRAL:
+        return None
     if not isinstance(realm, str) or not 0 < len(realm) <= MAX_REALM:
         raise ValueError("an auction house scan has no realm")
     if faction not in FACTIONS:

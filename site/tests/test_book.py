@@ -66,6 +66,12 @@ def test_an_incomplete_scan_is_left_out() -> None:
     assert len(book.read(saved(scan(complete="nil")))) == 0
 
 
+def test_a_neutral_houses_scan_is_left_out() -> None:
+    # The addon files a neutral (Blackwater) auction house's scans under "Neutral"; the site never offers that
+    # house (versions.NEUTRAL), so its scans are skipped like incomplete ones, not refused with the upload.
+    assert book.read(saved(scan(faction='"Neutral"') + scan(t="5"))) == book.read(saved(scan(t="5")))
+
+
 def test_an_empty_scan_is_read() -> None:
     (got,) = book.read(saved(scan(items="")))
     assert got.items == {}
@@ -101,7 +107,8 @@ def test_an_empty_scan_is_read() -> None:
         scan(realm='""'),
         scan(realm="5"),
         scan(realm='"' + "x" * 65 + '"'),
-        scan(faction='"Neutral"'),
+        scan(faction='"Pirates"'),
+        scan(faction="nil"),
         scan(listings='"many"'),
         scan(bidOnly="-1"),
         scan(source="5"),

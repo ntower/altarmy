@@ -391,6 +391,77 @@ describe("AuctionScan", function()
         end)
     end)
 
+    describe("neutral auction house", function()
+        -- Booty Bay is in Stranglethorn Vale (1434); Orgrimmar (1454) has the Horde's.
+        local function standIn(mapID)
+            _G.C_Map = {
+                GetBestMapForUnit = function() return mapID end,
+                GetMapInfo = function(id)
+                    if id == 9999 then return { mapID = 9999, parentMapID = 1446 } end
+                    return { mapID = id, parentMapID = 0 }
+                end,
+            }
+            S.OnEvent("AUCTION_HOUSE_CLOSED")
+            timers = {}
+            S.OnEvent("AUCTION_HOUSE_SHOW")
+        end
+
+        after_each(function()
+            _G.C_Map = nil
+        end)
+
+        it("files a full scan in a neutral zone under Neutral", function()
+            standIn(1434)
+            assert.equals("Neutral", S.HouseFaction())
+            rows = { { 2770, 1, 64 } }
+            S.Start()
+            S.OnEvent("REPLICATE_ITEM_LIST_UPDATE")
+            runTimers()
+            assert.equals("Neutral", scans()[1].faction)
+            assert.equals(scans()[1], B.Latest("Classic Beta PvE", "Neutral"))
+            assert.is_nil(B.Latest("Classic Beta PvE", "Horde"))
+        end)
+
+        it("knows a neutral zone from a map inside it", function()
+            standIn(9999)
+            assert.equals("Neutral", S.HouseFaction())
+        end)
+
+        it("files a scan elsewhere under the player's faction", function()
+            standIn(1454)
+            assert.equals("Horde", S.HouseFaction())
+            rows = { { 2770, 1, 64 } }
+            S.Start()
+            S.OnEvent("REPLICATE_ITEM_LIST_UPDATE")
+            runTimers()
+            assert.equals("Horde", scans()[1].faction)
+        end)
+
+        it("files a summary scan in a neutral zone under Neutral", function()
+            standIn(1452)
+            S.SetScanMode("only_summary")
+            C_AuctionHouse.SendBrowseQuery = function() end
+            C_AuctionHouse.GetBrowseResults = function()
+                return { { itemKey = { itemID = 2770 }, minPrice = 64, totalQuantity = 3 } }
+            end
+            C_AuctionHouse.HasFullBrowseResults = function() return true end
+            C_AuctionHouse.RequestMoreBrowseResults = function() end
+            S.Start()
+            runTimers()
+            S.OnEvent("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
+            assert.equals("Neutral", AltArmyTBC_AuctionBook.summaries[1].faction)
+        end)
+
+        it("doesn't count the neutral house's scan as the faction house's for the automatic scan", function()
+            S.SetAutoScanEnabled(true)
+            B.StoreSummary({ t = now - 10, realm = "Classic Beta PvE", faction = "Neutral",
+                summary = true, listings = 1, items = "2770:64*1*1" }, now)
+            standIn(1454)
+            runTimers(S.AUTO_DELAY)
+            assert.equals(1, requested)
+        end)
+    end)
+
     describe("chat", function()
         local function said(pattern)
             for _, line in ipairs(chat) do

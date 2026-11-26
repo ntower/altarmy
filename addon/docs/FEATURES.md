@@ -131,6 +131,10 @@ the reading of other addons' full scans are all off, whatever the client's API o
   was cut short and nothing was saved. Another addon's full scan is saved quietly, and replaces a summary
   scan of ours that is still running.
 - The last 3 scans per realm and faction are kept, for 7 days. Seller names are never saved.
+- A scan at a neutral auction house (Booty Bay, Gadgetzan, Everlook: told by the zone) is filed under
+  faction `Neutral`, apart from your faction's. Prices in game (Economy tab, tooltips) read your faction's
+  auction house only, the automatic scan's wait counts each house's own scans, and the website skips neutral
+  scans.
 - The scan is uploaded with the rest of Alt Army's data (Alt Army Sync, or the site's Upload page after a
   `/reload` or logout).
 - In game, the [Economy](tabs/economy.md) tab's **Waylaid Crates** view prices every Waylaid Crate per point of Merchant's Favor,
