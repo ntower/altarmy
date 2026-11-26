@@ -386,6 +386,70 @@ describe("SummaryData", function()
       end)
     end)
 
+    describe("the bank (bags scanned, bank never)", function()
+      local function completeChar(extra)
+        local char = {
+          level = 70,
+          talents = { tabs = { 0, 0, 21 } },
+          dataVersions = {
+            character = 1, guildMembership = 1, containers = 4, equipment = 1, professions = 1,
+            reputations = 2, mail = 1, auctions = 1, currencies = 1,
+          },
+          Professions = {},
+          cooldownSpecs = {
+            masterTransmutation = false, spellfireTailor = false, shadoweaveTailor = false,
+            moonclothTailor = false,
+          },
+          bagsScannedAt = 1790725000,
+        }
+        for k, v in pairs(extra or {}) do char[k] = v end
+        DS.GetCharacter = function() return char end
+        DS.GetCharacterLevel = function(_, c) return (c and c.level) or 0 end
+        DS.HasModuleData = function(_, c, mod)
+          local v = c.dataVersions and c.dataVersions[mod]
+          return v ~= nil and v > 0
+        end
+        DS.GetProfessions = function(_, c) return c.Professions or {} end
+        DS.GetNumRecipes = function() return 0 end
+        return char
+      end
+
+      it("asks for a visit to a bank", function()
+        completeChar()
+        local out = SD.GetMissingDataInfo("Alice", "Realm1")
+        assert.is_true(out.hasMissing)
+        assert.are.same({ "* Visit a bank" }, out.instructions)
+      end)
+
+      it("asks at level 20", function()
+        completeChar({ level = 20, talents = { tabs = { 0, 0, 11 } } })
+        assert.are.same({ "* Visit a bank" }, SD.GetMissingDataInfo("Alice", "Realm1").instructions)
+      end)
+
+      it("asks nothing under level 20", function()
+        completeChar({ level = 19, talents = { tabs = { 0, 0, 10 } } })
+        assert.is_false(SD.GetMissingDataInfo("Alice", "Realm1").hasMissing)
+      end)
+
+      it("asks nothing once the bank was scanned", function()
+        completeChar({ bankScannedAt = 1790726000 })
+        assert.is_false(SD.GetMissingDataInfo("Alice", "Realm1").hasMissing)
+      end)
+
+      it("asks nothing before the bags were scanned (saved before containers v4)", function()
+        local char = completeChar()
+        char.bagsScannedAt = nil
+        assert.is_false(SD.GetMissingDataInfo("Alice", "Realm1").hasMissing)
+      end)
+
+      it("asks once, beside logging in", function()
+        local char = completeChar()
+        char.dataVersions.equipment = nil
+        assert.are.same({ "* Log in with this character", "* Visit a bank" },
+          SD.GetMissingDataInfo("Alice", "Realm1").instructions)
+      end)
+    end)
+
     it("does not nag to open the Skills window when the client has no skill-line API (e.g. WoW Forever)", function()
       local char = {
         level = 20,

@@ -371,6 +371,19 @@ local function needsGuildMembershipScan(char, DS)
     return DS.NeedsRescan and DS:NeedsRescan(char, "guildMembership")
 end
 
+-- The bank is asked for only from this level on: a younger character rarely keeps anything there.
+local BANK_WARNING_LEVEL = 20
+
+-- Bags scanned (containers v4's bagsScannedAt) but the bank never: only a visit to a bank reads it, whoever
+-- is logged in, so the same instruction serves the current character and alts. Characters saved before
+-- containers v4 have neither time and are not asked until a login scans their bags.
+local function appendBankMissingInstructions(out, char, DS)
+    if type(char) ~= "table" or not char.bagsScannedAt or char.bankScannedAt then return end
+    local level = tonumber(DS.GetCharacterLevel and DS:GetCharacterLevel(char) or char.level) or 0
+    if math.floor(level) < BANK_WARNING_LEVEL then return end
+    addUniqueInstruction(out, "* Visit a bank")
+end
+
 local function appendGuildMembershipMissingInstructions(out, char, DS, isCurrent)
     if not needsGuildMembershipScan(char, DS) then return end
     if isCurrent then
@@ -502,6 +515,7 @@ function AltArmy.SummaryData.GetMissingDataInfo(name, realm)
 
     appendReputationMissingInstructions(out, char, DS, isCurrent)
     appendRecipeMissingInstructions(out, char, DS, isCurrent)
+    appendBankMissingInstructions(out, char, DS)
 
     if needsPoisonsWindowScan(char, DS) then
         local poisonsName = getPoisonsProfessionName()
