@@ -53,9 +53,10 @@ Canonical table: `DATA_VERSIONS` in [`DataStore.lua`](DataStore/DataStore.lua).
 ### currencyList (v1)
 - **v1**: Initial version. The native currency list (`C_CurrencyInfo`, WoW Forever's Character window Currency tab): `char.CurrencyList[currencyID] = quantity`, zeros included. Account-wide details in `AltArmyTBC_Data.CurrencyMeta[currencyID] = { name, icon, max, header, headerOrder, order }` (native header and list order). Absent on clients without `C_CurrencyInfo.GetCurrencyListInfo`.
 
-### talents (v2)
+### talents (v3)
 - **v1**: Talent tab point totals for primary-spec inference (gear upgrade / compare warnings and missing-data).
 - **v2**: On clients without the legacy `GetNumTalentTabs`/`GetTalentTabInfo` (e.g. WoW Forever), falls back to `C_SpecializationInfo.GetSpecialization`/`GetSpecializationInfo`. `char.talents.tabs` becomes an empty table (not a per-tab point array) and `char.talents.primary` becomes the specialization index (not a tab index) on this path; `specKey` is resolved from Blizzard's canonical specialization ID rather than tab position. Same fields, same meaning to callers (`ResolveSpecKey`/`HasTalentData`), just a different source on clients where the fallback is active.
+- **v3**: WoW Forever answers the specialization API with one placeholder spec per class (Warrior 1491, unnamed), so v2 stored `primary = 1` and no `specKey` for everyone. v3 reads the class talent trait tree (`C_ClassTalents.GetActiveConfigID`, `C_Traits`) and sums the points spent per tab by each node's column (`DT.TraitTabForPosX`), so `tabs` is a per-tab point array again and `primary`/`specKey` mean what they do on TBC. The specialization API stays the last fallback.
 
 ### legacyTalents (v2)
 - **v1**: WoW Forever's account-wide Legacy Points system. Stores `char.legacyTalents.nodes[nodeID] = rank` for every spent node, `totalRanksSpent`, and `restRank` (rank of the "Well Rested" rest-XP talent, resolved by name — see `Data/DataStore/DataStoreLegacy.lua`). Absent entirely on clients where the (unconfirmed, speculative) `C_Traits` API chain this relies on doesn't resolve, e.g. TBC Classic.

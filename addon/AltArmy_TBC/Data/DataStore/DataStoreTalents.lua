@@ -1,7 +1,7 @@
 -- AltArmy TBC — Talent / spec tracking for gear upgrade comparisons.
 -- Requires DataStore.lua loaded first.
 -- luacheck: globals GetNumTalentTabs GetTalentTabInfo PlayerTalentFrame GetSpecialization
--- luacheck: globals GetSpecializationInfo C_SpecializationInfo C_EventUtils
+-- luacheck: globals GetSpecializationInfo C_SpecializationInfo C_EventUtils C_ClassTalents C_Traits
 
 if not AltArmy or not AltArmy.DataStore then return end
 
@@ -188,11 +188,62 @@ local function readSpecializationSpec(classFile)
     return DT.GetSpecKeyForSpecId(classFile, specId), specIndex, true
 end
 
+-- WoW Forever has no talent-tab API and a single placeholder specialization per class (Warrior:
+-- 1491, unnamed, "DAMAGER"), so the spec comes from where the points went. Its class talents are a
+-- trait tree (C_ClassTalents' active config) laid out as the three classic tabs side by side: in
+-- Forever's DB2 (build 1.60.1.70450) every class's nodes sit in columns at x 1020-2820, 5020-6820 and
+-- 9080-10880 (one hidden Hunter node at x 102800, a Survival talent), left to right in tab order,
+-- the order SPEC_KEYS_BY_CLASS lists. A node right of an edge belongs to the next tab.
+local TRAIT_TAB_EDGES = { 4000, 8000 }
+
+--- Tab index (1-3) of a class trait node by its x position.
+function DT.TraitTabForPosX(posX)
+    posX = tonumber(posX) or 0
+    local tab = 1
+    for i = 1, #TRAIT_TAB_EDGES do
+        if posX >= TRAIT_TAB_EDGES[i] then tab = i + 1 end
+    end
+    return tab
+end
+
+local function callApi(fn, ...)
+    if not fn then return nil end
+    local ok, a = pcall(fn, ...)
+    if ok then return a end
+    return nil
+end
+
+--- Points spent per tab in the class talent trait tree, or nil when the client has none.
+local function readTraitTabs()
+    local CT, TR = C_ClassTalents, C_Traits
+    if type(CT) ~= "table" or type(TR) ~= "table" then return nil end
+    if not (TR.GetConfigInfo and TR.GetTreeNodes and TR.GetNodeInfo) then return nil end
+    local configID = callApi(CT.GetActiveConfigID)
+    if not configID or configID == 0 then return nil end
+    local info = callApi(TR.GetConfigInfo, configID)
+    local treeID = type(info) == "table" and type(info.treeIDs) == "table" and info.treeIDs[1] or nil
+    if not treeID then return nil end
+    local nodeIDs = callApi(TR.GetTreeNodes, treeID)
+    if type(nodeIDs) ~= "table" or #nodeIDs == 0 then return nil end
+    local tabs = { 0, 0, 0 }
+    for i = 1, #nodeIDs do
+        local node = callApi(TR.GetNodeInfo, configID, nodeIDs[i])
+        if type(node) == "table" then
+            local spent = tonumber(node.ranksPurchased) or tonumber(node.activeRank) or 0
+            if spent > 0 then
+                local tab = DT.TraitTabForPosX(node.posX)
+                tabs[tab] = tabs[tab] + spent
+            end
+        end
+    end
+    return tabs
+end
+
 function DS:ScanTalents(_self)
     local char = GetCurrentCharTable and GetCurrentCharTable() or nil
     if not char then return end
     local classFile = normalizeClassFile(char.classFile)
-    local tabs = readTalentTabs()
+    local tabs = readTalentTabs() or readTraitTabs()
     local primary, specKey
     if tabs then
         primary = DT.DerivePrimaryTabIndex(tabs)

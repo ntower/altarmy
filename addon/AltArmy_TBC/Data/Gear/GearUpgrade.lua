@@ -823,6 +823,11 @@ end
 local function canEquipLinkInWeaponSlot(link, targetSlot, classFile, specKey)
     local iu = IU()
     if not iu or not link or not targetSlot then return false end
+    if iu.SpecRequiresShield and iu.SpecRequiresShield(classFile, specKey) then
+        -- A tank's off-hand is its shield, and a two-hander would take the shield's hand.
+        if targetSlot == OFF_HAND_SLOT then return iu.IsShield(link) end
+        if iu.GetWeaponRole(link) == "twohand" then return false end
+    end
     local slots = iu.GetInventorySlotsForItem(link) or {}
     for i = 1, #slots do
         if slots[i] == targetSlot then return true end
@@ -851,8 +856,10 @@ function GU.CanEquipFocusItemInWeaponSlot(char, itemLink, invSlot, entry)
     if not iu or not iu.GetWeaponRole then return true end
     local role = iu.GetWeaponRole(itemLink)
     if not role then return true end
-    if role == "twohand" then return true end
     local classFile, specKey = resolveCompareContext(char, entry)
+    if role == "twohand" then
+        return not (iu.SpecRequiresShield and iu.SpecRequiresShield(classFile, specKey))
+    end
     return canEquipLinkInWeaponSlot(itemLink, invSlot, classFile, specKey)
 end
 
@@ -1252,6 +1259,12 @@ function GU.GetWeaponConfigDelta(char, itemLink, opts, entry)
     local technique = GU.GetEffectiveTechnique(opts.technique or "custom")
     local classFile, specKey, level = resolveCompareContext(char, entry)
     local compareSlot = resolveWeaponCompareSlot(opts)
+    -- A shield-bound tank never takes an item into a hand it can't use there (an off-hand
+    -- weapon or a two-hander), so such an item is no upgrade in that slot.
+    if compareSlot and iu.SpecRequiresShield and iu.SpecRequiresShield(classFile, specKey)
+        and not GU.CanEquipFocusItemInWeaponSlot(char, itemLink, compareSlot, entry) then
+        return 0, nil
+    end
     local mh = getEquippedLink(char, MAIN_HAND_SLOT)
     local oh = getEquippedLink(char, OFF_HAND_SLOT)
     local entries = getMemoBucket(weaponConfigMemo, char, entry)

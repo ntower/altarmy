@@ -100,8 +100,13 @@ describe("DataStoreTalents", function()
         local oldGetNumTalentTabs, oldGetTalentTabInfo
         local oldGetSpecialization, oldGetSpecializationInfo, oldCSpecInfo
         local oldGetRealmName, oldUnitName
+        local oldClassTalents, oldTraits
 
         before_each(function()
+            oldClassTalents = _G.C_ClassTalents
+            oldTraits = _G.C_Traits
+            _G.C_ClassTalents = nil
+            _G.C_Traits = nil
             oldGetNumTalentTabs = _G.GetNumTalentTabs
             oldGetTalentTabInfo = _G.GetTalentTabInfo
             oldGetSpecialization = _G.GetSpecialization
@@ -124,6 +129,8 @@ describe("DataStoreTalents", function()
         end)
 
         after_each(function()
+            _G.C_ClassTalents = oldClassTalents
+            _G.C_Traits = oldTraits
             _G.GetNumTalentTabs = oldGetNumTalentTabs
             _G.GetTalentTabInfo = oldGetTalentTabInfo
             _G.GetSpecialization = oldGetSpecialization
@@ -164,6 +171,72 @@ describe("DataStoreTalents", function()
             local char = _G.AltArmyTBC_Data.Characters.TestRealm.TestChar
             assert.are.equal("protection", char.talents.specKey)
             assert.are.equal(3, char.talents.primary)
+        end)
+
+        -- Forever's class talent tree: the three tabs as columns, nodes as a live Protection
+        -- warrior's (level 26, 21 points) came back in a dev dump on 2026-11-25.
+        local function stubTraitTree(spentByNode)
+            local nodes = {
+                [105958] = 1020, [105941] = 1620, [105952] = 2820, -- Arms column
+                [105938] = 5620, [105930] = 5620, [105926] = 6820, -- Fury column
+                [105976] = 9680, [105975] = 9080, [105972] = 10880, -- Protection column
+            }
+            local ids = {}
+            for id in pairs(nodes) do ids[#ids + 1] = id end
+            table.sort(ids)
+            _G.C_ClassTalents = { GetActiveConfigID = function() return 279715 end }
+            _G.C_Traits = {
+                GetConfigInfo = function(configID)
+                    assert.are.equal(279715, configID)
+                    return { ID = configID, treeIDs = { 1117 }, name = "Warrior", type = 4 }
+                end,
+                GetTreeNodes = function(treeID)
+                    assert.are.equal(1117, treeID)
+                    return ids
+                end,
+                GetNodeInfo = function(_, nodeID)
+                    local spent = spentByNode[nodeID] or 0
+                    return { ID = nodeID, posX = nodes[nodeID], posY = 2130,
+                        ranksPurchased = spent, activeRank = spent, maxRanks = 5 }
+                end,
+            }
+            -- The specialization API answers with Forever's one placeholder spec.
+            _G.C_SpecializationInfo = {
+                GetSpecialization = function() return 1 end,
+                GetSpecializationInfo = function() return 1491 end,
+            }
+        end
+
+        it("reads the spec from Forever's class talent tree columns", function()
+            stubTraitTree({ [105976] = 5, [105975] = 2, [105972] = 3, [105941] = 1 })
+            DS:ScanTalents()
+            local char = _G.AltArmyTBC_Data.Characters.TestRealm.TestChar
+            assert.are.same({ 1, 0, 10 }, char.talents.tabs)
+            assert.are.equal(3, char.talents.primary)
+            assert.are.equal("protection", char.talents.specKey)
+            local key, known = DT.ResolveSpecKey(char)
+            assert.are.equal("protection", key)
+            assert.is_true(known)
+        end)
+
+        it("leaves the spec unpicked when no talent points are spent", function()
+            stubTraitTree({})
+            DS:ScanTalents()
+            local char = _G.AltArmyTBC_Data.Characters.TestRealm.TestChar
+            assert.are.same({ 0, 0, 0 }, char.talents.tabs)
+            assert.is_nil(char.talents.primary)
+            assert.is_nil(char.talents.specKey)
+            local _, known = DT.ResolveSpecKey(char)
+            assert.is_false(known)
+        end)
+
+        it("TraitTabForPosX puts each column in its tab", function()
+            assert.are.equal(1, DT.TraitTabForPosX(1020))
+            assert.are.equal(1, DT.TraitTabForPosX(2820))
+            assert.are.equal(2, DT.TraitTabForPosX(5020))
+            assert.are.equal(2, DT.TraitTabForPosX(6820))
+            assert.are.equal(3, DT.TraitTabForPosX(9080))
+            assert.are.equal(3, DT.TraitTabForPosX(102800)) -- Hunter's hidden Survival node
         end)
 
         it("records a scan with no spec chosen yet when the API exists but returns nothing", function()

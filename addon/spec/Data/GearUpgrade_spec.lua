@@ -1597,6 +1597,7 @@ describe("GearUpgrade", function()
                 [213] = { "Fishing Pole", nil, 3, 70, 1, "Weapon", "Fishing Poles", nil, "INVTYPE_2HWEAPON" },
                 [214] = { "Ahead OH", nil, 3, 50, 64, "Weapon", "Daggers", nil, "INVTYPE_WEAPONOFFHAND" },
                 [215] = { "Ahead 1H", nil, 3, 55, 64, "Weapon", "One-Handed Swords", nil, "INVTYPE_WEAPON" },
+                [216] = { "Better Shield", nil, 3, 30, 30, "Armor", "Shields", nil, "INVTYPE_SHIELD" },
             }
             local info = items[id]
             if not info then return mockGetItemInfo(item) end
@@ -2338,6 +2339,115 @@ describe("GearUpgrade", function()
             assert.is_not_nil(info.selection)
             assert.are.same(info.selection.candidateLinks, links.candidateLinks)
             assert.are.same(info.selection.equippedLinks, links.equippedLinks)
+        end)
+
+        describe("protection keeps its shield", function()
+            local PROT_TALENTS = { tabs = { 0, 0, 31 }, primary = 3, specKey = "protection" }
+            local protEntry = { name = "WarriorProt", realm = "TestRealm", classFile = "WARRIOR", level = 60 }
+            local newOneHand = "|Hitem:205:0|h[New 1H]|h"
+
+            local function setupWarriorProtection()
+                _G.AltArmyTBC_Data.Characters.TestRealm.WarriorProt = {
+                    name = "WarriorProt",
+                    realm = "TestRealm",
+                    classFile = "WARRIOR",
+                    level = 60,
+                    Inventory = {
+                        [MAIN] = "|Hitem:201:0|h[Weak MH]|h",
+                        [OFF] = "|Hitem:208:0|h[Shield]|h",
+                    },
+                    Containers = {
+                        [0] = {
+                            links = {
+                                [1] = "|Hitem:206:0|h[Bag OH]|h",
+                                [2] = "|Hitem:207:0|h[Bag 1H]|h",
+                            },
+                        },
+                    },
+                    talents = PROT_TALENTS,
+                }
+                return DS:GetCharacter("WarriorProt", "TestRealm")
+            end
+
+            it("SpecRequiresShield names only the protection tanks", function()
+                local IU = AltArmy.ItemUsability
+                assert.is_true(IU.SpecRequiresShield("WARRIOR", "protection"))
+                assert.is_true(IU.SpecRequiresShield("PALADIN", "protection"))
+                assert.is_false(IU.SpecRequiresShield("WARRIOR", "fury"))
+                assert.is_false(IU.SpecRequiresShield("SHAMAN", "restoration"))
+                assert.is_false(IU.SpecRequiresShield("WARRIOR", "unknown"))
+            end)
+
+            it("only a shield fits the off-hand, and no two-hander fits either hand", function()
+                local char = setupWarriorProtection()
+                assert.is_true(GU.CanEquipFocusItemInWeaponSlot(char, newOneHand, MAIN, protEntry))
+                assert.is_false(GU.CanEquipFocusItemInWeaponSlot(char, newOneHand, OFF, protEntry))
+                assert.is_false(GU.CanEquipFocusItemInWeaponSlot(
+                    char, "|Hitem:206:0|h[Bag OH]|h", OFF, protEntry))
+                assert.is_false(GU.CanEquipFocusItemInWeaponSlot(
+                    char, "|Hitem:212:0|h[Held OH]|h", OFF, protEntry))
+                assert.is_true(GU.CanEquipFocusItemInWeaponSlot(
+                    char, "|Hitem:216:0|h[Better Shield]|h", OFF, protEntry))
+                assert.is_false(GU.CanEquipFocusItemInWeaponSlot(
+                    char, "|Hitem:203:0|h[Big 2H]|h", MAIN, protEntry))
+                assert.is_false(GU.CanEquipFocusItemInWeaponSlot(
+                    char, "|Hitem:203:0|h[Big 2H]|h", OFF, protEntry))
+            end)
+
+            it("a one-hander upgrades the main hand, never the shield", function()
+                local char = setupWarriorProtection()
+                -- Over the 20 ilvl shield it would be +20; over the 30 ilvl main hand it is +10.
+                assert.are.equal(10, GU.GetCharacterUpgradeDelta(char, newOneHand, { technique = "ilvl" }))
+                local offDelta, offInfo = GU.GetWeaponConfigDelta(char, newOneHand, {
+                    technique = "ilvl",
+                    compareSlot = OFF,
+                }, protEntry)
+                assert.are.equal(0, offDelta)
+                assert.is_nil(offInfo)
+            end)
+
+            it("an off-hand weapon or a two-hander is no upgrade", function()
+                local char = setupWarriorProtection()
+                assert.are.equal(0, GU.GetCharacterUpgradeDelta(
+                    char, "|Hitem:206:0|h[Bag OH]|h", { technique = "ilvl" }))
+                assert.are.equal(0, GU.GetCharacterUpgradeDelta(
+                    char, "|Hitem:203:0|h[Big 2H]|h", { technique = "ilvl" }))
+            end)
+
+            it("a better shield is an upgrade", function()
+                local char = setupWarriorProtection()
+                assert.are.equal(10, GU.GetCharacterUpgradeDelta(
+                    char, "|Hitem:216:0|h[Better Shield]|h", { technique = "ilvl" }))
+            end)
+
+            it("a one-hander replacing a two-hander pairs with a shield from bags", function()
+                _G.AltArmyTBC_Data.Characters.TestRealm.WarriorProt2H = {
+                    name = "WarriorProt2H",
+                    realm = "TestRealm",
+                    classFile = "WARRIOR",
+                    level = 60,
+                    Inventory = { [MAIN] = "|Hitem:204:0|h[Small 2H]|h" },
+                    Containers = {
+                        [0] = {
+                            links = {
+                                [1] = "|Hitem:206:0|h[Bag OH]|h",
+                                [2] = "|Hitem:207:0|h[Bag 1H]|h",
+                                [3] = "|Hitem:208:0|h[Shield]|h",
+                            },
+                        },
+                    },
+                    talents = PROT_TALENTS,
+                }
+                local char = DS:GetCharacter("WarriorProt2H", "TestRealm")
+                local entry = { name = "WarriorProt2H", realm = "TestRealm", classFile = "WARRIOR", level = 60 }
+                local delta, info = GU.GetWeaponConfigDelta(char, newOneHand, {
+                    technique = "ilvl",
+                    compareSlot = MAIN,
+                }, entry)
+                assert.are.equal("|Hitem:208:0|h[Shield]|h", info.offHandLink)
+                assert.are.equal(60, info.candidateValue)
+                assert.are.equal(10, delta)
+            end)
         end)
 
         describe("main-hand-only weapon cannot be considered for off-hand", function()

@@ -37,7 +37,7 @@ local DATA_VERSIONS = {
     currencies = 1,
     currencyList = 1,
     levelHistory = 1,
-    talents = 2,
+    talents = 3,
     legacyTalents = 2,
 }
 

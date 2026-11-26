@@ -330,6 +330,26 @@ function IU.CanClassDualWield(classFile, specKey)
     return false
 end
 
+-- Tank specs whose off-hand must be a shield: their abilities and block need one, which no
+-- stat weight captures, so neither an off-hand weapon nor a two-hander is an upgrade for them.
+local SHIELD_REQUIRED_SPECS = {
+    WARRIOR = { protection = true },
+    PALADIN = { protection = true },
+}
+
+--- True when this class/spec must carry a shield in the off-hand (Protection Warrior, Paladin).
+function IU.SpecRequiresShield(classFile, specKey)
+    local specs = SHIELD_REQUIRED_SPECS[normalizeClassFile(classFile)]
+    return specs ~= nil and specs[specKey] == true
+end
+
+--- True when the item is a shield (equip location INVTYPE_SHIELD).
+function IU.IsShield(link)
+    if not link or not hasItemInfoApi() then return false end
+    if not compatGetItemInfo(link) then return false end
+    return select(9, compatGetItemInfo(link)) == "INVTYPE_SHIELD"
+end
+
 --- Inventory slots to show in the gear grid when an item is focused (may be wider than equip slots).
 function IU.GetFocusDisplaySlotsForItem(link)
     local slots = IU.GetInventorySlotsForItem(link)
