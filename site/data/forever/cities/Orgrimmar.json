@@ -3310,7 +3310,7 @@
   "vendor:3323": 76
  },
  "generated": {
-  "source": "vmangos db-sqlite-ead6b75",
+  "source": "vmangos db-sqlite-6a1409d",
   "tele": "Orgrimmar",
   "radius": 750,
   "counts": {
