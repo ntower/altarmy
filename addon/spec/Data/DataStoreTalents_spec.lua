@@ -254,4 +254,44 @@ describe("DataStoreTalents", function()
             assert.is_false(known)
         end)
     end)
+
+    describe("rescanning on a dual-spec swap", function()
+        local frame, oldCreateFrame, oldTimer, oldScan, scans, timers
+
+        before_each(function()
+            oldCreateFrame, oldTimer, oldScan = _G.CreateFrame, _G.C_Timer, DS.ScanTalents
+            frame = { events = {} }
+            _G.CreateFrame = function()
+                frame.RegisterEvent = function(self, name) self.events[name] = true end
+                frame.SetScript = function(self, _, fn) self.onEvent = fn end
+                return frame
+            end
+            timers = {}
+            _G.C_Timer = { After = function(delay, fn) timers[#timers + 1] = { delay = delay, fn = fn } end }
+            package.loaded["DataStoreTalents"] = nil
+            require("DataStoreTalents")
+            scans = 0
+            DS.ScanTalents = function() scans = scans + 1 end
+        end)
+
+        after_each(function()
+            _G.CreateFrame, _G.C_Timer, DS.ScanTalents = oldCreateFrame, oldTimer, oldScan
+            package.loaded["DataStoreTalents"] = nil
+            require("DataStoreTalents")
+        end)
+
+        it("listens for the talent group and talent tree changing", function()
+            assert.is_true(frame.events.ACTIVE_TALENT_GROUP_CHANGED)
+            assert.is_true(frame.events.TRAIT_CONFIG_UPDATED)
+            assert.is_true(frame.events.ACTIVE_COMBAT_CONFIG_CHANGED)
+        end)
+
+        it("scans at once and again once the swap has settled", function()
+            frame.onEvent(frame, "ACTIVE_TALENT_GROUP_CHANGED", 1, 2)
+            assert.are.equal(1, scans)
+            assert.are.equal(1, #timers)
+            timers[1].fn()
+            assert.are.equal(2, scans)
+        end)
+    end)
 end)

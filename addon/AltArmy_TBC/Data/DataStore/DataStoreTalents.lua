@@ -1,7 +1,7 @@
 -- AltArmy TBC — Talent / spec tracking for gear upgrade comparisons.
 -- Requires DataStore.lua loaded first.
 -- luacheck: globals GetNumTalentTabs GetTalentTabInfo PlayerTalentFrame GetSpecialization
--- luacheck: globals GetSpecializationInfo C_SpecializationInfo C_EventUtils C_ClassTalents C_Traits
+-- luacheck: globals GetSpecializationInfo C_SpecializationInfo C_EventUtils C_ClassTalents C_Traits C_Timer
 
 if not AltArmy or not AltArmy.DataStore then return end
 
@@ -297,8 +297,35 @@ if CreateFrame then
     -- C_SpecializationInfo fallback path — fires on spec change/respec. Doesn't exist on TBC
     -- Classic; SafeRegisterTalentEvent no-ops there instead of erroring.
     SafeRegisterTalentEvent("PLAYER_SPECIALIZATION_CHANGED")
+    -- A dual-spec swap (Forever: resto <-> enhancement) fires these, not CHARACTER_POINTS_CHANGED,
+    -- so without them the old spec was kept until a reload and gear compared for it.
+    SafeRegisterTalentEvent("ACTIVE_TALENT_GROUP_CHANGED")
+    SafeRegisterTalentEvent("TRAIT_CONFIG_UPDATED")
+    SafeRegisterTalentEvent("ACTIVE_COMBAT_CONFIG_CHANGED")
+
+    --- Seconds after a swap to read the talents again: the tree may still hold the old group's ranks
+    --- when the event fires.
+    local SWAP_SETTLE_SECONDS = 1
+
+    local SPEC_SWAP_EVENTS = {
+        ACTIVE_TALENT_GROUP_CHANGED = true,
+        TRAIT_CONFIG_UPDATED = true,
+        ACTIVE_COMBAT_CONFIG_CHANGED = true,
+    }
+
+    local function scanNow()
+        if DS.ScanTalents then
+            DS:ScanTalents()
+        end
+    end
+
     talentFrame:SetScript("OnEvent", function(_, event, addonName)
-        if event == "PLAYER_ENTERING_WORLD" then
+        if SPEC_SWAP_EVENTS[event] then
+            scanNow()
+            if C_Timer and C_Timer.After then
+                C_Timer.After(SWAP_SETTLE_SECONDS, scanNow)
+            end
+        elseif event == "PLAYER_ENTERING_WORLD" then
             if DS.ScanTalents then
                 DS:ScanTalents()
             end
