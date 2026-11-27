@@ -12,7 +12,7 @@ local TIER_ORDER = { Journeyman = 1, Expert = 2, Artisan = 3 }
 
 --- What a writ's turn-in pays in coin, by tier: a coin pouch of semi-random contents, so its average (copper),
 --- as measured in game. Not in the game data.
-WC.POUCH = { Journeyman = 3500, Expert = 7500, Artisan = 17500 }
+WC.POUCH = { Journeyman = 3500, Expert = 7500, Artisan = 15000 }
 
 local function P()
     return AltArmy.CraftPlan

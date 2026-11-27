@@ -95,8 +95,8 @@ describe("WritCosts", function()
             assert.equals("buy", suit.best)
             assert.is_false(suit.canCraft)
             assert.is_nil(suit.who)
-            assert.equals(-15200, suit.total) -- 2000 bought + 300 - an Artisan's 17500
-            assert.equals(-76, suit.perRep) -- -15200 / 200 rep
+            assert.equals(-12700, suit.total) -- 2000 bought + 300 - an Artisan's 15000
+            assert.equals(-63, suit.perRep) -- -12700 / 200 rep, rounded half up
 
             local shot = rows[264037]
             assert.is_nil(shot.buy)
